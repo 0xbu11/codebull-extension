@@ -89,6 +89,13 @@ nav a:hover {
   margin-bottom: 1rem;
   line-height: 1.1;
   letter-spacing: -0.02em;
+  background: linear-gradient(90deg, #4285F4, #9B72CB, #EA4335, #FBBC04);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  width: fit-content;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .hero p {
