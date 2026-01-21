@@ -47,6 +47,21 @@ header .container {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  position: relative;
+}
+
+.header-logo-center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.header-logo-center img {
+  height: 48px;
+  width: auto;
+  display: block;
+  opacity: 0.8;
 }
 
 .logo {
