@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeBull - Tutorial</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <header>
+        <div class="container">
+            <div class="logo">
+                <a href="index.html">Code<span>Bull</span></a>
+            </div>
+             <div class="header-logo-center">
+                <a href="index.html"><img src="asset/codebull-logo.png" alt="CodeBull Logo"></a>
+            </div>
+            <nav>
+                <ul>
+                    <li><a href="index.html#features">Features</a></li>
+                    <li><a href="tutorial.html" class="active">Tutorial</a></li>
+                    <li><a href="https://github.com/0xbu11/codebull-extension" target="_blank">GitHub</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <section class="page-header">
+            <div class="container">
+                <h1>Getting Started with CodeBull</h1>
+                <p>Follow this step-by-step guide to master dynamic instrumentation in VS Code.</p>
+            </div>
+        </section>
+
+        <section class="tutorial-steps">
+            <div class="container">
+                
+                <!-- Step 1 -->
+                <div class="step">
+                    <div class="step-content">
+                        <div class="step-number">01</div>
+                        <h2>Installation</h2>
+                        <p>Search for <strong>"CodeBull"</strong> in the VS Code Marketplace and click Install. Ensure you have a Go project open.</p>
+                    </div>
+                    <div class="step-image">
+                        <div class="placeholder-img">
+                            <span>Screenshot: Installation</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 2 -->
+                <div class="step">
+                    <div class="step-content">
+                        <div class="step-number">02</div>
+                        <h2>Injecting Logs</h2>
+                        <p>Open any Go file. You will see <strong>CodeLens</strong> actions above your functions. Click <strong>"Set Log"</strong> to inject a log point. The IDE will automatically track the next execution.</p>
+                    </div>
+                    <div class="step-image">
+                        <div class="placeholder-img">
+                            <span>Screenshot: Clicking CodeLens</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 3 -->
+                <div class="step">
+                    <div class="step-content">
+                        <div class="step-number">03</div>
+                        <h2>Viewing Live Logs</h2>
+                        <p>Open the <strong>CodeBull Log</strong> panel. As your application runs, logs will stream in real-time without you having to rebuild or restart your app.</p>
+                    </div>
+                    <div class="step-image">
+                        <div class="placeholder-img">
+                            <span>Screenshot: Log Panel</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 4 -->
+                <div class="step">
+                    <div class="step-content">
+                        <div class="step-number">04</div>
+                        <h2>Visualizing Metrics</h2>
+                        <p>Click <strong>"Set Metric"</strong> via CodeLens. Select a variable to track. Open the <strong>CodeBull Metric</strong> panel to see real-time graphs of the variable's value over time.</p>
+                    </div>
+                    <div class="step-image">
+                        <div class="placeholder-img">
+                            <span>Screenshot: Metric Charts</span>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2026 CodeBull. All rights reserved.</p>
+            <div class="links">
+                <a href="https://github.com/0xbu11/codebull-extension">GitHub</a>
+                <a href="#">Privacy</a>
+                <a href="#">Terms</a>
+            </div>
+        </div>
+    </footer>
+</body>
+
+</html>
