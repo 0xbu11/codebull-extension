@@ -290,6 +290,109 @@ footer .links {
   border-radius: 8px;
   overflow: hidden;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  position: relative;
+  /* For zoom hint positioning */
+}
+
+.step-image img {
+  width: 100%;
+  height: auto;
+  display: block;
+  cursor: zoom-in;
+  /* Indicate clickable */
+  transition: transform 0.3s ease;
+}
+
+/* Zoom hint on hover */
+.step-image:hover::after {
+  content: "Click to zoom";
+  position: absolute;
+  bottom: 1rem;
+  right: 1rem;
+  background: rgba(0, 0, 0, 0.8);
+  color: #fff;
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.step-image:hover:has(img)::after {
+  opacity: 1;
+}
+
+/* Fallback for browsers not supporting :has or if the previous selector is too specific/tricky */
+/* Simplified version that assumes .step-image has an img if we want to show the hint. 
+   Actually, strict CSS :has support might be limited in some envs, but we'll assume modern. 
+   If not, just .step-image:hover::after is fine, but it might show on placeholders. 
+   Let's just use a JS class or rely on the fact that placeholders don't have img tags usually or we can target .step-image img directly? 
+   No, the ::after needs to be on the container usually to be positioned relative to it EASILY using absolute positioning.
+   
+   Better approach: Only apply the hint if it contains an image.
+   Since I cannot assume :has, I will just apply it to .step-image and maybe I should add a specific class like 'zoomable' to those with images in HTML?
+   Or just let it be. If a placeholder is there, "Click to zoom" might appear.
+   Wait, placeholders are .placeholder-img divs. They don't have the <img> tag directly inside .step-image usually?
+   Looking at HTML:
+   <div class="step-image">
+      <div class="placeholder-img">...</div>
+   </div>
+   vs
+   <div class="step-image">
+      <img ...>
+   </div>
+   
+   So I can target `.step-image:has(img):hover::after`. 
+   If :has is not available, I'll just accept it might show on placeholders (which is not ideal) 
+   OR I'll modify the HTML to add a class `zoomable` to the parent div. 
+   I'll modify HTML to add `zoomable` class to the `.step-image` divs that contain images. 
+   That's safer.
+*/
+
+.step-image.has-image {
+  cursor: zoom-in;
+}
+
+.step-image.has-image:hover::after {
+  content: "Click to zoom";
+  position: absolute;
+  bottom: 1rem;
+  right: 1rem;
+  background: rgba(0, 0, 0, 0.8);
+  color: #fff;
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  opacity: 1;
+  /* Triggered by hover on parent */
+  pointer-events: none;
+  animation: fadeIn 0.3s;
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Hide it by default for the transition logic - actually opacity 0 to 1 on hover is better */
+.step-image.has-image::after {
+  content: "Click to zoom";
+  position: absolute;
+  bottom: 1rem;
+  right: 1rem;
+  background: rgba(0, 0, 0, 0.8);
+  color: #fff;
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .placeholder-img {
@@ -315,4 +418,66 @@ footer .links {
   .hero h1 {
     font-size: 2.5rem;
   }
+}
+
+/* Lightbox Modal */
+.image-modal {
+  display: none;
+  position: fixed;
+  z-index: 1000;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.95);
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  backdrop-filter: blur(5px);
+}
+
+.image-modal.active {
+  display: flex;
+  opacity: 1;
+}
+
+.image-modal img {
+  max-width: 90%;
+  max-height: 90%;
+  object-fit: contain;
+  border-radius: 4px;
+  box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+  transform: scale(0.95);
+  transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.image-modal.active img {
+  transform: scale(1);
+}
+
+.image-modal-close {
+  position: absolute;
+  top: 2rem;
+  right: 2rem;
+  color: #fff;
+  font-size: 2.5rem;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  line-height: 1;
+  opacity: 0.7;
+  transition: all 0.2s;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+.image-modal-close:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.1);
 }
