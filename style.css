@@ -100,33 +100,33 @@ header {
 
 header .container {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  position: relative;
+  gap: 1.5rem;
 }
 
 .header-logo-center {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
   display: flex;
-  justify-content: center;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+  margin-left: 0.75rem;
+  order: 3;
 }
 
 .header-logo-center img {
-  height: 48px;
+  height: 22px;
   width: auto;
   display: block;
-  opacity: 0.8;
+  opacity: 0.65;
 }
 
 .logo {
   font-size: 1.5rem;
   font-weight: 700;
   letter-spacing: -0.05em;
-  display: flex;
-  justify-content: flex-start;
-  flex: 1;
+  flex: 0 0 auto;
+  white-space: nowrap;
+  margin-right: auto;
+  order: 1;
 }
 
 .logo span {
@@ -134,10 +134,11 @@ header .container {
 }
 
 nav {
-  margin-left: auto;
-  flex: 1;
+  margin-left: 0;
   display: flex;
   justify-content: flex-end;
+  min-width: 0;
+  order: 2;
 }
 
 nav ul {
@@ -150,14 +151,23 @@ nav ul {
   padding: 0;
 }
 
-@media (max-width: 1000px) {
+@media (max-width: 1200px) {
   .header-logo-center {
-    display: none;
+    margin-left: 0.5rem;
   }
 
-  .logo,
-  nav {
-    flex: unset;
+  header .container {
+    gap: 1rem;
+  }
+
+  nav ul {
+    gap: 1rem;
+  }
+}
+
+@media (max-width: 900px) {
+  .header-logo-center {
+    display: none;
   }
 }
 
@@ -372,11 +382,17 @@ footer .links {
 .step-number {
   font-size: 6rem;
   font-weight: 900;
-  color: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 193, 7, 0.22);
+  text-shadow: 0 0 18px rgba(255, 193, 7, 0.18);
   position: absolute;
   top: -3rem;
   left: -1rem;
   z-index: -1;
+}
+
+[data-theme="light"] .step-number {
+  color: rgba(160, 224, 58, 0.24);
+  text-shadow: 0 0 16px rgba(160, 224, 58, 0.18);
 }
 
 .step-content h2 {
