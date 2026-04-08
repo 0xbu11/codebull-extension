@@ -44,7 +44,7 @@
         <section class="page-header">
             <div class="container">
                 <h1>CodeBull 快速入門</h1>
-                <p>跟著這個循序漸進的指南，在 VS Code 中掌握動態插樁。</p>
+                <p>依照這份指南，你可以在幾分鐘內完成安裝、查看即時日誌、追蹤指標，並建立可分享的歷史儀表板。</p>
             </div>
         </section>
 
@@ -56,36 +56,18 @@
                     <div class="step-content">
                         <div class="step-number">01</div>
                         <h2>安裝</h2>
-                        <p>在 VS Code 擴充功能市場中搜尋 <strong>"CodeBull"</strong> 並點擊安裝。確保您已開啟一個 Go 專案。</p>
-                        <br>
-                        <p>在你的 Go 專案中加入匯入：</p>
+                        <p>先從 VS Code 擴充功能市場安裝 CodeBull，接著開啟你想觀察的 Go 專案。</p>
+                        <p><strong>快速設定</strong></p>
+                        <ol>
+                            <li>在 VS Code 擴充功能市場搜尋 <strong>"CodeBull"</strong> 並完成安裝。</li>
+                            <li>在 VS Code 中開啟你的 Go 專案。</li>
+                            <li>在要插樁的 service 或 binary 中加入以下匯入。</li>
+                        </ol>
                         <pre class="code-block">import (
     _ "github.com/0xbu11/codebull"
 )</pre>
-                        <h3>伺服器配置</h3>
-                        <p>監聽位址可以透過以下三種方式配置：</p>
-                        <ol>
-                            <li>使用明確的位址呼叫 <code>shadow.Start(addr)</code> (例如 <code>:9000</code> 或
-                                <code>127.0.0.1:9000</code>)。
-                            </li>
-                            <li>設定 <code>EGO_SHADOW_ADDR</code> (完整的監聽位址)。</li>
-                            <li>設定 <code>EGO_SHADOW_PORT</code> (僅連接埠，例如 <code>9000</code>)。</li>
-                        </ol>
-                        <p>優先順序為：</p>
-                        <p><code>shadow.Start(addr)</code> (明確位址) &gt; <code>EGO_SHADOW_ADDR</code> &gt;
-                            <code>EGO_SHADOW_PORT</code> &gt; 預設 <code>:8888</code>。
-                        </p>
-                        <p>注意事項：</p>
-                        <ul>
-                            <li><code>EGO_SHADOW_PORT</code> 必須是有效的數字連接埠 (<code>1</code>-<code>65535</code>)，否則將退回使用
-                                <code>:8888</code>。
-                            </li>
-                            <li><code>EGO_SHADOW_ADDR</code> 可以是 <code>127.0.0.1:9000</code> 或 <code>:9000</code>。</li>
-                        </ul>
-                        <ul>
-                            <li><strong>Base URL</strong>: <code>http://localhost:8888</code></li>
-                            <li><strong>WebSocket URL</strong>: <code>ws://localhost:8888</code></li>
-                        </ul>
+                        <h3>Dashboard 資料保存</h3>
+                        <p>Dashboard 資料最多可保存 <strong>30 天</strong>，方便你回顧近期趨勢，或將結果分享給團隊成員。</p>
                     </div>
                     <div class="step-image has-image">
                         <img src="asset/step1.png" alt="Screenshot: Installation">
@@ -97,8 +79,8 @@
                     <div class="step-content">
                         <div class="step-number">02</div>
                         <h2>注入日誌</h2>
-                        <p>打開任何一個 Go 檔案。您將會在函數或是行的上方看到 <strong>CodeLens</strong> 動作。點擊 <strong>"Set Log"</strong>
-                            來注入一個日誌點。IDE 會自動追蹤下一次的執行。</p>
+                        <p>打開任一個 Go 檔案，找到函式或程式碼行上方的 <strong>CodeLens</strong> 操作。</p>
+                        <p>點擊 <strong>"Set Log"</strong> 後，CodeBull 會在該位置建立動態日誌點。下一次執行到這段程式碼時，系統就會自動擷取日誌。</p>
                     </div>
                     <div class="step-image has-image">
                         <img src="asset/step2.png" alt="Injecting Logs CodeLens">
@@ -110,7 +92,8 @@
                     <div class="step-content">
                         <div class="step-number">03</div>
                         <h2>即時檢視日誌</h2>
-                        <p>打開 <strong>CodeBull Log</strong> 面板。當您的應用程式執行時，日誌將會即時串流顯示，您完全不需要重新編譯或重啟您的應用程式。</p>
+                        <p>打開 <strong>CodeBull Log</strong> 面板，即可即時查看新進來的日誌。</p>
+                        <p>你可以用這個畫面確認日誌點是否有觸發、查看變數值，並快速理解程式實際的執行流程，而不需要在程式裡臨時加入除錯輸出。</p>
                     </div>
                     <div class="step-image has-image">
                         <img src="asset/step3.png" alt="Screenshot: Log Panel">
@@ -122,8 +105,8 @@
                     <div class="step-content">
                         <div class="step-number">04</div>
                         <h2>視覺化指標</h2>
-                        <p>透過 CodeLens 點擊 <strong>"Set Metric"</strong>。選擇一個要追蹤的變數。打開 <strong>CodeBull Metric</strong>
-                            面板即可看見該變數數值隨時間變化的即時圖表。</p>
+                        <p>透過 CodeLens 點擊 <strong>"Set Metric"</strong>，再選擇你要追蹤的變數。</p>
+                        <p>打開 <strong>CodeBull Metric</strong> 面板後，就能看到該數值隨時間變化的圖表。這很適合觀察計數器、請求資料或其他執行期趨勢。</p>
                     </div>
                     <div class="step-image has-image">
                         <img src="asset/step4.png" alt="Screenshot: Metric Charts">
@@ -135,13 +118,15 @@
                     <div class="step-content">
                         <div class="step-number">05</div>
                         <h2>建立歷史儀表板</h2>
-                        <p>打開 CodeBull 側邊欄中的 <strong>Monitor dashboard</strong> 面板，接著點擊
-                            <strong>"Generate monitor dashboard"</strong>。CodeBull 會整理本地插樁歷史資料並產生可分享的儀表板頁面。
-                        </p>
-                        <p>這個 dashboard 可以讓你在同一頁檢視多個插樁點的趨勢。最多
-                            <strong>30 天</strong> 的本地歷史只會在你主動產生 dashboard 時上傳，因此你可以自行控制何時分享歷史資料。
-                        </p>
-                        <p>產生完成後，可以透過 dashboard 連結開啟報表頁面，或直接分享給團隊成員。之後如果累積了更多資料，再執行一次相同動作即可同步最新歷史。</p>
+                        <p>當你想回顧或分享本地插樁歷史時，可以使用 dashboard 功能。</p>
+                        <ol>
+                            <li>打開 CodeBull 側邊欄中的 <strong>Monitor dashboard</strong> 面板。</li>
+                            <li>點擊 <strong>"Generate monitor dashboard"</strong>。</li>
+                            <li>等待 CodeBull 上傳本地歷史資料並產生報表頁面。</li>
+                            <li>開啟 dashboard 連結，或直接分享給團隊成員。</li>
+                        </ol>
+                        <p>這個 dashboard 會把多個插樁點的趨勢整理在同一頁中，並可帶入最多 <strong>30 天</strong> 的歷史資料，讓你更容易回顧近期變化並快速整理成可分享的報表。</p>
+                        <p>之後如果累積了更多資料，只要再次執行相同步驟，就能發布更新後的快照。</p>
                     </div>
                 </div>
 

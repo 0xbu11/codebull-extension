@@ -44,7 +44,7 @@
         <section class="page-header">
             <div class="container">
                 <h1>Getting Started with CodeBull</h1>
-                <p>Follow this step-by-step guide to master dynamic instrumentation in VS Code.</p>
+                <p>Use this guide to go from installation to live logs, metrics, and dashboard sharing in a few minutes.</p>
             </div>
         </section>
 
@@ -56,38 +56,18 @@
                     <div class="step-content">
                         <div class="step-number">01</div>
                         <h2>Installation</h2>
-                        <p>Search for <strong>"CodeBull"</strong> in the VS Code Marketplace and click Install. Ensure
-                            you have a Go project open.</p>
-                        <br>
-                        <p>Add the following import to your Go project:</p>
+                        <p>Install the extension from the VS Code Marketplace, then open the Go project you want to observe.</p>
+                        <p><strong>Quick setup</strong></p>
+                        <ol>
+                            <li>Search for <strong>"CodeBull"</strong> in the VS Code Marketplace and click Install.</li>
+                            <li>Open your Go project in VS Code.</li>
+                            <li>Add the following import to the service or binary you want to instrument.</li>
+                        </ol>
                         <pre class="code-block">import (
     _ "github.com/0xbu11/codebull"
 )</pre>
-                        <h3>Server Configuration</h3>
-                        <p>The listen address can be configured in three ways:</p>
-                        <ol>
-                            <li>Call <code>shadow.Start(addr)</code> with an explicit address (for example,
-                                <code>:9000</code> or <code>127.0.0.1:9000</code>).
-                            </li>
-                            <li>Set <code>EGO_SHADOW_ADDR</code> (full listen address).</li>
-                            <li>Set <code>EGO_SHADOW_PORT</code> (port only, for example, <code>9000</code>).</li>
-                        </ol>
-                        <p>Priority is:</p>
-                        <p><code>shadow.Start(addr)</code> (explicit addr) &gt; <code>EGO_SHADOW_ADDR</code> &gt;
-                            <code>EGO_SHADOW_PORT</code> &gt; default <code>:8888</code>.
-                        </p>
-                        <p>Notes:</p>
-                        <ul>
-                            <li><code>EGO_SHADOW_PORT</code> must be a valid numeric port
-                                (<code>1</code>-<code>65535</code>), otherwise it falls back to <code>:8888</code>.</li>
-                            <li><code>EGO_SHADOW_ADDR</code> can be either <code>127.0.0.1:9000</code> or
-                                <code>:9000</code>.
-                            </li>
-                        </ul>
-                        <ul>
-                            <li><strong>Base URL</strong>: <code>http://localhost:8888</code></li>
-                            <li><strong>WebSocket URL</strong>: <code>ws://localhost:8888</code></li>
-                        </ul>
+                        <h3>Dashboard Data Retention</h3>
+                        <p>Dashboard data can be retained for up to <strong>30 days</strong>, making it easier to review recent trends and share results with your team.</p>
                     </div>
                     <div class="step-image has-image">
                         <img src="asset/step1.png" alt="Screenshot: Installation">
@@ -99,11 +79,8 @@
                     <div class="step-content">
                         <div class="step-number">02</div>
                         <h2>Injecting Logs</h2>
-                        <p>Open any Go file. You will see <strong>CodeLens</strong> actions above your functions or
-                            lines. Click
-                            <strong>"Set Log"</strong> to inject a log point. The IDE will automatically track the next
-                            execution.
-                        </p>
+                        <p>Open any Go file and look for the <strong>CodeLens</strong> actions above a function or line.</p>
+                        <p>Click <strong>"Set Log"</strong> to place a dynamic log point. The next time that code path runs, CodeBull captures the log automatically.</p>
                     </div>
                     <div class="step-image has-image">
                         <img src="asset/step2.png" alt="Injecting Logs CodeLens">
@@ -115,8 +92,8 @@
                     <div class="step-content">
                         <div class="step-number">03</div>
                         <h2>Viewing Live Logs</h2>
-                        <p>Open the <strong>CodeBull Log</strong> panel. As your application runs, logs will stream in
-                            real-time without you having to rebuild or restart your app.</p>
+                        <p>Open the <strong>CodeBull Log</strong> panel to watch new entries arrive in real time.</p>
+                        <p>Use this view to confirm that the log point fired, inspect values, and verify the execution flow without adding temporary print statements to your code.</p>
                     </div>
                     <div class="step-image has-image">
                         <img src="asset/step3.png" alt="Screenshot: Log Panel">
@@ -128,10 +105,8 @@
                     <div class="step-content">
                         <div class="step-number">04</div>
                         <h2>Visualizing Metrics</h2>
-                        <p>Click <strong>"Set Metric"</strong> via CodeLens. Select a variable to track. Open the
-                            <strong>CodeBull Metric</strong> panel to see real-time graphs of the variable's value over
-                            time.
-                        </p>
+                        <p>Click <strong>"Set Metric"</strong> from CodeLens, then choose the variable you want to track.</p>
+                        <p>Open the <strong>CodeBull Metric</strong> panel to see how that value changes over time. This is useful for watching counters, request data, and other runtime trends while the application is running.</p>
                     </div>
                     <div class="step-image has-image">
                         <img src="asset/step4.png" alt="Screenshot: Metric Charts">
@@ -143,16 +118,15 @@
                     <div class="step-content">
                         <div class="step-number">05</div>
                         <h2>Publishing a History Dashboard</h2>
-                        <p>Open the <strong>Monitor dashboard</strong> view in the CodeBull sidebar, then click
-                            <strong>"Generate monitor dashboard"</strong>. CodeBull will collect your local instrument
-                            history and generate a shareable dashboard page.
-                        </p>
-                        <p>The dashboard helps you review trends across instrument points in one place. Existing local
-                            history for up to <strong>30 days</strong> is uploaded only when you trigger dashboard
-                            generation, so you stay in control of when history is shared.</p>
-                        <p>After generation finishes, use the dashboard link to open the report page or share it with
-                            teammates. If you collect more data later, run the action again to synchronize the latest
-                            history.</p>
+                        <p>Use the dashboard feature when you want to review or share instrument history outside your local session.</p>
+                        <ol>
+                            <li>Open the <strong>Monitor dashboard</strong> view in the CodeBull sidebar.</li>
+                            <li>Click <strong>"Generate monitor dashboard"</strong>.</li>
+                            <li>Wait for CodeBull to upload local instrument history and generate the report page.</li>
+                            <li>Open the dashboard link or share it with your team.</li>
+                        </ol>
+                        <p>The generated dashboard combines trends from multiple instrument points in one place. Each dashboard can include up to <strong>30 days</strong> of history, making it easier to review recent changes and prepare a shareable report quickly.</p>
+                        <p>If you collect more data later, run the same action again to publish an updated snapshot.</p>
                     </div>
                 </div>
 
