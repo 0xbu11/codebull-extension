@@ -255,6 +255,95 @@ nav a.active {
   color: #000;
 }
 
+/* Demo Video */
+.demo-video {
+  padding: 5rem 0;
+  background:
+    radial-gradient(circle at top, rgba(255, 193, 7, 0.12), transparent 38%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 100%);
+}
+
+[data-theme="light"] .demo-video {
+  background:
+    radial-gradient(circle at top, rgba(160, 224, 58, 0.2), transparent 38%),
+    linear-gradient(180deg, rgba(160, 224, 58, 0.06), transparent 100%);
+}
+
+.demo-video .container {
+  display: grid;
+  grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
+  gap: 2.5rem;
+  align-items: center;
+}
+
+.demo-video-copy h2 {
+  font-size: 2.4rem;
+  line-height: 1.15;
+  margin: 0 0 1rem;
+}
+
+.demo-video-copy p {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 1.05rem;
+}
+
+.section-kicker {
+  display: inline-block;
+  margin-bottom: 0.9rem;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  color: var(--color-accent);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+[data-theme="light"] .section-kicker {
+  border-color: rgba(26, 26, 26, 0.08);
+}
+
+.video-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.video-frame {
+  position: relative;
+  padding-top: 56.25%;
+  border-radius: 20px;
+  overflow: hidden;
+  background: #000;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.35);
+}
+
+[data-theme="light"] .video-frame {
+  border-color: rgba(26, 26, 26, 0.08);
+  box-shadow: 0 20px 48px rgba(26, 26, 26, 0.12);
+}
+
+.video-frame iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.video-caption {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.95rem;
+}
+
+.video-caption a {
+  color: var(--color-accent);
+}
+
 /* Features */
 .features {
   padding: 5rem 0;
@@ -559,6 +648,18 @@ footer .links {
   .step:nth-child(even) {
     flex-direction: column;
     gap: 2rem;
+  }
+
+  .demo-video {
+    padding: 4rem 0;
+  }
+
+  .demo-video .container {
+    grid-template-columns: 1fr;
+  }
+
+  .demo-video-copy h2 {
+    font-size: 2rem;
   }
 
   .hero h1 {
