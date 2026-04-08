@@ -374,9 +374,35 @@ footer .links {
   flex-direction: row-reverse;
 }
 
+.step.step-outro,
+.step.step-outro:nth-child(even) {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--color-border);
+}
+
 .step-content {
   flex: 1;
   position: relative;
+}
+
+.step-outro .step-content {
+  max-width: 980px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.step-outro .step-content ol,
+.step-outro .step-content ul {
+  max-width: 720px;
+  margin: 0 auto 1.5rem;
+  text-align: left;
+}
+
+.step-outro .step-content p:last-child {
+  margin-bottom: 0;
 }
 
 .step-number {
@@ -412,6 +438,16 @@ footer .links {
   cursor: zoom-in;
   /* Indicate clickable */
   transition: transform 0.3s ease;
+}
+
+.step-outro .step-image {
+  flex: none;
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.35);
 }
 
 /* Zoom hint on hover */
