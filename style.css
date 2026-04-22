@@ -344,6 +344,113 @@ nav a.active {
   color: var(--color-accent);
 }
 
+/* Agent Preview */
+.agent-preview {
+  padding: 5rem 0;
+  background:
+    radial-gradient(circle at left top, rgba(66, 133, 244, 0.14), transparent 34%),
+    radial-gradient(circle at right bottom, rgba(255, 193, 7, 0.14), transparent 32%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 100%);
+}
+
+[data-theme="light"] .agent-preview {
+  background:
+    radial-gradient(circle at left top, rgba(66, 133, 244, 0.12), transparent 34%),
+    radial-gradient(circle at right bottom, rgba(160, 224, 58, 0.16), transparent 32%),
+    linear-gradient(180deg, rgba(160, 224, 58, 0.04), transparent 100%);
+}
+
+.agent-preview-panel {
+  padding: 2.5rem;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background:
+    linear-gradient(135deg, rgba(17, 17, 17, 0.94), rgba(17, 17, 17, 0.82)),
+    rgba(17, 17, 17, 0.9);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="light"] .agent-preview-panel {
+  border-color: rgba(26, 26, 26, 0.08);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(245, 245, 245, 0.96)),
+    #fff;
+  box-shadow: 0 20px 50px rgba(26, 26, 26, 0.1);
+}
+
+.agent-preview-copy {
+  max-width: 760px;
+  margin-bottom: 2rem;
+}
+
+.agent-preview-copy h2 {
+  margin: 0 0 1rem;
+  font-size: 2.4rem;
+  line-height: 1.12;
+}
+
+.agent-preview-copy p {
+  margin: 0;
+  font-size: 1.08rem;
+  color: var(--color-text-secondary);
+}
+
+.agent-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.25rem;
+}
+
+.agent-preview-card {
+  padding: 1.5rem;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="light"] .agent-preview-card {
+  background: rgba(255, 255, 255, 0.75);
+  border-color: rgba(26, 26, 26, 0.08);
+}
+
+.agent-preview-card h3 {
+  margin: 0 0 0.75rem;
+  font-size: 1.15rem;
+  color: var(--color-accent);
+}
+
+.agent-preview-card p {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.98rem;
+}
+
+.roadmap-preview-card {
+  margin-top: 2rem;
+}
+
+.roadmap-preview-card p {
+  color: var(--color-text-secondary);
+}
+
+.preview-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.preview-link-btn {
+  padding: 0.8rem 1.35rem;
+  font-size: 1rem;
+}
+
+.text-link {
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
 /* Features */
 .features {
   padding: 5rem 0;
@@ -660,6 +767,27 @@ footer .links {
 
   .demo-video-copy h2 {
     font-size: 2rem;
+  }
+
+  .agent-preview {
+    padding: 4rem 0;
+  }
+
+  .agent-preview-panel {
+    padding: 2rem;
+  }
+
+  .agent-preview-copy h2 {
+    font-size: 2rem;
+  }
+
+  .agent-preview-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .preview-links {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .hero h1 {
