@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeBull - Platform</title>
+    <link rel="stylesheet" href="style.css?v=14">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&display=swap" rel="stylesheet">
+    <script src="theme.js"></script>
+</head>
+
+<body>
+    <div class="announcement-banner">
+        Currently supported Go versions: V1.22.0 and V1.26.0.
+    </div>
+    <header>
+        <div class="container">
+            <div class="logo">
+                <a href="index.html">Code<span>Bull</span></a>
+            </div>
+            <div class="header-logo-center">
+                <a href="https://marketplace.visualstudio.com/items?itemName=0xbu11.codebull" target="_blank" rel="noopener noreferrer" aria-label="Open CodeBull on VS Code Marketplace">
+                    <img src="asset/codebull-logo.png" alt="CodeBull Logo">
+                </a>
+            </div>
+            <nav>
+                <ul>
+                    <li><a href="index.html#features">Features</a></li>
+                    <li><a href="tutorial.html">Tutorial</a></li>
+                    <li><a href="docs.html">Docs</a></li>
+                    <li><a href="platform.html" class="active">Platform</a></li>
+                    <li><a href="https://github.com/0xbu11/codebull" target="_blank">GitHub</a></li>
+                    <li><a href="platform_zh_TW.html" class="lang-switch">中文</a></li>
+                    <li><button id="theme-toggle" class="theme-toggle" aria-label="Switch Theme">☀️</button></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <section class="page-header">
+            <div class="container">
+                <h1>Platform Support</h1>
+                <p>Supported operating systems and Go versions for CodeBull.</p>
+            </div>
+        </section>
+
+        <section class="features">
+            <div class="container" style="max-width: 800px;">
+                <div class="concept-card">
+                    <h2 style="color: var(--color-accent); margin-bottom: 1rem;">Supported Operating Systems</h2>
+                    <ul style="font-size: 1.1rem; line-height: 1.8; color: var(--color-text-secondary);">
+                        <li><strong style="color: var(--color-text);">Linux</strong> - Fully Supported</li>
+                        <li><strong style="color: var(--color-text);">macOS (Darwin)</strong> - Fully Supported</li>
+                    </ul>
+                    <p style="margin-top: 1.5rem; color: var(--color-text-secondary);">
+                        CodeBull currently supports Linux and macOS (Darwin). Windows support is not available at this time.
+                    </p>
+                </div>
+
+                <div class="concept-card">
+                    <h2 style="color: var(--color-accent); margin-bottom: 1rem;">Supported Go Versions</h2>
+                    <ul style="font-size: 1.1rem; line-height: 1.8; color: var(--color-text-secondary);">
+                        <li><strong style="color: var(--color-text);">Go v1.22.0</strong> - Fully Supported</li>
+                        <li><strong style="color: var(--color-text);">Go v1.26.0</strong> - Fully Supported</li>
+                    </ul>
+                    <p style="margin-top: 1.5rem; color: var(--color-text-secondary);">
+                        CodeBull currently targets Go v1.22.0 and Go v1.26.0. We are actively working on expanding
+                        compatibility mapping to support more Go versions in future releases.
+                    </p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+
+    <section class="donate-section">
+        <div class="container donate-container">
+            <h2>Support CodeBull</h2>
+            <p>If this project helps you, a small donation goes a long way—help fund the next feature.</p>
+            <div class="donate-card">
+                <h3>USDT Wallet</h3>
+                <img src="asset/usdt_wallet.png" alt="USDT Wallet QR Code" class="donate-qr">
+                <div class="wallet-address-container">
+                    <div class="wallet-address">XKO6286115da50b9ee07a85d700b72600648e3c4c8f</div>
+                    <button class="copy-btn" onclick="navigator.clipboard.writeText('XKO6286115da50b9ee07a85d700b72600648e3c4c8f').then(() => { this.innerText='Copied!'; setTimeout(() => this.innerText='Copy', 2000); })">Copy</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2026 CodeBull. All rights reserved.</p>
+            <div class="links">
+                <a href="https://github.com/0xbu11/codebull">GitHub</a>
+                <a href="mailto:codebull.0xbu11@gmail.com">codebull.0xbu11@gmail.com</a>
+                <a href="#">Privacy</a>
+                <a href="#">Terms</a>
+            </div>
+        </div>
+    </footer>
+</body>
+
+</html>
