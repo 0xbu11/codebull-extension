@@ -10,7 +10,6 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&display=swap" rel="stylesheet">
     <script src="theme.js"></script>
-    <script src="article-embed.js"></script>
 </head>
 
 <body>
@@ -30,6 +29,7 @@
             <nav>
                 <ul>
                     <li><a href="index_zh_TW.html#features">功能</a></li>
+                    <li><a href="index_zh_TW.html#articles">實測筆記</a></li>
                     <li><a href="tutorial_zh_TW.html">教學</a></li>
                     <li><a href="docs_zh_TW.html">文件</a></li>
                     <li><a href="platform_zh_TW.html">支援平台</a></li>
@@ -57,14 +57,25 @@
                     <h2>CodeBull 在真實服務上跑出來的東西</h2>
                     <p>對執行中的 Go 服務實際掛觀測點的紀錄。文中每一條 SQL、每一個數字都出自實測數據，並附上遠端面板可線上對帳。</p>
                 </div>
-                <div class="article-embed">
-                    <div class="article-embed-label">
+                <div class="article-grid">
+                    <a class="article-card" href="article-gorm-runtime_zh_TW.html">
                         <span class="article-card-source">GORM · 實測筆記</span>
-                    </div>
-                    <iframe class="article-embed-frame" data-article-embed
-                        src="embed/gorm-runtime_zh_TW.html"
-                        title="我盯著一個跑著的 GORM 看了八分鐘，然後看到它把主鍵弄丟了"
-                        scrolling="no" loading="lazy"></iframe>
+                        <h3>我盯著一個跑著的 GORM 看了八分鐘，然後看到它把主鍵弄丟了</h3>
+                        <p>不改一行 code，在 GORM 內部掛兩個觀測點：soft delete 把 DELETE 改寫成 UPDATE、一個 Preload 變成兩條 SELECT，還有一條 UPDATE 退化成全表形狀——全部當場看到。</p>
+                        <span class="article-card-link">閱讀文章 →</span>
+                    </a>
+                    <a class="article-card" href="article-redis-tokens_zh_TW.html">
+                        <span class="article-card-source">Redis · 實測筆記</span>
+                        <h3>我盯著 Redis client 送上線的每一個 token，然後發現我存了一串不該存的東西</h3>
+                        <p>一行 HSet 在線上是六個有序 token；而一個直接用 SET 存進去的 time.Time，把 Go 的 monotonic clock 讀數一起寫進了 Redis。</p>
+                        <span class="article-card-link">閱讀文章 →</span>
+                    </a>
+                    <a class="article-card" href="article-gorm-three-signals_zh_TW.html">
+                        <span class="article-card-source">GORM · Metric + Log + Latency</span>
+                        <h3>一個收斂點，三種真相：多常、什麼、多久</h3>
+                        <p>Metric、Log、Latency 掛在 GORM 同一個函式上：947 次入口命中、8 種逐字 SQL 形狀，以及 p95 是中位數十倍的尾巴——全部出自同一個五分鐘窗口。</p>
+                        <span class="article-card-link">閱讀文章 →</span>
+                    </a>
                 </div>
             </div>
         </section>
