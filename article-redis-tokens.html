@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeBull - I Watched Every Token My Redis Client Put on the Wire</title>
+    <meta name="description" content="No code changes: two observation points inside a running go-redis client show that one HSet is six ordered tokens on the wire — and that a Go monotonic clock reading got stored in Redis.">
+    <link rel="stylesheet" href="style.css?v=16">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&display=swap" rel="stylesheet">
+    <script src="theme.js"></script>
+</head>
+
+<body>
+    <div class="announcement-banner">
+        Currently supported Go versions: V1.22.0 and V1.26.0.
+    </div>
+    <header>
+        <div class="container">
+            <div class="logo">
+                <a href="index.html">Code<span>Bull</span></a>
+            </div>
+            <div class="header-logo-center">
+                <a href="https://marketplace.visualstudio.com/items?itemName=0xbu11.codebull" target="_blank" rel="noopener noreferrer" aria-label="Open CodeBull on VS Code Marketplace">
+                    <img src="asset/codebull-logo.png" alt="CodeBull Logo">
+                </a>
+            </div>
+            <nav>
+                <ul>
+                    <li><a href="index.html#features">Features</a></li>
+                    <li><a href="tutorial.html">Tutorial</a></li>
+                    <li><a href="docs.html">Docs</a></li>
+                    <li><a href="platform.html">Platform</a></li>
+                    <li><a href="https://github.com/0xbu11/codebull" target="_blank">GitHub</a></li>
+                    <li><a href="article-redis-tokens_zh_TW.html" class="lang-switch">中文</a></li>
+                    <li><button id="theme-toggle" class="theme-toggle" aria-label="Switch Theme">☀️</button></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <section class="article-header">
+            <div class="container">
+                <a class="article-back" href="index.html#articles">← Back to articles</a>
+                <span class="article-card-source">Redis · Field Notes</span>
+                <h1>I watched every token my Redis client put on the wire, and found something I shouldn't have stored</h1>
+                <div class="article-meta">
+                    <span>2026-07-24</span>
+                    <span>~5.5 min window / 166 rounds</span>
+                    <span>redis-demo + Redis 7 + go-redis v9</span>
+                </div>
+                <p class="article-lede">A while back I did the same thing I'd done with GORM: without changing a line of code, I picked two spots inside the Redis client of a <strong>running</strong> Go service, attached observation points, and sat down to watch for five minutes.</p>
+            </div>
+        </section>
+
+        <section class="article-section">
+            <div class="container">
+                <article class="article-body">
+                    <p>You think <code>rdb.HSet(ctx, "user:demo", "name", "CodeBull", "status", "active")</code> sends exactly that one line. But <strong>what actually climbs onto the TCP connection</strong> is a series of tokens, split apart and written out in order. This piece is about the same thing as before — <strong>stand in the right place, pull the values out, and what the client puts on the wire should have been visible all along.</strong></p>
+
+                    <h2>First decide which layer to stand on</h2>
+                    <p>A Redis client is a layer of middleware: you call <code>rdb.Incr()</code>, and it goes through the public API → hook dispatch → retry loop → connection checkout → RESP encoding → socket write. What your command turns into, and how many layers it passes through, is normally invisible.</p>
+                    <p>So the first decision, again, is: <strong>which layer</strong>. I picked two convergence points, one high and one low:</p>
+                    <ul>
+                        <li><strong>Command layer (<code>redis.(*Client).Process</code>)</strong> — every single-command call in go-redis (<code>Incr</code>, <code>Set</code>, <code>HSet</code>, <code>SAdd</code>, <code>ZAdd</code>…) eventually flows through here. I attached a pure counter to answer "how many commands were sent in total."</li>
+                        <li><strong>Wire layer (<code>proto.(*Writer).string</code>)</strong> — before a command is written into the socket, every string argument (command name, key, field, value) passes through this function on its way out. Here I pulled that string out: <code>token={s}</code>.</li>
+                    </ul>
+                    <p>Picking the second point took some care. I first tried standing a bit higher (the layer that takes <code>interface{}</code> arguments), and the dashboard only showed <code>{type: 0x…, data: 0x…}</code> — the interface header, not the value. Going lower, down to where each string actually gets written out, what I captured was the clean string itself: <code>incr</code>, <code>user:demo</code>, <code>CodeBull</code> — <strong>one at a time, as-is, readable</strong>. I'll come back to this choice with an honest caveat later.</p>
+                    <p>Points attached, the service kept running one round every two seconds (five commands: INCR / SET / HSET / SADD / ZADD), and I started watching.</p>
+
+                    <h2>What the first five minutes showed: one line of Go = a series of ordered tokens on the wire</h2>
+                    <p>The observation window was about five and a half minutes (starting 09:49:58Z, 166 rounds). The command layer recorded <strong>830 commands</strong>; the wire layer recorded <strong>2,822 string tokens</strong>. Unfolded, one line of <code>rdb.HSet(...)</code> is really six tokens written out in order:</p>
+                    <pre class="code-block"><code>hset · user:demo · name · CodeBull · status · active</code></pre>
+                    <p>Every field and value you pass goes on the wire untouched, in the order you gave them. Here's the string composition of all five commands in a round (transcribed verbatim from the dashboard):</p>
+                    <div class="article-table-wrap">
+                        <table>
+                            <thead>
+                                <tr><th>#</th><th>The Go I wrote</th><th>Tokens captured on the dashboard (verbatim, in order)</th><th>Tokens</th></tr>
+                            </thead>
+                            <tbody>
+                                <tr><td>1</td><td><code>rdb.Incr(ctx, "requests_total")</code></td><td><code>incr</code> · <code>requests_total</code></td><td>2</td></tr>
+                                <tr><td>2</td><td><code>rdb.Set(ctx, "last_run", t.String(), 0)</code></td><td><code>set</code> · <code>last_run</code> · <code>&lt;time string&gt;</code></td><td>3</td></tr>
+                                <tr><td>3</td><td><code>rdb.HSet(ctx, "user:demo", ...)</code></td><td><code>hset</code> · <code>user:demo</code> · <code>name</code> · <code>CodeBull</code> · <code>status</code> · <code>active</code></td><td>6</td></tr>
+                                <tr><td>4</td><td><code>rdb.SAdd(ctx, "active_users", "CodeBull")</code></td><td><code>sadd</code> · <code>active_users</code> · <code>CodeBull</code></td><td>3</td></tr>
+                                <tr><td>5</td><td><code>rdb.ZAdd(ctx, "leaderboard", ...)</code></td><td><code>zadd</code> · <code>leaderboard</code> · <code>CodeBull</code></td><td>3</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <p>Every stable token appears <strong>166 times</strong> (matching the round count), and together 17 × 166 = 2,822 — exactly the dashboard total, to the digit. That feeling of "the numbers add up on their own" is what makes observability trustworthy. Up to here it's "interesting but not surprising." What made me sit up straight was that <code>&lt;time string&gt;</code>.</p>
+
+                    <h2>And then I saw what SET was storing</h2>
+                    <p>The demo writes <code>rdb.Set(ctx, "last_run", t.String(), 0)</code>. On the dashboard, that value token reads, verbatim:</p>
+                    <pre class="code-block"><code>2026-07-24 17:55:28.541657555 +0800 +08 m=+402.083349839</code></pre>
+                    <p><strong>Even Go's runtime monotonic clock reading, <code>m=+402.08…</code>, got stuffed into Redis.</strong></p>
+                    <p>What <code>t.String()</code> actually serializes into is something I never think about — it's just "storing a timestamp," right? But laid out verbatim on the dashboard, I could see that what I stored isn't a clean timestamp at all, but <strong>a whole string of Go's internal representation</strong>: wall clock + timezone + monotonic clock reading. Try to compare, sort, or parse that across machines later and all of it breaks (the monotonic reading only means anything inside this process).</p>
+                    <p>This isn't a bug, and nothing errored — it's just <strong>something you thought you knew but had never actually looked at</strong>. That's the value of observability: it doesn't wait for an incident, it lets you <strong>see it the moment it gets stored</strong>.</p>
+
+                    <h2>An honest caveat: the dashboard doesn't pretend about type boundaries</h2>
+                    <p>Look at the ZADD row. What the dashboard captured is:</p>
+                    <pre class="code-block"><code>zadd · leaderboard · CodeBull</code></pre>
+                    <p>One thing is missing — <strong>the score</strong>. The score in <code>redis.Z{Score: float64(val), ...}</code> is a <code>float64</code>, and numbers take <strong>a different encoder</strong> inside the client (the path that turns them into ASCII bytes), which doesn't pass through my "string" observation point. So in this round I can see <code>zadd</code>, <code>leaderboard</code>, and <code>CodeBull</code> — and I simply <strong>cannot see that score value</strong>.</p>
+                    <p>I could have moved the observation point lower and scooped up the numbers too — but then every line on the dashboard would drag a long byte array behind it and become hard to read. I chose <strong>clean, readable, strings-only</strong>, and I'll tell you honestly: there's a type boundary here — strings are visible, numbers go through another door. <strong>What's visible is visible; what isn't gets labeled as not visible, rather than handing you something that pretends to be complete</strong> — for observability that's arguably the most important quality of all.</p>
+                    <p>One more number that lines up nicely: the string <code>CodeBull</code> appears three times per round (HSET value + SADD member + ZADD member), and the dashboard measured <strong>498</strong> = 3 × 166. The same string put on the wire three times across three data structures — the kind of "you actually sent it three times" fact you'd never notice without laying it out.</p>
+
+                    <h2>While we're here, let's reconcile</h2>
+                    <p>Command layer <strong>830</strong>, wire layer <strong>2,822</strong> string tokens. Those two numbers side by side are a health check in themselves: 830 logical commands expanding into 2,822 string tokens, averaging 3.4 strings per command — exactly consistent with "five commands, 17 string tokens per round."</p>
+                    <p>The day that ratio skews (command count flat, token count exploding), someone has stuffed an unusual number of arguments into a command (a big batch, an oversized HSET field list). With both points running, you don't have to guess — the dashboard has already separated "the command" from "its weight on the wire."</p>
+
+                    <h2>Wrapping up</h2>
+                    <p>I didn't change a line of code, didn't enable the client's debug log, didn't capture tcpdump to decode RESP. I just picked two spots in a running process — the command convergence point and the string exit to the socket — pulled the values out, and watched for five and a half minutes.</p>
+                    <p>What I got: I saw one <code>HSet</code> become six ordered tokens on the wire, saw myself store a whole <code>time.Time</code> with a monotonic clock reading into Redis, saw the same string sent three times per round, and knew exactly which type my observation point could not see.</p>
+                    <p>A client is a black box, but a black box is only "invisible by default," not "impossible to see into." What it puts on the wire should have been visible all along.</p>
+
+                    <h3>Appendix: this round's setup (reproducible)</h3>
+                    <ul>
+                        <li>Convergence points:
+                            <ul>
+                                <li><code>redis.(*Client).Process:706</code> (metric, command count; variable filter keeps only <code>trace_hits</code> so the dashboard stays clean)</li>
+                                <li><code>proto.(*Writer).string:166</code> (log, capturing <code>token={s}</code> — the mandatory path for every string argument written into the socket, rendered as clean readable strings on the dashboard)</li>
+                            </ul>
+                        </li>
+                        <li>Observed service: redis-demo running one round of 5 commands (INCR/SET/HSET/SADD/ZADD) every 2 seconds + Redis 7 (docker, port 6380) + vendored go-redis v9 (<code>redis_pkg/</code>)</li>
+                        <li>Observation window: 2026-07-24 09:49:58Z → 09:55:28Z (~5.5 minutes / 166 rounds); 830 commands, 2,822 string tokens; stable tokens 166 each, <code>CodeBull</code> 498 (3×/round), SET time string 166 (unique each round)</li>
+                        <li>Type boundary: ZADD's float score goes through the numeric encoder (<code>w.int</code>/<code>w.float</code>), not the string exit, so it is <strong>outside the string observation point's field of view</strong> this round — disclosed honestly, not fabricated</li>
+                        <li>This round attached Metric + Log only, with no latency measurement (attaching latency to the client's per-call hot path breaks the observation bridge), so no millisecond figures appear anywhere in this piece</li>
+                    </ul>
+
+                    <div class="article-callout">
+                        <p>📊 <strong>Remote dashboard for this article</strong> (real measured data, viewable online): <a href="https://codebull-dashboard-service.web.app/redis-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">redis-observing-runtime-20260724</a></p>
+                        <p>Every token and every count above can be reconciled verbatim on the <strong>Logs</strong> tab of that dashboard; the <strong>Metrics</strong> tab holds the hit counter for the command convergence point.</p>
+                    </div>
+
+                    <div class="article-footnote">
+                        <p>The "no code changes, attach observation points to a running process, then watch" part of this piece was done with <strong>CodeBull</strong> — a VS Code extension that dynamically injects Metric / Log / Latency observation points into running Go services: no source edits, no recompile, no restart. That SET storing a monotonic clock reading into Redis is exactly how I caught it live.</p>
+                        <p><em>Every token and every number here comes from CodeBull's measurements against the running redis-demo service, and can be reconciled online via the dashboard link above.</em></p>
+                        <p><a class="btn" href="https://marketplace.visualstudio.com/items?itemName=0xbu11.codebull" target="_blank" rel="noopener noreferrer">Install CodeBull</a></p>
+                    </div>
+                </article>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2026 CodeBull. All rights reserved.</p>
+            <div class="links">
+                <a href="https://github.com/0xbu11/codebull">GitHub</a>
+                <a href="mailto:codebull.0xbu11@gmail.com">codebull.0xbu11@gmail.com</a>
+                <a href="#">Privacy</a>
+                <a href="#">Terms</a>
+            </div>
+        </div>
+    </footer>
+</body>
+
+</html>

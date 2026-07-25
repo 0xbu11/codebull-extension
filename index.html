@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CodeBull - Dynamic Instrument Solution</title>
-    <link rel="stylesheet" href="style.css?v=14">
+    <link rel="stylesheet" href="style.css?v=16">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&display=swap" rel="stylesheet">
@@ -52,17 +52,32 @@
             </div>
         </section>
 
-        <section class="demo-video">
+        <section id="articles" class="community-articles">
             <div class="container">
-                <div class="demo-video-copy">
-                    <span class="section-kicker">Feature Demo</span>
-                    <h2>CodeBull in Action: Instrumenting etcd</h2>
-                    <p>See the full feature set in action. Watch how CodeBull injects dynamic logs and metrics into a running etcd cluster in real-time, without modifying the source code or restarting the process.</p>
+                <div class="community-articles-header">
+                    <span class="section-kicker">Field Notes</span>
+                    <h2>CodeBull on real running services</h2>
+                    <p>Write-ups from real instrumentation runs against live Go services — every SQL statement, token, and percentile comes from measured data, with the remote dashboard linked for reconciliation.</p>
                 </div>
-                <div class="video-shell">
-                    <div class="video-frame">
-                        <iframe src="https://www.youtube-nocookie.com/embed/dhqNmijpDtI?rel=0" title="CodeBull full feature demo" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
-                    </div>
+                <div class="article-grid">
+                    <a class="article-card" href="article-gorm-runtime.html">
+                        <span class="article-card-source">GORM · Field Notes</span>
+                        <h3>I watched a running GORM for eight minutes, and saw it lose the primary key</h3>
+                        <p>Two observation points inside GORM, no code changes: soft deletes rewriting DELETE into UPDATE, one Preload becoming two SELECTs, and an UPDATE degenerating into a full-table shape — caught live.</p>
+                        <span class="article-card-link">Read article →</span>
+                    </a>
+                    <a class="article-card" href="article-redis-tokens.html">
+                        <span class="article-card-source">Redis · Field Notes</span>
+                        <h3>I watched every token my Redis client put on the wire</h3>
+                        <p>One line of HSet turns out to be six ordered tokens on the wire — and a plain time.Time stored via SET carried Go's monotonic clock reading straight into Redis.</p>
+                        <span class="article-card-link">Read article →</span>
+                    </a>
+                    <a class="article-card" href="article-gorm-three-signals.html">
+                        <span class="article-card-source">GORM · Metric + Log + Latency</span>
+                        <h3>One convergence point, three truths: how often, what, and how long</h3>
+                        <p>Metric, Log, and Latency attached to the same function in GORM: 947 entry hits, 8 verbatim SQL shapes, and a p95 tail ten times the median — all from one five-minute window.</p>
+                        <span class="article-card-link">Read article →</span>
+                    </a>
                 </div>
             </div>
         </section>

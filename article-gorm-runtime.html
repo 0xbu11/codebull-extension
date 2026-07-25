@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeBull - I Watched a Running GORM for Eight Minutes</title>
+    <meta name="description" content="No code changes: two observation points inside a running Go service's GORM, and eight minutes later an UPDATE that had lost its primary key.">
+    <link rel="stylesheet" href="style.css?v=16">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&display=swap" rel="stylesheet">
+    <script src="theme.js"></script>
+</head>
+
+<body>
+    <div class="announcement-banner">
+        Currently supported Go versions: V1.22.0 and V1.26.0.
+    </div>
+    <header>
+        <div class="container">
+            <div class="logo">
+                <a href="index.html">Code<span>Bull</span></a>
+            </div>
+            <div class="header-logo-center">
+                <a href="https://marketplace.visualstudio.com/items?itemName=0xbu11.codebull" target="_blank" rel="noopener noreferrer" aria-label="Open CodeBull on VS Code Marketplace">
+                    <img src="asset/codebull-logo.png" alt="CodeBull Logo">
+                </a>
+            </div>
+            <nav>
+                <ul>
+                    <li><a href="index.html#features">Features</a></li>
+                    <li><a href="tutorial.html">Tutorial</a></li>
+                    <li><a href="docs.html">Docs</a></li>
+                    <li><a href="platform.html">Platform</a></li>
+                    <li><a href="https://github.com/0xbu11/codebull" target="_blank">GitHub</a></li>
+                    <li><a href="article-gorm-runtime_zh_TW.html" class="lang-switch">中文</a></li>
+                    <li><button id="theme-toggle" class="theme-toggle" aria-label="Switch Theme">☀️</button></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <section class="article-header">
+            <div class="container">
+                <a class="article-back" href="index.html#articles">← Back to articles</a>
+                <span class="article-card-source">GORM · Field Notes</span>
+                <h1>I watched a running GORM for eight minutes, and saw it lose the primary key</h1>
+                <div class="article-meta">
+                    <span>2026-07-24</span>
+                    <span>~8 min window / 163 CRUD rounds</span>
+                    <span>gorm-demo + PostgreSQL 16</span>
+                </div>
+                <p class="article-lede">A few days ago I did something I don't usually do: without changing a single line of code, I attached two observation points inside GORM in a <strong>running</strong> Go service, then sat in front of the dashboard and watched.</p>
+            </div>
+        </section>
+
+        <section class="article-section">
+            <div class="container">
+                <article class="article-body">
+                    <p>Eight minutes in, I saw an <code>UPDATE</code> that should never have looked the way it did — it had lost its primary key and degenerated into the shape of a full-table update. This piece isn't really about a tool. It's about <strong>how much you can see simply by watching an ORM while it runs</strong>.</p>
+
+                    <h2>First decide where to stand</h2>
+                    <p>The annoying thing about an ORM is the layer it puts between "the line of Go you wrote" and "the SQL that actually reaches the database." You call <code>db.Update()</code>, and it builds the SQL, adds conditions, picks optimizations — none of which you can see in the source. You only find out once it runs.</p>
+                    <p>So the first decision in observability is: <strong>which layer do you stand on</strong>. Too high (your business code) and you can't see the SQL. Too low (the database) and you can't trace it back to the code that sent it.</p>
+                    <p>I picked GORM's internal convergence point — <code>gorm.(*processor).Execute</code>. Every Create / Preload / Update / Count / Delete in GORM eventually flows through this function. One entry, one exit, and you've cut the whole ORM in half. So I attached two points:</p>
+                    <ul>
+                        <li><strong>Entry (<code>callbacks.go:82</code>)</strong> — a pure counter, answering "how often does this convergence point get hit."</li>
+                        <li><strong>Exit (<code>callbacks.go:140</code>)</strong> — a point that pulls variables out, with the template <code>SQL={string(stmt.SQL.buf)} | rows={db.RowsAffected}</code> — rendering GORM's internal, not-yet-printed SQL buffer into a human-readable statement, and grabbing "how many rows were affected" along with it.</li>
+                    </ul>
+                    <p>That <code>rows</code> field becomes the protagonist of this whole story. Points attached, the service kept running one CRUD round every three seconds, and I started watching.</p>
+
+                    <h2>What the first eight minutes showed: a CRUD round with no makeup on</h2>
+                    <p>The observation window was about eight minutes (starting 03:43:12Z, last entry 03:51:18Z, covering 163 rounds). The exit point recorded <strong>1,045 SQL events</strong>, the entry point <strong>2,090 hits</strong>, and after deduplication, <strong>12 distinct</strong> statement shapes.</p>
+                    <p>Start with the healthy half — in steady state, a full CRUD round with no makeup on (transcribed verbatim from the dashboard):</p>
+                    <div class="article-table-wrap">
+                        <table>
+                            <thead>
+                                <tr><th>What I wrote</th><th>The SQL actually running, on the dashboard</th><th>rows</th><th>Count</th></tr>
+                            </thead>
+                            <tbody>
+                                <tr><td><code>db.Create(&amp;user)</code></td><td><code>INSERT INTO "users" (...) VALUES ($1..$6) RETURNING "id"</code></td><td>1</td><td>80</td></tr>
+                                <tr><td><code>db.Create(&amp;order)</code></td><td><code>INSERT INTO "orders" (...) VALUES ($1..$6) RETURNING "id"</code></td><td>1</td><td>80</td></tr>
+                                <tr><td><code>db.Preload("User").First(...)</code></td><td><code>SELECT * FROM "users" WHERE "users"."id" = $1 AND "users"."deleted_at" IS NULL</code></td><td>1</td><td>80</td></tr>
+                                <tr><td>(same line as above)</td><td><code>SELECT * FROM "orders" WHERE "orders"."id" = $1 AND ... ORDER BY "orders"."id" LIMIT $2</code></td><td>1</td><td>80</td></tr>
+                                <tr><td><code>db.Model(&amp;u).Update("Age", …)</code></td><td><code>UPDATE "users" SET "age"=$1,"updated_at"=$2 WHERE "users"."deleted_at" IS NULL AND "id" = $3</code></td><td>1</td><td>80</td></tr>
+                                <tr><td><code>db.Count(&amp;n)</code></td><td><code>SELECT count(*) FROM "users" WHERE "users"."deleted_at" IS NULL</code></td><td>1</td><td>163</td></tr>
+                                <tr><td><code>db.Delete(&amp;oldest)</code></td><td><code>UPDATE "users" SET "deleted_at"=$1 WHERE "users"."id" = $2 AND "users"."deleted_at" IS NULL</code></td><td>1</td><td>75</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <p>This table alone contains two things I "knew about" but had never actually watched happen:</p>
+                    <p><strong><code>db.Delete()</code> actually runs an <code>UPDATE</code>.</strong> Because the model embeds <code>gorm.Model</code> (which carries <code>DeletedAt</code>), the delete is quietly rewritten into a soft delete that stamps a timestamp. The data is still in the table — it's just marked.</p>
+                    <p><strong>Every read and write silently gets <code>deleted_at IS NULL</code> appended.</strong> That's the other half of soft deletes — every query automatically filters out deleted rows for you. You never wrote that condition, but it's on every single statement. And that <code>db.Preload("User").First()</code> line I assumed was one query? On the dashboard it's <strong>two</strong> SELECTs: one for orders, then another for users. A belongs-to preload is not a JOIN — it's a second trip. Scale that up to a list page and you have the beginning of N+1.</p>
+                    <p>Up to here it's "interesting but not surprising." What made me sit up straight was the other half.</p>
+
+                    <h2>And then <code>rows</code> dropped to 0</h2>
+                    <p>The dashboard also carried another set of statements, nearly identical to the ones above with one difference — <strong><code>rows=0</code></strong> — each appearing <strong>83 times</strong>:</p>
+                    <div class="article-table-wrap">
+                        <table>
+                            <thead>
+                                <tr><th>Operation</th><th>SQL</th><th>rows</th><th>Count</th></tr>
+                            </thead>
+                            <tbody>
+                                <tr><td>Create user</td><td><code>INSERT INTO "users" (...) RETURNING "id"</code></td><td><strong>0</strong></td><td>83</td></tr>
+                                <tr><td>Create order</td><td><code>INSERT INTO "orders" (...) RETURNING "id"</code></td><td><strong>0</strong></td><td>83</td></tr>
+                                <tr><td>First(&amp;order)</td><td><code>SELECT * FROM "orders" WHERE "orders"."id" = $1 AND ...</code></td><td><strong>0</strong></td><td>83</td></tr>
+                                <tr><td>Update</td><td><code>UPDATE "users" SET "age"=$1,"updated_at"=$2 WHERE "users"."deleted_at" IS NULL</code></td><td><strong>0</strong></td><td>83</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <p>Four statements, the same <code>rows=0</code>, 83 times each, lined up neatly. But <strong>each of them hit zero for a different reason</strong> — and that's exactly the value of the <code>rows</code> column: one signal exposing four different failures at once.</p>
+                    <ul>
+                        <li><strong>Create user</strong>: the SQL did reach PostgreSQL and was rejected by a unique index (duplicate email, <code>SQLSTATE 23505</code>).</li>
+                        <li><strong>Create order</strong>: also reached the DB, blocked by a foreign key (<code>fk_orders_user</code>, <code>SQLSTATE 23503</code>) — because the user wasn't created in the previous step, <code>user.ID</code> was still 0, so the order carried <code>user_id=0</code> and couldn't pass.</li>
+                        <li><strong>First(&amp;order)</strong>: this one genuinely ran; it just queried with <code>id=0</code> and found nothing.</li>
+                        <li><strong>Update</strong>: this is the special one — it <strong>never reached the DB at all</strong>. More on that in a second.</li>
+                    </ul>
+                    <p><code>rows=0</code> goes from a vague "it didn't work" to a set of clues you can trace one by one. The insidious thing about this class of failure is that nothing crashes — the program logs a line and keeps going. But on the dashboard, <code>rows=0</code> is glaring, and <strong>with four of them side by side, the causality surfaces on its own</strong>.</p>
+
+                    <h2>What bothered me most: that UPDATE lost its primary key</h2>
+                    <p>Put the two versions of the <code>UPDATE</code> side by side, and you get the title of this piece:</p>
+                    <pre class="code-block"><code>-- healthy
+UPDATE "users" SET "age"=$1,"updated_at"=$2 WHERE "users"."deleted_at" IS NULL AND "id" = $3
+-- failing
+UPDATE "users" SET "age"=$1,"updated_at"=$2 WHERE "users"."deleted_at" IS NULL</code></pre>
+                    <p><strong>The same line of <code>db.Model(&amp;user).Update(...)</code> produced two different SQL statements.</strong> The difference is that the latter lost <code>AND "id" = $3</code> — it no longer updates "that one user," it updates "every user that hasn't been soft-deleted." This is the classic ORM footgun: <strong>the primary key isn't populated, and the update degenerates into the shape of a full-table update</strong>.</p>
+                    <p>Why? Line up the counts of the four <code>rows=0</code> statements on the dashboard — all <strong>83</strong> — and the causal chain surfaces by itself:</p>
+                    <blockquote>
+                        <p>Create user fails (<code>user.ID</code> is still 0) → Create order carries <code>user_id=0</code> and also fails → <code>First</code> queries with <code>id=0</code> and finds nothing → <code>Update</code>, because <code>user.ID</code> is 0, can't have <code>id = $3</code> built by GORM, so it degenerates into a WHERE that only carries the soft-delete scope.</p>
+                    </blockquote>
+                    <p><strong>But that degenerate UPDATE never actually hit the whole table.</strong> I cross-checked the service's own log: it returned <code>rows=0</code> because <strong>GORM's built-in guard blocked it</strong> — <code>WHERE conditions required</code> (<code>ErrMissingWhereClause</code>) — taking <strong>0.18 ms with zero DB round trips</strong>. In other words, the observation points let me see two things at once: <strong>GORM was building a full-table UPDATE that had lost its primary key, and GORM's own safety net caught it on the spot.</strong> The danger and the save, both laid out on the dashboard within one line.</p>
+                    <p>That matters — because if someone ever disables that guard (<code>db.Session(&amp;gorm.Session{AllowGlobalUpdate: true})</code>), this <code>rows=0</code> becomes <code>rows=thousands</code>. And on the dashboard, you'd see that number jump <strong>immediately</strong>.</p>
+
+                    <h2>A comparison: why the built-in log still isn't enough</h2>
+                    <p>I also checked what the service's own GORM logger (default Warn level) printed. To be fair, it <strong>wasn't blind</strong> — during the failing phase it missed none of the four errors: duplicate key, foreign key, record not found, and that <code>WHERE conditions required</code>. It called them all out.</p>
+                    <p>So what did the observation points add? Three things:</p>
+                    <ol>
+                        <li><strong>It said nothing about the 600+ successful statements.</strong> The built-in logger is designed to be "quiet normally, loud on errors" — so you never get to see what healthy looks like, and you have no baseline to compare against.</li>
+                        <li><strong>It only gives you error messages, not verbatim SQL.</strong> "WHERE conditions required" tells you something went wrong, but it doesn't show you what shape that degenerate UPDATE took. The dashboard does — every character of it.</li>
+                        <li><strong>It doesn't reconcile.</strong> Entry 2,090 vs exit 1,045: that gap is itself information (the convergence point is entered roughly twice as often as SQL is actually emitted — GORM wraps single writes in an implicit transaction, and those transaction-control passes don't produce a recorded SQL statement at the exit). The day those two numbers <strong>diverge sharply</strong> is the day a batch of operations broke before SQL generation. The built-in logger can't give you that.</li>
+                    </ol>
+                    <p>As for that entry counter — I didn't look at its "value," because it's a hit marker: every hit records a 1, so the value is always 1 and plots as a flat, information-free line. What's actually worth looking at is the <strong>cumulative</strong> view: a line climbing from 0 to <strong>2,090</strong>, where the endpoint is the total hit count and <strong>the slope is the frequency</strong>. Interestingly, that line has an inflection point in the middle — going from 100 to 160 hits per 30 seconds — which is exactly the moment the service recovered from the failing phase and started doing more DB operations per round. A bare counter, viewed cumulatively, marks "when the service recovered" all by itself.</p>
+                    <p>That's where the value of observability lies: it doesn't hand you "where the error is," it hands you <strong>a complete, symmetric, reconcilable record of the scene</strong>. Successes and failures treated alike. With that, a lot of bugs aren't "debugged" out of hiding by you — they <strong>surface on the dashboard by themselves</strong>.</p>
+
+                    <h2>Wrapping up: turning "invisible" into "visible"</h2>
+                    <p>I didn't change a line of code, didn't restart the service, didn't stand up a trace backend first. I just picked the right convergence point in a running process, attached two observation points, and paid attention for eight minutes.</p>
+                    <p>What I got: I watched <code>Delete</code> actually run an <code>UPDATE</code>, watched every query silently carry <code>deleted_at IS NULL</code>, watched one Preload turn into two trips, watched four different reasons for <code>rows</code> dropping to 0, and finally watched an UPDATE lose its primary key in front of me — and get caught by GORM's guard on the spot.</p>
+                    <p>An ORM is a black box, but a black box is only "invisible by default," not "impossible to see into." Stand in the right place, pull the variables out — what it ran should have been visible all along.</p>
+
+                    <h3>Appendix: this round's setup (reproducible)</h3>
+                    <ul>
+                        <li>Convergence point: <code>gorm.(*processor).Execute</code>
+                            <ul>
+                                <li><code>:82</code> entry hit counter (metric; variable filter keeps only <code>trace_hits</code> so the dashboard stays clean)</li>
+                                <li><code>:140</code> exit, capturing <code>SQL={string(stmt.SQL.buf)} | rows={db.RowsAffected}</code></li>
+                            </ul>
+                        </li>
+                        <li>Observed service: gorm-demo running one CRUD round every 3 seconds + PostgreSQL 16 (persistent volume; the first 100 emails were already taken, so the run starts in a failing phase and then recovers — which conveniently exposes both paths)</li>
+                        <li>Observation window: 2026-07-24 03:43:12Z → 03:51:18Z (~8 minutes / 163 rounds); 1,045 exit events, 2,090 entry hits, 12 deduplicated statement shapes (in the failing phase each <code>rows=0</code> statement appears 83 times; in steady state each <code>rows=1</code> statement appears 80 times)</li>
+                        <li>Cross-check: the service's built-in GORM logger recorded four error classes over the same period (duplicate key / foreign key / record not found / WHERE conditions required), but is nearly blind to successful queries, gives no verbatim SQL, and does no reconciliation</li>
+                        <li>The degenerate UPDATE's <code>rows=0</code> comes from GORM's <code>ErrMissingWhereClause</code> guard (0.18 ms, no DB round trip) — not from matching 0 rows</li>
+                        <li>This round attached Metric + Log only, with no latency measurement, so no millisecond figures appear anywhere in this piece — what wasn't measured doesn't get written</li>
+                    </ul>
+
+                    <div class="article-callout">
+                        <p>📊 <strong>Remote dashboard for this article</strong> (real measured data, viewable online): <a href="https://codebull-dashboard-service.web.app/gorm-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">gorm-observing-runtime-20260724</a></p>
+                        <p>Every SQL statement, every <code>rows</code> value, and every count above can be reconciled verbatim on the <strong>Logs</strong> tab of that dashboard; the <strong>Metrics</strong> tab holds the entry hit counter for <code>Execute</code>.</p>
+                    </div>
+
+                    <div class="article-footnote">
+                        <p>The "no code changes, attach observation points to a running process, then watch" part of this piece was done with <strong>CodeBull</strong> — a VS Code extension that dynamically injects Metric / Log / Latency observation points into running Go services: no source edits, no recompile, no restart. That UPDATE losing its primary key is exactly how I caught it live.</p>
+                        <p><em>Every SQL statement and every number here comes from CodeBull's measurements against the running gorm-demo service, and can be reconciled online via the dashboard link above.</em></p>
+                        <p><a class="btn" href="https://marketplace.visualstudio.com/items?itemName=0xbu11.codebull" target="_blank" rel="noopener noreferrer">Install CodeBull</a></p>
+                    </div>
+                </article>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2026 CodeBull. All rights reserved.</p>
+            <div class="links">
+                <a href="https://github.com/0xbu11/codebull">GitHub</a>
+                <a href="mailto:codebull.0xbu11@gmail.com">codebull.0xbu11@gmail.com</a>
+                <a href="#">Privacy</a>
+                <a href="#">Terms</a>
+            </div>
+        </div>
+    </footer>
+</body>
+
+</html>

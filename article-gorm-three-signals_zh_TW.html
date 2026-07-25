@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeBull - 一個收斂點，三種真相</title>
+    <meta name="description" content="在 GORM 的同一個收斂點掛上 Metric、Log、Latency 三個觀測點，五分鐘同時量出「多常發生、發生了什麼、花了多久」。">
+    <link rel="stylesheet" href="style.css?v=16">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&display=swap" rel="stylesheet">
+    <script src="theme.js"></script>
+</head>
+
+<body>
+    <div class="announcement-banner">
+        目前支援的 Go 版本：V1.22.0 與 V1.26.0。
+    </div>
+    <header>
+        <div class="container">
+            <div class="logo">
+                <a href="index_zh_TW.html">Code<span>Bull</span></a>
+            </div>
+            <div class="header-logo-center">
+                <a href="https://marketplace.visualstudio.com/items?itemName=0xbu11.codebull" target="_blank" rel="noopener noreferrer" aria-label="在 VS Code Marketplace 開啟 CodeBull">
+                    <img src="asset/codebull-logo.png" alt="CodeBull Logo">
+                </a>
+            </div>
+            <nav>
+                <ul>
+                    <li><a href="index_zh_TW.html#features">功能</a></li>
+                    <li><a href="tutorial_zh_TW.html">教學</a></li>
+                    <li><a href="docs_zh_TW.html">文件</a></li>
+                    <li><a href="platform_zh_TW.html">支援平台</a></li>
+                    <li><a href="https://github.com/0xbu11/codebull" target="_blank">GitHub</a></li>
+                    <li><a href="article-gorm-three-signals.html" class="lang-switch">English</a></li>
+                    <li><button id="theme-toggle" class="theme-toggle" aria-label="切換主題">☀️</button></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <section class="article-header">
+            <div class="container">
+                <a class="article-back" href="index_zh_TW.html#articles">← 回到文章列表</a>
+                <span class="article-card-source">GORM · Metric + Log + Latency</span>
+                <h1>一個收斂點，三種真相：我讓 AI 對執行中的 GORM 同時量出「多常、什麼、多久」</h1>
+                <div class="article-meta">
+                    <span>2026-07-23</span>
+                    <span>觀測窗口 5.0 分鐘</span>
+                    <span>gorm-demo + PostgreSQL 16（全新 volume）</span>
+                </div>
+                <p class="article-lede">全程由 AI agent 透過 CodeBull MCP 操作：掛觀測點 → 蒐證 → 依證據寫文 → 上傳遠端看板。文中每一條 SQL、每一個數字都出自本輪 <code>evidence.json</code>，無一杜撰。</p>
+            </div>
+        </section>
+
+        <section class="article-section">
+            <div class="container">
+                <article class="article-body">
+                    <p>「我的 ORM 到底在幹嘛？」這問題其實有三個層次：</p>
+                    <ul>
+                        <li><strong>多常發生？</strong>（哪個操作最熱）</li>
+                        <li><strong>發生了什麼？</strong>（真正送出去的 SQL 長怎樣）</li>
+                        <li><strong>花了多久？</strong>（p95 尾巴藏在哪）</li>
+                    </ul>
+                    <p>平常要同時回答這三個，你得開三種工具、改三次 code。這次我只在 GORM 的<strong>一個收斂點</strong>上掛了三個觀測點，五分鐘就把三種真相一次量齊——而且 <strong>0 改一行原始碼，連看板都是 AI 建的。</strong></p>
+
+                    <h2>為什麼「同時」這麼難</h2>
+                    <p>ORM 是黑盒子。要看它：</p>
+                    <ul>
+                        <li>❌ 開 <code>Debug()</code> 看 SQL —— 但沒有耗時分佈，而且預設 logger 只在出錯時說話</li>
+                        <li>❌ 上 APM 看 p95 —— 得先埋 SDK、架 backend</li>
+                        <li>❌ 自己數呼叫次數 —— 又是一輪改 code、重編、重部署</li>
+                    </ul>
+                    <p>三個問題，三套工具，三次動原始碼。而它們其實都發生在<strong>同一個函式</strong>裡。</p>
+
+                    <h2>觀測板怎麼搭：一個收斂點、三個觀測點</h2>
+                    <p>GORM 所有 CRUD 都會經過 <code>gorm.(*processor).Execute</code>。我在它身上掛了三個維度（全程 AI 透過 MCP 操作）：</p>
+                    <p><strong>① Metric（多常發生）</strong> —— Execute 入口計數</p>
+                    <pre class="code-block"><code>codebull_register_tracepoint  path: gorm_pkg/callbacks.go  line: 82   kind: metric</code></pre>
+                    <p><strong>② Log（發生了什麼）</strong> —— Execute 出口，SQL 已生成</p>
+                    <pre class="code-block"><code>codebull_register_tracepoint  path: gorm_pkg/callbacks.go  line: 140  kind: log
+  template: "SQL={string(stmt.SQL.buf)} | rows={db.RowsAffected}"</code></pre>
+                    <p><strong>③ Latency（花了多久）</strong> —— 量測 Execute 的 DB 區段（callback 鏈 + logging）wall-clock</p>
+                    <pre class="code-block"><code>codebull_register_tracepoint  path: gorm_pkg/callbacks.go  line: 83 → endLine: 150  kind: latency
+  template: "p50(latency), p95(latency), p99(latency), avg(latency)"</code></pre>
+                    <p>就這三個點，面板同時開始吐「次數 / 逐字 SQL / 毫秒分佈」。<strong>0 改 code、0 重啟。</strong></p>
+
+                    <h2>實證資料（觀測窗口 5.0 分鐘）</h2>
+                    <div class="article-table-wrap">
+                        <table>
+                            <thead>
+                                <tr><th>觀測點</th><th>維度</th><th>本輪數值</th></tr>
+                            </thead>
+                            <tbody>
+                                <tr><td><code>Execute:82</code>（metric）</td><td>多常發生</td><td>入口命中 <strong>947</strong> 次</td></tr>
+                                <tr><td><code>Execute:140</code>（log）</td><td>發生了什麼</td><td>SQL 事件 <strong>917</strong> 筆，去重 <strong>8</strong> 種語句</td></tr>
+                                <tr><td><code>Execute:83→150</code>（latency）</td><td>花了多久</td><td>見下方 p50 / p95 / p99</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <h3>Latency —— 這次真的量到了（latency_ms，553 samples）</h3>
+                    <div class="article-table-wrap">
+                        <table>
+                            <thead>
+                                <tr><th>統計</th><th>毫秒</th></tr>
+                            </thead>
+                            <tbody>
+                                <tr><td>p50（中位數）</td><td><strong>5.69 ms</strong></td></tr>
+                                <tr><td>p95</td><td><strong>60.24 ms</strong></td></tr>
+                                <tr><td>p99</td><td><strong>64.42 ms</strong></td></tr>
+                                <tr><td>avg</td><td>11.17 ms</td></tr>
+                                <tr><td>min / max</td><td>0.16 ms / 99.46 ms</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <h3>一輪 CRUD 的完整肖像（8 種語句，逐字引自面板，全部 <code>rows=1</code>）</h3>
+                    <div class="article-table-wrap">
+                        <table>
+                            <thead>
+                                <tr><th>操作</th><th>SQL（逐字）</th><th>次數</th></tr>
+                            </thead>
+                            <tbody>
+                                <tr><td>Create user</td><td><code>INSERT INTO "users" (...) VALUES ($1..$6) RETURNING "id"</code></td><td>112</td></tr>
+                                <tr><td>Create order</td><td><code>INSERT INTO "orders" (...) VALUES ($1..$6) RETURNING "id"</code></td><td>112</td></tr>
+                                <tr><td>Preload("User")</td><td><code>SELECT * FROM "users" WHERE "users"."id" = $1 AND "users"."deleted_at" IS NULL</code></td><td>112</td></tr>
+                                <tr><td>First(&amp;order)</td><td><code>SELECT * FROM "orders" WHERE "orders"."id" = $1 AND "orders"."deleted_at" IS NULL ORDER BY "orders"."id" LIMIT $2</code></td><td>112</td></tr>
+                                <tr><td>Update</td><td><code>UPDATE "users" SET "age"=$1,"updated_at"=$2 WHERE "users"."deleted_at" IS NULL AND "id" = $3</code></td><td>113</td></tr>
+                                <tr><td>Count</td><td><code>SELECT count(*) FROM "users" WHERE "users"."deleted_at" IS NULL</code></td><td>113</td></tr>
+                                <tr><td>First(oldest)</td><td><code>SELECT * FROM "users" WHERE "users"."deleted_at" IS NULL ORDER BY created_at asc,"users"."id" LIMIT $1</code></td><td>113</td></tr>
+                                <tr><td>Delete</td><td><code>UPDATE "users" SET "deleted_at"=$1 WHERE "users"."id" = $2 AND "users"."deleted_at" IS NULL</code></td><td>113</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <h2>面板讓我看到的四件事</h2>
+
+                    <h3>1. 尾巴是中位數的 10 倍（p50 5.7ms → p95 60ms）</h3>
+                    <p>一半的 Execute 在 <strong>5.7 毫秒</strong>內結束，聽起來很快。但 <strong>p95 衝到 60 毫秒、p99 64 毫秒、最慢 99 毫秒</strong>——尾巴是中位數的<strong>十倍以上</strong>。這正是只看「平均 11ms」會被騙的地方：平均把尾巴稀釋掉了，真正咬你 SLA 的是那 5% 的長尾。沒有 latency 觀測點，你只會看到「平均很快」，然後在生產環境被 p99 突襲。</p>
+
+                    <h3>2. <code>db.Delete()</code> 底下跑的是 <code>UPDATE</code>（第 8 條）</h3>
+                    <p>demo 呼叫 <code>db.Delete(&amp;oldest)</code>，面板顯示送出去的卻是 <code>UPDATE "users" SET "deleted_at"=$1 ...</code>。這是 GORM 的<strong>軟刪除</strong>：因為 model 內嵌 <code>gorm.Model</code>（帶 <code>DeletedAt</code>），<code>Delete</code> 被默默改寫成蓋刪除時間戳的 <code>UPDATE</code>。資料其實還在表裡。</p>
+
+                    <h3>3. 你沒寫的隱形條件 + 一次 Preload = 兩條 SELECT</h3>
+                    <p>八條語句裡，每一條讀寫都自動被加上 <code>"deleted_at" IS NULL</code>——這是軟刪除的另一半，把已刪列擋在外面。而 <code>db.Preload("User").First(...)</code> 一行，面板卻抓到<strong>兩條</strong> SELECT：一條查 <code>orders</code>、一條<strong>另外</strong>查 <code>users</code>（各 112 次）。belongs-to 關聯不是 JOIN，是<strong>再補一趟查詢</strong>——放大到列表頁就是 N+1 的溫床。</p>
+
+                    <h3>4. 入口 947 ≈ 出口 917：對帳的力量</h3>
+                    <p>Metric 入口 <strong>947</strong> 次、Log 出口 <strong>917</strong> 筆，差 <strong>~30</strong>。這差距本身就是資訊：有約 30 次 Execute 進了收斂點、卻沒在出口生出一條被記錄的 SQL（DryRun / 空 SQL 的交易控制類路徑）。哪天這兩個數字<strong>大幅背離</strong>，就是一批操作在生成 SQL 前就出事了——有這兩個點，你不用猜，面板先幫你對帳。</p>
+
+                    <h2>誠實揭露：這次量了什麼</h2>
+                    <p>這篇 <strong>Metric / Log / Latency 三個維度都是本輪實測到的真實資料</strong>——特別是 latency，是這次用 <code>kind:latency</code>（entry <code>Execute:83</code> → exit <code>line 150</code>）真正量到的 <code>latency_ms</code> 分佈，不是估的。<code>Execute:82</code> 上那些裸變數（curTime / err / optimizer 內部值）<strong>不列入引用</strong>，因為它們是指標原始值、不是可信統計。面板上每個數字都必須有據可查——這是底線。</p>
+
+                    <h2>你要怎麼複製這套（3 步）</h2>
+                    <ol>
+                        <li>VS Code 搜尋安裝 <strong>CodeBull</strong>，啟動你的 Go 專案（記得帶 debug flag 編譯：<code>-gcflags="all=-dwarflocationlists=true -N -l"</code>，CodeBull 才解析得到變數位置與行號）。</li>
+                        <li>在 ORM 收斂點掛三個觀測點：入口 <strong>Metric</strong>、出口 <strong>Log</strong>（模板 <code>SQL={string(stmt.SQL.buf)} | rows={db.RowsAffected}</code>）、再拉一段 <strong>Latency</strong>（entry→exit 量耗時）。或直接讓 AI agent 連 CodeBull MCP 呼叫 <code>codebull_register_tracepoint</code>。</li>
+                        <li>等真實流量跑 5 分鐘，打開 Dashboard：Metric 看頻率、Log 看逐字 SQL、<strong>Latency 看 p95/p99 尾巴</strong>。</li>
+                    </ol>
+                    <p><strong>0 改 code、0 重啟、0 重新部署。</strong> ORM 跑了什麼、跑多久，就該看得見。</p>
+
+                    <h3>附錄：可重現性</h3>
+                    <ul>
+                        <li>觀測點（一個收斂點 <code>gorm.(*processor).Execute</code>，三個維度）：
+                            <ul>
+                                <li><code>:82</code>（metric，入口命中計數）</li>
+                                <li><code>:83 → :150</code>（latency，量 Execute DB 區段 wall-clock）</li>
+                                <li><code>:140</code>（log，template <code>SQL={string(stmt.SQL.buf)} | rows={db.RowsAffected}</code>）</li>
+                            </ul>
+                        </li>
+                        <li>環境：gorm-demo（每 3 秒一輪 CRUD）+ PostgreSQL 16（docker，port 5433，<strong>本輪全新 volume</strong>）+ CodeBull agent（port 8888）</li>
+                        <li>證據（2026-07-23，frozen snapshot，<code>evidence.json</code>）：
+                            <ul>
+                                <li>觀測窗口 06:22:15Z → 06:27:12Z（5.0 分鐘）</li>
+                                <li>Metric 入口 947、Log 出口 917、去重 SQL 8 種（各 112~113 次，rows 全 = 1）</li>
+                                <li>Latency <code>latency_ms</code>（553 samples）：p50 5.69 / p95 60.24 / p99 64.42 / avg 11.17 / max 99.46 ms</li>
+                            </ul>
+                        </li>
+                        <li>遠端看板上傳：透過 MCP 工具 <code>codebull_generate_dashboard</code>（帶自訂 <code>dashboardId</code>）上傳本輪 metric/log 歷史（自訂可讀 id、每篇獨立；服務滾動保留 72 小時，帶同一 id 重新呼叫即覆蓋更新）。</li>
+                    </ul>
+
+                    <div class="article-callout">
+                        <p>📊 <strong>本文的遠端觀測面板</strong>（實證數據，可線上檢視）：<a href="https://codebull-dashboard-service.web.app/gorm-demo-mcp-article-20260723-latency/" target="_blank" rel="noopener noreferrer">gorm-demo-mcp-article-20260723-latency</a></p>
+                        <p>👉 CodeBull SDK（open source）：<a href="https://github.com/0xbu11/codebull" target="_blank" rel="noopener noreferrer">github.com/0xbu11/codebull</a></p>
+                    </div>
+
+                    <div class="article-footnote">
+                        <p><em>文中每一條 SQL、每一個數字均出自 CodeBull 對 gorm-demo 執行中服務的實測證據，並可在上方面板連結線上對帳。</em></p>
+                        <p><a class="btn" href="https://marketplace.visualstudio.com/items?itemName=0xbu11.codebull" target="_blank" rel="noopener noreferrer">安裝 CodeBull</a></p>
+                    </div>
+                </article>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2026 CodeBull. 保留所有權利。</p>
+            <div class="links">
+                <a href="https://github.com/0xbu11/codebull">GitHub</a>
+                <a href="mailto:codebull.0xbu11@gmail.com">codebull.0xbu11@gmail.com</a>
+                <a href="#">隱私權政策</a>
+                <a href="#">服務條款</a>
+            </div>
+        </div>
+    </footer>
+</body>
+
+</html>

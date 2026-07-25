@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeBull - One Convergence Point, Three Truths</title>
+    <meta name="description" content="Metric, Log, and Latency attached to the same convergence point inside GORM — measuring how often, what, and how long in a single five-minute window.">
+    <link rel="stylesheet" href="style.css?v=16">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&display=swap" rel="stylesheet">
+    <script src="theme.js"></script>
+</head>
+
+<body>
+    <div class="announcement-banner">
+        Currently supported Go versions: V1.22.0 and V1.26.0.
+    </div>
+    <header>
+        <div class="container">
+            <div class="logo">
+                <a href="index.html">Code<span>Bull</span></a>
+            </div>
+            <div class="header-logo-center">
+                <a href="https://marketplace.visualstudio.com/items?itemName=0xbu11.codebull" target="_blank" rel="noopener noreferrer" aria-label="Open CodeBull on VS Code Marketplace">
+                    <img src="asset/codebull-logo.png" alt="CodeBull Logo">
+                </a>
+            </div>
+            <nav>
+                <ul>
+                    <li><a href="index.html#features">Features</a></li>
+                    <li><a href="tutorial.html">Tutorial</a></li>
+                    <li><a href="docs.html">Docs</a></li>
+                    <li><a href="platform.html">Platform</a></li>
+                    <li><a href="https://github.com/0xbu11/codebull" target="_blank">GitHub</a></li>
+                    <li><a href="article-gorm-three-signals_zh_TW.html" class="lang-switch">中文</a></li>
+                    <li><button id="theme-toggle" class="theme-toggle" aria-label="Switch Theme">☀️</button></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <section class="article-header">
+            <div class="container">
+                <a class="article-back" href="index.html#articles">← Back to articles</a>
+                <span class="article-card-source">GORM · Metric + Log + Latency</span>
+                <h1>One convergence point, three truths: measuring how often, what, and how long on a running GORM</h1>
+                <div class="article-meta">
+                    <span>2026-07-23</span>
+                    <span>5.0 min observation window</span>
+                    <span>gorm-demo + PostgreSQL 16 (fresh volume)</span>
+                </div>
+                <p class="article-lede">Driven end to end by an AI agent through the CodeBull MCP server: attach observation points → collect evidence → write from the evidence → upload the remote dashboard. Every SQL statement and every number below comes from this round's <code>evidence.json</code>, none of it invented.</p>
+            </div>
+        </section>
+
+        <section class="article-section">
+            <div class="container">
+                <article class="article-body">
+                    <p>"What is my ORM actually doing?" is really three questions:</p>
+                    <ul>
+                        <li><strong>How often does it happen?</strong> (which operation is hottest)</li>
+                        <li><strong>What happened?</strong> (what the SQL actually sent looks like)</li>
+                        <li><strong>How long did it take?</strong> (where the p95 tail hides)</li>
+                    </ul>
+                    <p>Normally, answering all three at once means three tools and three rounds of code changes. This time I attached three observation points to <strong>one convergence point</strong> inside GORM, and measured all three truths in five minutes — with <strong>zero source changes, and even the dashboard built by the agent.</strong></p>
+
+                    <h2>Why "all at once" is hard</h2>
+                    <p>An ORM is a black box. To look inside it:</p>
+                    <ul>
+                        <li>❌ Turn on <code>Debug()</code> for the SQL — but you get no latency distribution, and the default logger only speaks up on errors</li>
+                        <li>❌ Bring in an APM for p95 — but first you have to embed an SDK and stand up a backend</li>
+                        <li>❌ Count the calls yourself — another round of editing, rebuilding, redeploying</li>
+                    </ul>
+                    <p>Three questions, three toolchains, three trips into the source. And all three happen inside <strong>the same function</strong>.</p>
+
+                    <h2>How the setup works: one convergence point, three observation points</h2>
+                    <p>Every CRUD operation in GORM passes through <code>gorm.(*processor).Execute</code>. I attached three dimensions to it (all driven by the agent over MCP):</p>
+                    <p><strong>① Metric (how often)</strong> — hit counter at the Execute entry</p>
+                    <pre class="code-block"><code>codebull_register_tracepoint  path: gorm_pkg/callbacks.go  line: 82   kind: metric</code></pre>
+                    <p><strong>② Log (what happened)</strong> — Execute exit, where the SQL has been generated</p>
+                    <pre class="code-block"><code>codebull_register_tracepoint  path: gorm_pkg/callbacks.go  line: 140  kind: log
+  template: "SQL={string(stmt.SQL.buf)} | rows={db.RowsAffected}"</code></pre>
+                    <p><strong>③ Latency (how long)</strong> — wall-clock for Execute's DB segment (callback chain + logging)</p>
+                    <pre class="code-block"><code>codebull_register_tracepoint  path: gorm_pkg/callbacks.go  line: 83 → endLine: 150  kind: latency
+  template: "p50(latency), p95(latency), p99(latency), avg(latency)"</code></pre>
+                    <p>Three points, and the dashboard starts emitting "counts / verbatim SQL / millisecond distribution" simultaneously. <strong>No code changes, no restart.</strong></p>
+
+                    <h2>The evidence (5.0-minute window)</h2>
+                    <div class="article-table-wrap">
+                        <table>
+                            <thead>
+                                <tr><th>Observation point</th><th>Dimension</th><th>This round</th></tr>
+                            </thead>
+                            <tbody>
+                                <tr><td><code>Execute:82</code> (metric)</td><td>How often</td><td><strong>947</strong> entry hits</td></tr>
+                                <tr><td><code>Execute:140</code> (log)</td><td>What happened</td><td><strong>917</strong> SQL events, <strong>8</strong> distinct statements after dedup</td></tr>
+                                <tr><td><code>Execute:83→150</code> (latency)</td><td>How long</td><td>see p50 / p95 / p99 below</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <h3>Latency — actually measured this round (latency_ms, 553 samples)</h3>
+                    <div class="article-table-wrap">
+                        <table>
+                            <thead>
+                                <tr><th>Statistic</th><th>Milliseconds</th></tr>
+                            </thead>
+                            <tbody>
+                                <tr><td>p50 (median)</td><td><strong>5.69 ms</strong></td></tr>
+                                <tr><td>p95</td><td><strong>60.24 ms</strong></td></tr>
+                                <tr><td>p99</td><td><strong>64.42 ms</strong></td></tr>
+                                <tr><td>avg</td><td>11.17 ms</td></tr>
+                                <tr><td>min / max</td><td>0.16 ms / 99.46 ms</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <h3>A full portrait of one CRUD round (8 statements, verbatim from the dashboard, all <code>rows=1</code>)</h3>
+                    <div class="article-table-wrap">
+                        <table>
+                            <thead>
+                                <tr><th>Operation</th><th>SQL (verbatim)</th><th>Count</th></tr>
+                            </thead>
+                            <tbody>
+                                <tr><td>Create user</td><td><code>INSERT INTO "users" (...) VALUES ($1..$6) RETURNING "id"</code></td><td>112</td></tr>
+                                <tr><td>Create order</td><td><code>INSERT INTO "orders" (...) VALUES ($1..$6) RETURNING "id"</code></td><td>112</td></tr>
+                                <tr><td>Preload("User")</td><td><code>SELECT * FROM "users" WHERE "users"."id" = $1 AND "users"."deleted_at" IS NULL</code></td><td>112</td></tr>
+                                <tr><td>First(&amp;order)</td><td><code>SELECT * FROM "orders" WHERE "orders"."id" = $1 AND "orders"."deleted_at" IS NULL ORDER BY "orders"."id" LIMIT $2</code></td><td>112</td></tr>
+                                <tr><td>Update</td><td><code>UPDATE "users" SET "age"=$1,"updated_at"=$2 WHERE "users"."deleted_at" IS NULL AND "id" = $3</code></td><td>113</td></tr>
+                                <tr><td>Count</td><td><code>SELECT count(*) FROM "users" WHERE "users"."deleted_at" IS NULL</code></td><td>113</td></tr>
+                                <tr><td>First(oldest)</td><td><code>SELECT * FROM "users" WHERE "users"."deleted_at" IS NULL ORDER BY created_at asc,"users"."id" LIMIT $1</code></td><td>113</td></tr>
+                                <tr><td>Delete</td><td><code>UPDATE "users" SET "deleted_at"=$1 WHERE "users"."id" = $2 AND "users"."deleted_at" IS NULL</code></td><td>113</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <h2>Four things the dashboard showed me</h2>
+
+                    <h3>1. The tail is 10× the median (p50 5.7 ms → p95 60 ms)</h3>
+                    <p>Half of all Execute calls finish within <strong>5.7 ms</strong>, which sounds fast. But <strong>p95 shoots to 60 ms, p99 to 64 ms, and the slowest to 99 ms</strong> — the tail is <strong>more than ten times</strong> the median. This is exactly where looking only at "avg 11 ms" fools you: the average dilutes the tail, and what actually bites your SLA is that 5%. Without a latency observation point you'd only see "the average is fast," then get ambushed by p99 in production.</p>
+
+                    <h3>2. <code>db.Delete()</code> actually runs an <code>UPDATE</code> (statement #8)</h3>
+                    <p>The demo calls <code>db.Delete(&amp;oldest)</code>, but the dashboard shows what went out was <code>UPDATE "users" SET "deleted_at"=$1 ...</code>. That's GORM's <strong>soft delete</strong>: because the model embeds <code>gorm.Model</code> (carrying <code>DeletedAt</code>), <code>Delete</code> is quietly rewritten into an <code>UPDATE</code> that stamps a deletion timestamp. The data is still in the table.</p>
+
+                    <h3>3. Invisible conditions you never wrote + one Preload = two SELECTs</h3>
+                    <p>Across all eight statements, every read and write automatically gets <code>"deleted_at" IS NULL</code> appended — the other half of soft deletes, keeping deleted rows out. And the single line <code>db.Preload("User").First(...)</code> shows up on the dashboard as <strong>two</strong> SELECTs: one against <code>orders</code>, and a <strong>separate</strong> one against <code>users</code> (112 each). A belongs-to association isn't a JOIN — it's <strong>an extra trip</strong>, which on a list page becomes a breeding ground for N+1.</p>
+
+                    <h3>4. Entry 947 ≈ exit 917: the power of reconciliation</h3>
+                    <p>Metric entry <strong>947</strong>, log exit <strong>917</strong>, a gap of <strong>~30</strong>. That gap is itself information: roughly 30 Execute calls entered the convergence point without producing a recorded SQL statement at the exit (DryRun / empty-SQL transaction-control paths). The day those two numbers <strong>diverge sharply</strong> is the day a batch of operations broke before SQL generation — with both points running, you don't have to guess; the dashboard reconciles for you.</p>
+
+                    <h2>Honest disclosure: what was actually measured</h2>
+                    <p>All three dimensions here — <strong>Metric / Log / Latency — are real data measured in this round</strong>, latency in particular: it's the <code>latency_ms</code> distribution genuinely captured with <code>kind:latency</code> (entry <code>Execute:83</code> → exit <code>line 150</code>), not an estimate. The raw variables on <code>Execute:82</code> (curTime / err / optimizer internals) are <strong>not cited</strong>, because they're raw instrument values, not trustworthy statistics. Every number on the dashboard has to be traceable — that's the floor.</p>
+
+                    <h2>How to reproduce this (3 steps)</h2>
+                    <ol>
+                        <li>Search for <strong>CodeBull</strong> in VS Code and install it, then start your Go project (remember to compile with debug flags: <code>-gcflags="all=-dwarflocationlists=true -N -l"</code>, so CodeBull can resolve variable locations and line numbers).</li>
+                        <li>Attach three observation points at the ORM's convergence point: <strong>Metric</strong> at the entry, <strong>Log</strong> at the exit (template <code>SQL={string(stmt.SQL.buf)} | rows={db.RowsAffected}</code>), and a <strong>Latency</strong> span (entry→exit). Or just let an AI agent call <code>codebull_register_tracepoint</code> over the CodeBull MCP server.</li>
+                        <li>Let real traffic run for 5 minutes, then open the dashboard: Metric for frequency, Log for verbatim SQL, <strong>Latency for the p95/p99 tail</strong>.</li>
+                    </ol>
+                    <p><strong>No code changes, no restart, no redeploy.</strong> What your ORM ran, and how long it took, should be visible.</p>
+
+                    <h3>Appendix: reproducibility</h3>
+                    <ul>
+                        <li>Observation points (one convergence point, <code>gorm.(*processor).Execute</code>, three dimensions):
+                            <ul>
+                                <li><code>:82</code> (metric, entry hit counter)</li>
+                                <li><code>:83 → :150</code> (latency, wall-clock for Execute's DB segment)</li>
+                                <li><code>:140</code> (log, template <code>SQL={string(stmt.SQL.buf)} | rows={db.RowsAffected}</code>)</li>
+                            </ul>
+                        </li>
+                        <li>Environment: gorm-demo (one CRUD round every 3 seconds) + PostgreSQL 16 (docker, port 5433, <strong>fresh volume this round</strong>) + CodeBull agent (port 8888)</li>
+                        <li>Evidence (2026-07-23, frozen snapshot, <code>evidence.json</code>):
+                            <ul>
+                                <li>Observation window 06:22:15Z → 06:27:12Z (5.0 minutes)</li>
+                                <li>Metric entry 947, log exit 917, 8 deduplicated SQL shapes (112–113 times each, all with rows = 1)</li>
+                                <li>Latency <code>latency_ms</code> (553 samples): p50 5.69 / p95 60.24 / p99 64.42 / avg 11.17 / max 99.46 ms</li>
+                            </ul>
+                        </li>
+                        <li>Dashboard upload: this round's metric/log history was uploaded via the MCP tool <code>codebull_generate_dashboard</code> with a custom <code>dashboardId</code> (readable, per-article id; the service keeps a rolling 72-hour window, and calling again with the same id overwrites in place).</li>
+                    </ul>
+
+                    <div class="article-callout">
+                        <p>📊 <strong>Remote dashboard for this article</strong> (real measured data, viewable online): <a href="https://codebull-dashboard-service.web.app/gorm-demo-mcp-article-20260723-latency/" target="_blank" rel="noopener noreferrer">gorm-demo-mcp-article-20260723-latency</a></p>
+                        <p>👉 CodeBull SDK (open source): <a href="https://github.com/0xbu11/codebull" target="_blank" rel="noopener noreferrer">github.com/0xbu11/codebull</a></p>
+                    </div>
+
+                    <div class="article-footnote">
+                        <p><em>Every SQL statement and every number here comes from CodeBull's measurements against the running gorm-demo service, and can be reconciled online via the dashboard link above.</em></p>
+                        <p><a class="btn" href="https://marketplace.visualstudio.com/items?itemName=0xbu11.codebull" target="_blank" rel="noopener noreferrer">Install CodeBull</a></p>
+                    </div>
+                </article>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2026 CodeBull. All rights reserved.</p>
+            <div class="links">
+                <a href="https://github.com/0xbu11/codebull">GitHub</a>
+                <a href="mailto:codebull.0xbu11@gmail.com">codebull.0xbu11@gmail.com</a>
+                <a href="#">Privacy</a>
+                <a href="#">Terms</a>
+            </div>
+        </div>
+    </footer>
+</body>
+
+</html>

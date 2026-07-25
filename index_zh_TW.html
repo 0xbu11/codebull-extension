@@ -5,11 +5,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CodeBull - 動態插樁解決方案</title>
-    <link rel="stylesheet" href="style.css?v=14">
+    <link rel="stylesheet" href="style.css?v=17">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&display=swap" rel="stylesheet">
     <script src="theme.js"></script>
+    <script src="article-embed.js"></script>
 </head>
 
 <body>
@@ -49,17 +50,21 @@
             </div>
         </section>
 
-        <section class="demo-video">
+        <section id="articles" class="community-articles">
             <div class="container">
-                <div class="demo-video-copy">
-                    <span class="section-kicker">完整 Demo</span>
-                    <h2>一次看完 CodeBull 的完整操作流程</h2>
-                    <p>直接觀看完整功能展示，包含動態日誌、即時指標、歷史儀表板，以及火焰圖分析等主要能力。</p>
+                <div class="community-articles-header">
+                    <span class="section-kicker">實測筆記</span>
+                    <h2>CodeBull 在真實服務上跑出來的東西</h2>
+                    <p>對執行中的 Go 服務實際掛觀測點的紀錄。文中每一條 SQL、每一個數字都出自實測數據，並附上遠端面板可線上對帳。</p>
                 </div>
-                <div class="video-shell">
-                    <div class="video-frame">
-                        <iframe src="https://www.youtube-nocookie.com/embed/dhqNmijpDtI?rel=0" title="CodeBull 完整功能展示" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+                <div class="article-embed">
+                    <div class="article-embed-label">
+                        <span class="article-card-source">GORM · 實測筆記</span>
                     </div>
+                    <iframe class="article-embed-frame" data-article-embed
+                        src="embed/gorm-runtime_zh_TW.html"
+                        title="我盯著一個跑著的 GORM 看了八分鐘，然後看到它把主鍵弄丟了"
+                        scrolling="no" loading="lazy"></iframe>
                 </div>
             </div>
         </section>
