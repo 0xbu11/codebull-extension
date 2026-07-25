@@ -1272,6 +1272,232 @@ article.article-body {
   white-space: pre-wrap;
 }
 
+/* ── Article figures: screenshots ──────────────────────────────────────────
+   Panel screenshots are the long-term carrier of an article's evidence — the
+   hosted dashboards roll off after 72h, the figure stays. */
+
+.article-figure {
+  margin: 2.5rem 0;
+}
+
+.article-figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+}
+
+.article-figure figcaption {
+  margin-top: 0.8rem;
+  font-size: 0.88rem;
+  line-height: 1.65;
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+/* ── Article figures: inline data charts ───────────────────────────────────
+   Bars are plain CSS so they follow the theme without a script. Every bar is
+   directly labelled with its value; the numbers also live in the adjacent
+   table, which is the accessible view. Series colours are validated for both
+   surfaces (OKLCH lightness band + CVD separation). */
+
+.article-chart {
+  --chart-s1: #bd8b1f;
+  --chart-s2: #4d97de;
+  margin: 2.5rem 0;
+  padding: 1.4rem 1.4rem 1.2rem;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+}
+
+[data-theme="light"] .article-chart {
+  --chart-s1: #a37800;
+  --chart-s2: #3a84ca;
+}
+
+.chart-title {
+  margin: 0 0 0.25rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.chart-subtitle {
+  margin: 0 0 1.2rem;
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin: 0 0 1.1rem;
+  font-size: 0.82rem;
+  color: var(--color-text-secondary);
+}
+
+.chart-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.chart-legend i {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: var(--chart-s1);
+}
+
+.chart-legend i.s2 {
+  background: var(--chart-s2);
+}
+
+.chart-rows {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.chart-row {
+  display: grid;
+  grid-template-columns: minmax(5.5rem, 10.5rem) 1fr;
+  gap: 0.9rem;
+  align-items: center;
+}
+
+.chart-row-label {
+  font-size: 0.84rem;
+  line-height: 1.35;
+  color: var(--color-text-secondary);
+  text-align: right;
+}
+
+.chart-row-label code {
+  font-size: 0.95em;
+}
+
+.chart-bars {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.chart-bar-line {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.chart-bar {
+  height: 11px;
+  min-width: 3px;
+  border-radius: 0 4px 4px 0;
+  background: var(--chart-s1);
+}
+
+.chart-bar.s2 {
+  background: var(--chart-s2);
+}
+
+.chart-value {
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--color-text);
+}
+
+.chart-note {
+  margin: 1.6rem 0 0;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+}
+
+/* ── Token chain: one Go call expanded into the tokens it puts on the wire ── */
+
+.token-chain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 1.5rem 0;
+}
+
+.token-chain .tok {
+  padding: 0.35rem 0.7rem;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.token-chain .tok.verb {
+  border-color: var(--chart-verb, #bd8b1f);
+  color: var(--chart-verb, #bd8b1f);
+  font-weight: 700;
+}
+
+[data-theme="light"] .token-chain .tok.verb {
+  --chart-verb: #a37800;
+}
+
+.token-chain .sep {
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+}
+
+/* ── Causal chain: ordered steps that share one count ──────────────────── */
+
+.causal-chain {
+  display: grid;
+  gap: 0.55rem;
+  margin: 1.8rem 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: causal;
+}
+
+.causal-chain li {
+  display: grid;
+  grid-template-columns: 1.7rem 1fr auto;
+  gap: 0.9rem;
+  align-items: baseline;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--chart-s1, #bd8b1f);
+  border-radius: 10px;
+  background: var(--color-surface);
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+[data-theme="light"] .causal-chain li {
+  border-left-color: #a37800;
+}
+
+.causal-chain li::before {
+  counter-increment: causal;
+  content: counter(causal);
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-text-secondary);
+}
+
+.causal-chain .count {
+  font-size: 0.82rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--color-text-secondary);
+}
+
 .article-callout {
   margin: 2rem 0;
   padding: 1.25rem 1.4rem;
@@ -1323,5 +1549,29 @@ article.article-body {
 
   .article-body h2 {
     font-size: 1.4rem;
+  }
+
+  .article-chart {
+    padding: 1.1rem 1rem 1rem;
+  }
+
+  /* Stack the label above its bars — a 5.5rem label column squeezes the
+     track to nothing on a phone. */
+  .chart-row {
+    grid-template-columns: 1fr;
+    gap: 0.4rem;
+  }
+
+  .chart-row-label {
+    text-align: left;
+  }
+
+  .causal-chain li {
+    grid-template-columns: 1.4rem 1fr;
+    row-gap: 0.35rem;
+  }
+
+  .causal-chain .count {
+    grid-column: 2;
   }
 }

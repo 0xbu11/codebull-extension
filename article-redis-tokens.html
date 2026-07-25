@@ -73,7 +73,14 @@
 
                     <h2>What the first five minutes showed: one line of Go = a series of ordered tokens on the wire</h2>
                     <p>The observation window was about five and a half minutes (starting 09:49:58Z, 166 rounds). The command layer recorded <strong>830 commands</strong>; the wire layer recorded <strong>2,822 string tokens</strong>. Unfolded, one line of <code>rdb.HSet(...)</code> is really six tokens written out in order:</p>
-                    <pre class="code-block"><code>hset · user:demo · name · CodeBull · status · active</code></pre>
+                    <div class="token-chain">
+                        <span class="tok verb">hset</span><span class="sep">→</span>
+                        <span class="tok">user:demo</span><span class="sep">→</span>
+                        <span class="tok">name</span><span class="sep">→</span>
+                        <span class="tok">CodeBull</span><span class="sep">→</span>
+                        <span class="tok">status</span><span class="sep">→</span>
+                        <span class="tok">active</span>
+                    </div>
                     <p>Every field and value you pass goes on the wire untouched, in the order you gave them. Here's the string composition of all five commands in a round (transcribed verbatim from the dashboard):</p>
                     <div class="article-table-wrap">
                         <table>
@@ -89,6 +96,43 @@
                             </tbody>
                         </table>
                     </div>
+                    <figure class="article-chart">
+                        <p class="chart-title">Five commands per round — but not the same weight on the wire</p>
+                        <p class="chart-subtitle">String tokens each command expands into (17 per round)</p>
+                        <div class="chart-rows">
+                            <div class="chart-row">
+                                <div class="chart-row-label"><code>Incr</code></div>
+                                <div class="chart-bars"><div class="chart-bar-line" title="INCR: 2 string tokens">
+                                    <div class="chart-bar" style="width: 33.3%"></div><span class="chart-value">2</span>
+                                </div></div>
+                            </div>
+                            <div class="chart-row">
+                                <div class="chart-row-label"><code>Set</code></div>
+                                <div class="chart-bars"><div class="chart-bar-line" title="SET: 3 string tokens">
+                                    <div class="chart-bar" style="width: 50%"></div><span class="chart-value">3</span>
+                                </div></div>
+                            </div>
+                            <div class="chart-row">
+                                <div class="chart-row-label"><code>HSet</code></div>
+                                <div class="chart-bars"><div class="chart-bar-line" title="HSET: 6 string tokens">
+                                    <div class="chart-bar" style="width: 100%"></div><span class="chart-value">6</span>
+                                </div></div>
+                            </div>
+                            <div class="chart-row">
+                                <div class="chart-row-label"><code>SAdd</code></div>
+                                <div class="chart-bars"><div class="chart-bar-line" title="SADD: 3 string tokens">
+                                    <div class="chart-bar" style="width: 50%"></div><span class="chart-value">3</span>
+                                </div></div>
+                            </div>
+                            <div class="chart-row">
+                                <div class="chart-row-label"><code>ZAdd</code></div>
+                                <div class="chart-bars"><div class="chart-bar-line" title="ZADD: 3 string tokens (excluding the score, which takes the numeric encoder)">
+                                    <div class="chart-bar" style="width: 50%"></div><span class="chart-value">3</span>
+                                </div></div>
+                            </div>
+                        </div>
+                        <p class="chart-note">Five Go calls that look equivalent differ threefold on the wire — a single <code>HSet</code> takes 6 of the round's 17 tokens. ZADD's count excludes the score: a <code>float64</code> goes through the numeric encoder and never reaches the string exit (more on that below).</p>
+                    </figure>
                     <p>Every stable token appears <strong>166 times</strong> (matching the round count), and together 17 × 166 = 2,822 — exactly the dashboard total, to the digit. That feeling of "the numbers add up on their own" is what makes observability trustworthy. Up to here it's "interesting but not surprising." What made me sit up straight was that <code>&lt;time string&gt;</code>.</p>
 
                     <h2>And then I saw what SET was storing</h2>
@@ -107,6 +151,29 @@
 
                     <h2>While we're here, let's reconcile</h2>
                     <p>Command layer <strong>830</strong>, wire layer <strong>2,822</strong> string tokens. Those two numbers side by side are a health check in themselves: 830 logical commands expanding into 2,822 string tokens, averaging 3.4 strings per command — exactly consistent with "five commands, 17 string tokens per round."</p>
+                    <figure class="article-chart">
+                        <p class="chart-title">Two convergence points, two kinds of "volume"</p>
+                        <p class="chart-subtitle">Observation window 2026-07-24 09:49:58Z → 09:55:28Z (~5.5 minutes / 166 rounds)</p>
+                        <div class="chart-legend">
+                            <span><i></i>Command layer <code>Client.Process</code></span>
+                            <span><i class="s2"></i>Wire layer <code>Writer.string</code></span>
+                        </div>
+                        <div class="chart-rows">
+                            <div class="chart-row">
+                                <div class="chart-row-label">Logical commands</div>
+                                <div class="chart-bars"><div class="chart-bar-line" title="830 commands at the command layer">
+                                    <div class="chart-bar" style="width: 29.4%"></div><span class="chart-value">830</span>
+                                </div></div>
+                            </div>
+                            <div class="chart-row">
+                                <div class="chart-row-label">String tokens</div>
+                                <div class="chart-bars"><div class="chart-bar-line" title="2,822 string tokens at the wire layer">
+                                    <div class="chart-bar s2" style="width: 100%"></div><span class="chart-value">2,822</span>
+                                </div></div>
+                            </div>
+                        </div>
+                        <p class="chart-note">3.4 string tokens per logical command — exactly consistent with "five commands, 17 tokens per round."</p>
+                    </figure>
                     <p>The day that ratio skews (command count flat, token count exploding), someone has stuffed an unusual number of arguments into a command (a big batch, an oversized HSET field list). With both points running, you don't have to guess — the dashboard has already separated "the command" from "its weight on the wire."</p>
 
                     <h2>Wrapping up</h2>

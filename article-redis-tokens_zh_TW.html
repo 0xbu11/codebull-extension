@@ -73,7 +73,14 @@
 
                     <h2>前五分鐘看到的：一行 Go = 一串依序上線的 token</h2>
                     <p>觀測窗口大約五分半（09:49:58Z 起、166 輪），命令層記到 <strong>830 次</strong>命令，上線層記到 <strong>2822 個</strong>字串 token。攤開一輪，一行 <code>rdb.HSet(...)</code> 在線上其實是六個 token 依序寫出：</p>
-                    <pre class="code-block"><code>hset · user:demo · name · CodeBull · status · active</code></pre>
+                    <div class="token-chain">
+                        <span class="tok verb">hset</span><span class="sep">→</span>
+                        <span class="tok">user:demo</span><span class="sep">→</span>
+                        <span class="tok">name</span><span class="sep">→</span>
+                        <span class="tok">CodeBull</span><span class="sep">→</span>
+                        <span class="tok">status</span><span class="sep">→</span>
+                        <span class="tok">active</span>
+                    </div>
                     <p>你傳的每個 field / value，原封不動、照你給的順序上線。整輪五個命令的字串組成（逐字抄自面板）：</p>
                     <div class="article-table-wrap">
                         <table>
@@ -89,6 +96,43 @@
                             </tbody>
                         </table>
                     </div>
+                    <figure class="article-chart">
+                        <p class="chart-title">一輪五個命令，在線上的重量並不一樣</p>
+                        <p class="chart-subtitle">每個命令展開成幾個字串 token（合計 17 個 / 輪）</p>
+                        <div class="chart-rows">
+                            <div class="chart-row">
+                                <div class="chart-row-label"><code>Incr</code></div>
+                                <div class="chart-bars"><div class="chart-bar-line" title="INCR：2 個字串 token">
+                                    <div class="chart-bar" style="width: 33.3%"></div><span class="chart-value">2</span>
+                                </div></div>
+                            </div>
+                            <div class="chart-row">
+                                <div class="chart-row-label"><code>Set</code></div>
+                                <div class="chart-bars"><div class="chart-bar-line" title="SET：3 個字串 token">
+                                    <div class="chart-bar" style="width: 50%"></div><span class="chart-value">3</span>
+                                </div></div>
+                            </div>
+                            <div class="chart-row">
+                                <div class="chart-row-label"><code>HSet</code></div>
+                                <div class="chart-bars"><div class="chart-bar-line" title="HSET：6 個字串 token">
+                                    <div class="chart-bar" style="width: 100%"></div><span class="chart-value">6</span>
+                                </div></div>
+                            </div>
+                            <div class="chart-row">
+                                <div class="chart-row-label"><code>SAdd</code></div>
+                                <div class="chart-bars"><div class="chart-bar-line" title="SADD：3 個字串 token">
+                                    <div class="chart-bar" style="width: 50%"></div><span class="chart-value">3</span>
+                                </div></div>
+                            </div>
+                            <div class="chart-row">
+                                <div class="chart-row-label"><code>ZAdd</code></div>
+                                <div class="chart-bars"><div class="chart-bar-line" title="ZADD：3 個字串 token（不含走數字編碼器的分數）">
+                                    <div class="chart-bar" style="width: 50%"></div><span class="chart-value">3</span>
+                                </div></div>
+                            </div>
+                        </div>
+                        <p class="chart-note">五行看起來對等的 Go 呼叫，在線上的長度差到三倍——一行 <code>HSet</code> 就佔掉一輪 17 個 token 裡的 6 個。ZADD 那條沒算分數：<code>float64</code> 走的是數字編碼器，不經過字串出口（下一節細說）。</p>
+                    </figure>
                     <p>每個穩定 token 都出現 <strong>166 次</strong>（跟輪數對得上），加起來 17 × 166 = 2822，跟面板總數一分不差。這種「數字自己兜得起來」的感覺，就是觀測值得信任的地方。到這裡都還算「有趣但不驚訝」。真正讓我坐直的是那個 <code>&lt;時間字串&gt;</code>。</p>
 
                     <h2>然後我看到 SET 存進去的東西</h2>
@@ -107,6 +151,29 @@
 
                     <h2>順便對個帳</h2>
                     <p>命令層 <strong>830</strong>、上線層 <strong>2822</strong> 個字串 token。這兩個數字擺在一起就是一種健康檢查：830 個邏輯命令，展開成 2822 個字串 token，平均一個命令 3.4 個字串——跟「五個命令、17 個字串 token 一輪」完全吻合。</p>
+                    <figure class="article-chart">
+                        <p class="chart-title">兩個收斂點，兩種「量」</p>
+                        <p class="chart-subtitle">觀測窗口 2026-07-24 09:49:58Z → 09:55:28Z（約 5.5 分鐘 / 166 輪）</p>
+                        <div class="chart-legend">
+                            <span><i></i>命令層 <code>Client.Process</code></span>
+                            <span><i class="s2"></i>上線層 <code>Writer.string</code></span>
+                        </div>
+                        <div class="chart-rows">
+                            <div class="chart-row">
+                                <div class="chart-row-label">邏輯命令</div>
+                                <div class="chart-bars"><div class="chart-bar-line" title="命令層記到 830 次">
+                                    <div class="chart-bar" style="width: 29.4%"></div><span class="chart-value">830</span>
+                                </div></div>
+                            </div>
+                            <div class="chart-row">
+                                <div class="chart-row-label">字串 token</div>
+                                <div class="chart-bars"><div class="chart-bar-line" title="上線層記到 2822 個字串 token">
+                                    <div class="chart-bar s2" style="width: 100%"></div><span class="chart-value">2822</span>
+                                </div></div>
+                            </div>
+                        </div>
+                        <p class="chart-note">一個邏輯命令平均 3.4 個字串 token——跟「五個命令、17 個 token 一輪」完全吻合。</p>
+                    </figure>
                     <p>哪天這個比例歪掉（命令數沒動、token 數暴增），那就是有人在某條命令裡塞了異常多的參數（大 batch、爆量的 HSET field）。有這兩個點同時看，你不用猜，面板先幫你把「命令」和「它在線上的重量」分開量好。</p>
 
                     <h2>收尾</h2>

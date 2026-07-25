@@ -73,6 +73,31 @@
 
                     <h2>What the first eight minutes showed: a CRUD round with no makeup on</h2>
                     <p>The observation window was about eight minutes (starting 03:43:12Z, last entry 03:51:18Z, covering 163 rounds). The exit point recorded <strong>1,045 SQL events</strong>, the entry point <strong>2,090 hits</strong>, and after deduplication, <strong>12 distinct</strong> statement shapes.</p>
+                    <figure class="article-chart">
+                        <p class="chart-title">Entry vs exit: two points on the same convergence function</p>
+                        <p class="chart-subtitle">Observation window 2026-07-24 03:43:12Z → 03:51:18Z (~8 minutes / 163 rounds)</p>
+                        <div class="chart-rows">
+                            <div class="chart-row">
+                                <div class="chart-row-label">Entry hits<br><code>callbacks.go:82</code></div>
+                                <div class="chart-bars">
+                                    <div class="chart-bar-line" title="2,090 entry hits">
+                                        <div class="chart-bar" style="width: 100%"></div>
+                                        <span class="chart-value">2,090 hits</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="chart-row">
+                                <div class="chart-row-label">Exit SQL<br><code>callbacks.go:140</code></div>
+                                <div class="chart-bars">
+                                    <div class="chart-bar-line" title="1,045 SQL events at the exit point">
+                                        <div class="chart-bar" style="width: 50%"></div>
+                                        <span class="chart-value">1,045 events</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <p class="chart-note">The convergence point is entered exactly twice as often as it emits SQL — GORM wraps single writes in an implicit transaction, and those transaction-control passes never produce a recorded statement at the exit. That ratio is itself a health line worth watching.</p>
+                    </figure>
                     <p>Start with the healthy half — in steady state, a full CRUD round with no makeup on (transcribed verbatim from the dashboard):</p>
                     <div class="article-table-wrap">
                         <table>
@@ -127,9 +152,12 @@ UPDATE "users" SET "age"=$1,"updated_at"=$2 WHERE "users"."deleted_at" IS NULL A
 UPDATE "users" SET "age"=$1,"updated_at"=$2 WHERE "users"."deleted_at" IS NULL</code></pre>
                     <p><strong>The same line of <code>db.Model(&amp;user).Update(...)</code> produced two different SQL statements.</strong> The difference is that the latter lost <code>AND "id" = $3</code> — it no longer updates "that one user," it updates "every user that hasn't been soft-deleted." This is the classic ORM footgun: <strong>the primary key isn't populated, and the update degenerates into the shape of a full-table update</strong>.</p>
                     <p>Why? Line up the counts of the four <code>rows=0</code> statements on the dashboard — all <strong>83</strong> — and the causal chain surfaces by itself:</p>
-                    <blockquote>
-                        <p>Create user fails (<code>user.ID</code> is still 0) → Create order carries <code>user_id=0</code> and also fails → <code>First</code> queries with <code>id=0</code> and finds nothing → <code>Update</code>, because <code>user.ID</code> is 0, can't have <code>id = $3</code> built by GORM, so it degenerates into a WHERE that only carries the soft-delete scope.</p>
-                    </blockquote>
+                    <ol class="causal-chain">
+                        <li><span>Create user fails, <code>user.ID</code> is still 0</span><span class="count">rows=0 · 83×</span></li>
+                        <li><span>Create order carries <code>user_id=0</code> and is rejected by the foreign key</span><span class="count">rows=0 · 83×</span></li>
+                        <li><span><code>First</code> queries with <code>id=0</code> and finds nothing</span><span class="count">rows=0 · 83×</span></li>
+                        <li><span><code>Update</code>, with <code>user.ID</code> at 0, can't have <code>id = $3</code> built by GORM, so it degenerates into a WHERE carrying only the soft-delete scope</span><span class="count">rows=0 · 83×</span></li>
+                    </ol>
                     <p><strong>But that degenerate UPDATE never actually hit the whole table.</strong> I cross-checked the service's own log: it returned <code>rows=0</code> because <strong>GORM's built-in guard blocked it</strong> — <code>WHERE conditions required</code> (<code>ErrMissingWhereClause</code>) — taking <strong>0.18 ms with zero DB round trips</strong>. In other words, the observation points let me see two things at once: <strong>GORM was building a full-table UPDATE that had lost its primary key, and GORM's own safety net caught it on the spot.</strong> The danger and the save, both laid out on the dashboard within one line.</p>
                     <p>That matters — because if someone ever disables that guard (<code>db.Session(&amp;gorm.Session{AllowGlobalUpdate: true})</code>), this <code>rows=0</code> becomes <code>rows=thousands</code>. And on the dashboard, you'd see that number jump <strong>immediately</strong>.</p>
 

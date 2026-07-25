@@ -73,6 +73,31 @@
 
                     <h2>前八分鐘看到的：一輪 CRUD 的素顏</h2>
                     <p>觀測窗口大約八分鐘（03:43:12Z 起、最後一筆 03:51:18Z，涵蓋 163 輪），出口那個點記到 <strong>1045 筆 SQL</strong>，入口 <strong>2090 次命中</strong>，去重之後是 <strong>12 種</strong>不同的語句形狀。</p>
+                    <figure class="article-chart">
+                        <p class="chart-title">入口 vs 出口：同一個收斂點的兩個點位</p>
+                        <p class="chart-subtitle">觀測窗口 2026-07-24 03:43:12Z → 03:51:18Z（約 8 分鐘 / 163 輪）</p>
+                        <div class="chart-rows">
+                            <div class="chart-row">
+                                <div class="chart-row-label">入口命中<br><code>callbacks.go:82</code></div>
+                                <div class="chart-bars">
+                                    <div class="chart-bar-line" title="入口命中 2090 次">
+                                        <div class="chart-bar" style="width: 100%"></div>
+                                        <span class="chart-value">2090 次</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="chart-row">
+                                <div class="chart-row-label">出口 SQL<br><code>callbacks.go:140</code></div>
+                                <div class="chart-bars">
+                                    <div class="chart-bar-line" title="出口記到 1045 筆 SQL">
+                                        <div class="chart-bar" style="width: 50%"></div>
+                                        <span class="chart-value">1045 筆</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <p class="chart-note">進去的次數剛好是吐出 SQL 的兩倍——GORM 把單筆寫入包了一層隱式交易，那些交易控制的進出不會在出口生出一條被記錄的 SQL。這個比例本身就是一條可以長期盯的健康線。</p>
+                    </figure>
                     <p>先看健康的那半邊——穩態下，一輪 CRUD 的完整素顏（逐字抄自面板）：</p>
                     <div class="article-table-wrap">
                         <table>
@@ -127,9 +152,12 @@ UPDATE "users" SET "age"=$1,"updated_at"=$2 WHERE "users"."deleted_at" IS NULL A
 UPDATE "users" SET "age"=$1,"updated_at"=$2 WHERE "users"."deleted_at" IS NULL</code></pre>
                     <p><strong>同一行 <code>db.Model(&amp;user).Update(...)</code>，生出了兩種 SQL。</strong> 差別是後者的 <code>AND "id" = $3</code> 不見了——它不再是更新「那一個 user」，而是「所有還沒被軟刪除的 user」。這就是 ORM 最經典的 footgun：<strong>主鍵沒填好，更新退化成全表更新的形狀</strong>。</p>
                     <p>為什麼會這樣？把面板上四條 <code>rows=0</code> 的次數排在一起看——全是 <strong>83</strong>——因果鏈自己就浮出來了：</p>
-                    <blockquote>
-                        <p>Create user 失敗（<code>user.ID</code> 還是 0）→ Create order 帶著 <code>user_id=0</code> 也失敗 → <code>First</code> 拿 <code>id=0</code> 去查、找不到 → <code>Update</code> 因為 <code>user.ID</code> 是 0、GORM 拼不出 <code>id = $3</code>，就退化成只剩軟刪除範圍的 WHERE。</p>
-                    </blockquote>
+                    <ol class="causal-chain">
+                        <li><span>Create user 失敗，<code>user.ID</code> 還是 0</span><span class="count">rows=0 · 83 次</span></li>
+                        <li><span>Create order 帶著 <code>user_id=0</code>，被外鍵擋下</span><span class="count">rows=0 · 83 次</span></li>
+                        <li><span><code>First</code> 拿 <code>id=0</code> 去查，什麼都沒找到</span><span class="count">rows=0 · 83 次</span></li>
+                        <li><span><code>Update</code> 因為 <code>user.ID</code> 是 0、GORM 拼不出 <code>id = $3</code>，退化成只剩軟刪除範圍的 WHERE</span><span class="count">rows=0 · 83 次</span></li>
+                    </ol>
                     <p><strong>但這條退化的 UPDATE，最後並沒有真的跑到全表。</strong> 我去對了一下服務自己的 log：它 <code>rows=0</code>，是因為 <strong>GORM 內建的防護把它攔下了</strong>——<code>WHERE conditions required</code>（<code>ErrMissingWhereClause</code>），耗時 <strong>0.18 毫秒、沒有任何一次 DB round trip</strong>。也就是說，觀測點讓我同時看到了兩件事：<strong>GORM 正在拼一條把主鍵弄丟的全表 UPDATE，以及 GORM 自己的安全網當場接住了它。</strong> 危險和保命，一行之內都攤在面板上。</p>
                     <p>這很重要——如果哪天有人關掉了這層防護（<code>db.Session(&amp;gorm.Session{AllowGlobalUpdate: true})</code>），這條 <code>rows=0</code> 就會變成 <code>rows=幾千</code>。而你在面板上，會<strong>立刻</strong>看到那個數字跳起來。</p>
 
