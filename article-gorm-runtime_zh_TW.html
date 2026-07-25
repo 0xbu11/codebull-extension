@@ -162,6 +162,13 @@ UPDATE "users" SET "age"=$1,"updated_at"=$2 WHERE "users"."deleted_at" IS NULL</
                     <p><strong>但這條退化的 UPDATE，最後並沒有真的跑到全表。</strong> 我去對了一下服務自己的 log：它 <code>rows=0</code>，是因為 <strong>GORM 內建的防護把它攔下了</strong>——<code>WHERE conditions required</code>（<code>ErrMissingWhereClause</code>），耗時 <strong>0.18 毫秒、沒有任何一次 DB round trip</strong>。也就是說，觀測點讓我同時看到了兩件事：<strong>GORM 正在拼一條把主鍵弄丟的全表 UPDATE，以及 GORM 自己的安全網當場接住了它。</strong> 危險和保命，一行之內都攤在面板上。</p>
                     <p>這很重要——如果哪天有人關掉了這層防護（<code>db.Session(&amp;gorm.Session{AllowGlobalUpdate: true})</code>），這條 <code>rows=0</code> 就會變成 <code>rows=幾千</code>。而你在面板上，會<strong>立刻</strong>看到那個數字跳起來。</p>
 
+                    <figure class="article-figure figure-wide">
+                        <a href="https://codebull-dashboard-service.web.app/gorm-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">
+                            <img src="asset/gorm-runtime-dashboard-logs.webp" alt="CodeBull 遠端面板 Logs 分頁：1,045 條逐字 GORM SQL 與各自的 rows 值" loading="lazy">
+                        </a>
+                        <figcaption>這一輪遠端面板的 <strong>Logs</strong> 分頁：1,045 筆出口事件，每一筆都是逐字的 SQL 加上它自己的 <code>rows</code> 值，附時間戳與 <code>callbacks.go:140</code>。文中引用的每一條語句都能在這裡對帳。 <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/gorm-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">打開線上面板 →</a></span></figcaption>
+                    </figure>
+
                     <h2>一個對照：內建的 log 為什麼還不夠</h2>
                     <p>我順手比對了服務自己的 GORM logger（預設 Warn level）印了什麼。公平講，它其實<strong>沒有瞎</strong>——失敗那段，四種錯誤它一種都沒漏：duplicate key、foreign key、record not found、還有那條 <code>WHERE conditions required</code>，全喊了。</p>
                     <p>那觀測點多給了什麼？三件事：</p>
@@ -192,6 +199,13 @@ UPDATE "users" SET "age"=$1,"updated_at"=$2 WHERE "users"."deleted_at" IS NULL</
                         <li>那條退化 UPDATE 的 <code>rows=0</code> 來自 GORM 的 <code>ErrMissingWhereClause</code> 防護（0.18ms、無 DB round trip），不是打到 0 列</li>
                         <li>這一輪只掛 Metric + Log、沒有量延遲，所以全篇不寫任何毫秒數——沒量到的就不寫</li>
                     </ul>
+
+                    <figure class="article-figure figure-wide">
+                        <a href="https://codebull-dashboard-service.web.app/gorm-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">
+                            <img src="asset/gorm-runtime-dashboard-metrics.webp" alt="CodeBull 遠端面板 Metrics 分頁：gorm.(*processor).Execute 的入口命中數爬到 2,090" loading="lazy">
+                        </a>
+                        <figcaption><strong>Metrics</strong> 分頁：<code>callbacks.go:82</code> 的入口計數在八分鐘窗口裡一路爬到 2,090 次——就是拿來跟 1,045 筆出口事件對帳的那個數字。 <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/gorm-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">打開線上面板 →</a></span></figcaption>
+                    </figure>
 
                     <div class="article-callout">
                         <p>📊 <strong>本文的遠端觀測面板</strong>（實測數據，可線上檢視）：<a href="https://codebull-dashboard-service.web.app/gorm-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">gorm-observing-runtime-20260724</a></p>

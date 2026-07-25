@@ -162,6 +162,13 @@ UPDATE "users" SET "age"=$1,"updated_at"=$2 WHERE "users"."deleted_at" IS NULL</
                     <p><strong>But that degenerate UPDATE never actually hit the whole table.</strong> I cross-checked the service's own log: it returned <code>rows=0</code> because <strong>GORM's built-in guard blocked it</strong> — <code>WHERE conditions required</code> (<code>ErrMissingWhereClause</code>) — taking <strong>0.18 ms with zero DB round trips</strong>. In other words, the observation points let me see two things at once: <strong>GORM was building a full-table UPDATE that had lost its primary key, and GORM's own safety net caught it on the spot.</strong> The danger and the save, both laid out on the dashboard within one line.</p>
                     <p>That matters — because if someone ever disables that guard (<code>db.Session(&amp;gorm.Session{AllowGlobalUpdate: true})</code>), this <code>rows=0</code> becomes <code>rows=thousands</code>. And on the dashboard, you'd see that number jump <strong>immediately</strong>.</p>
 
+                    <figure class="article-figure figure-wide">
+                        <a href="https://codebull-dashboard-service.web.app/gorm-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">
+                            <img src="asset/gorm-runtime-dashboard-logs.webp" alt="CodeBull remote dashboard, Logs tab: 1,045 verbatim GORM SQL statements with their rows values" loading="lazy">
+                        </a>
+                        <figcaption>The <strong>Logs</strong> tab of the remote dashboard for this run: 1,045 exit events, each one a verbatim SQL statement carrying its <code>rows</code> value, timestamped and tagged with <code>callbacks.go:140</code>. Every statement quoted in this piece is reconcilable there. <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/gorm-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">Open the live dashboard →</a></span></figcaption>
+                    </figure>
+
                     <h2>A comparison: why the built-in log still isn't enough</h2>
                     <p>I also checked what the service's own GORM logger (default Warn level) printed. To be fair, it <strong>wasn't blind</strong> — during the failing phase it missed none of the four errors: duplicate key, foreign key, record not found, and that <code>WHERE conditions required</code>. It called them all out.</p>
                     <p>So what did the observation points add? Three things:</p>
@@ -192,6 +199,13 @@ UPDATE "users" SET "age"=$1,"updated_at"=$2 WHERE "users"."deleted_at" IS NULL</
                         <li>The degenerate UPDATE's <code>rows=0</code> comes from GORM's <code>ErrMissingWhereClause</code> guard (0.18 ms, no DB round trip) — not from matching 0 rows</li>
                         <li>This round attached Metric + Log only, with no latency measurement, so no millisecond figures appear anywhere in this piece — what wasn't measured doesn't get written</li>
                     </ul>
+
+                    <figure class="article-figure figure-wide">
+                        <a href="https://codebull-dashboard-service.web.app/gorm-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">
+                            <img src="asset/gorm-runtime-dashboard-metrics.webp" alt="CodeBull remote dashboard, Metrics tab: entry hit counter for gorm.(*processor).Execute climbing to 2,090" loading="lazy">
+                        </a>
+                        <figcaption>The <strong>Metrics</strong> tab: the entry counter on <code>callbacks.go:82</code> climbing across the eight-minute window to 2,090 hits — the number the 1,045 exit events get reconciled against. <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/gorm-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">Open the live dashboard →</a></span></figcaption>
+                    </figure>
 
                     <div class="article-callout">
                         <p>📊 <strong>Remote dashboard for this article</strong> (real measured data, viewable online): <a href="https://codebull-dashboard-service.web.app/gorm-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">gorm-observing-runtime-20260724</a></p>

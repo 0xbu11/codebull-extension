@@ -143,6 +143,13 @@
                     <p><code>t.String()</code> 到底序列化成什麼，我平常從來不會去想——反正「存個時間」嘛。但面板逐字攤開來，我才看到我存的不是一個乾淨的時間戳，而是<strong>一整串 Go 內部表示法</strong>：牆上時鐘 + 時區 + 單調時鐘讀數。這東西你之後要拿來比較、排序、或跨機器解析，全都會出問題（單調時鐘只在這個 process 裡有意義）。</p>
                     <p>這不是 bug、程式也沒報錯——它就只是<strong>一個你以為你知道、其實沒真的看過</strong>的東西。觀測的價值就在這：它不等你出事，它讓你<strong>在存進去的那一刻就看見</strong>。</p>
 
+                    <figure class="article-figure figure-wide">
+                        <a href="https://codebull-dashboard-service.web.app/redis-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">
+                            <img src="asset/redis-tokens-dashboard-logs.webp" alt="CodeBull 遠端面板 Logs 分頁：Redis 線上 token，含一個帶著 monotonic 讀數的 time.Time" loading="lazy">
+                        </a>
+                        <figcaption><strong>Logs</strong> 分頁：在 <code>proto.(*Writer).string</code> 攔到的 2,822 筆 token 事件，一列就是一個真的送上線的字串。第 2776 列就是那個發現——一個經由 <code>SET</code> 寫出去的 <code>time.Time</code>，連 <code>m=+398.083350707</code> 這段 monotonic 讀數都一起上了線。 <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/redis-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">打開線上面板 →</a></span></figcaption>
+                    </figure>
+
                     <h2>一個誠實話：面板對「型別邊界」不裝</h2>
                     <p>看 ZADD 那條，面板抓到的是：</p>
                     <pre class="code-block"><code>zadd · leaderboard · CodeBull</code></pre>
@@ -195,6 +202,13 @@
                         <li>型別邊界：ZADD 的 float 分數走數字編碼器（<code>w.int</code>/<code>w.float</code>），不經過字串出口，所以本輪<strong>不在字串觀測點的視野內</strong>——誠實揭露，不杜撰</li>
                         <li>這一輪只掛 Metric + Log、沒有量延遲（latency 掛在 client 的 per-call 熱路徑會弄掛觀測橋接），所以全篇不寫任何毫秒數</li>
                     </ul>
+
+                    <figure class="article-figure figure-wide">
+                        <a href="https://codebull-dashboard-service.web.app/redis-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">
+                            <img src="asset/redis-tokens-dashboard-metrics.webp" alt="CodeBull 遠端面板 Metrics 分頁：redis.(*Client).Process 的入口命中計數" loading="lazy">
+                        </a>
+                        <figcaption><strong>Metrics</strong> 分頁：同一段五分鐘裡 <code>redis.(*Client).Process</code> 的入口計數——上面那 2,822 個線上 token 就是拿這個命令層數字來對帳的。 <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/redis-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">打開線上面板 →</a></span></figcaption>
+                    </figure>
 
                     <div class="article-callout">
                         <p>📊 <strong>本文的遠端觀測面板</strong>（實測數據，可線上檢視）：<a href="https://codebull-dashboard-service.web.app/redis-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">redis-observing-runtime-20260724</a></p>

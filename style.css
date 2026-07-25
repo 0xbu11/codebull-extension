@@ -1297,6 +1297,40 @@ article.article-body {
   text-align: center;
 }
 
+/* Dashboard captures carry a lot of small text, so let them break out of the
+   780px reading column on wide screens. */
+.article-figure.figure-wide {
+  width: min(1120px, calc(100vw - 3rem));
+  margin-left: 50%;
+  transform: translateX(-50%);
+}
+
+/* The capture links to the live dashboard it was taken from. */
+.article-figure a {
+  display: block;
+  border-radius: 12px;
+}
+
+.article-figure a img {
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.article-figure a:hover img {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 1px var(--color-accent);
+}
+
+.article-figure figcaption .figure-open {
+  display: block;
+  margin-top: 0.35rem;
+  white-space: nowrap;
+}
+
+.article-figure figcaption .figure-open a {
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
 /* ── Article figures: inline data charts ───────────────────────────────────
    Bars are plain CSS so they follow the theme without a script. Every bar is
    directly labelled with its value; the numbers also live in the adjacent

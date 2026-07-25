@@ -138,6 +138,13 @@
                         </table>
                     </div>
 
+                    <figure class="article-figure figure-wide">
+                        <a href="https://codebull-dashboard-service.web.app/gorm-demo-mcp-article-20260723-latency/" target="_blank" rel="noopener noreferrer">
+                            <img src="asset/gorm-three-signals-dashboard-metrics.webp" alt="CodeBull 遠端面板 Metrics 分頁：latency_ms 與同一次呼叫抓下來的樣板變數並列" loading="lazy">
+                        </a>
+                        <figcaption>這一輪的 <strong>Metrics</strong> 分頁：收斂點上的 <code>latency_ms</code>（左上，尖峰衝過 100 ms）跟同一次呼叫抓下來的變數並排放著——全部出自同一個五分鐘窗口的 102,017 筆樣本。 <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/gorm-demo-mcp-article-20260723-latency/" target="_blank" rel="noopener noreferrer">打開線上面板 →</a></span></figcaption>
+                    </figure>
+
                     <h2>面板讓我看到的四件事</h2>
 
                     <h3>1. 尾巴是中位數的 10 倍（p50 5.7ms → p95 60ms）</h3>
@@ -182,6 +189,13 @@
                         </li>
                         <li>遠端看板上傳：透過 MCP 工具 <code>codebull_generate_dashboard</code>（帶自訂 <code>dashboardId</code>）上傳本輪 metric/log 歷史（自訂可讀 id、每篇獨立；服務滾動保留 72 小時，帶同一 id 重新呼叫即覆蓋更新）。</li>
                     </ul>
+
+                    <figure class="article-figure figure-wide">
+                        <a href="https://codebull-dashboard-service.web.app/gorm-demo-mcp-article-20260723-latency/" target="_blank" rel="noopener noreferrer">
+                            <img src="asset/gorm-three-signals-dashboard-logs.webp" alt="CodeBull 遠端面板 Logs 分頁：逐字 GORM 語句，含 rows 與 stmt.SQL.buf 長度" loading="lazy">
+                        </a>
+                        <figcaption><strong>Logs</strong> 分頁：同一個收斂點換成逐字 SQL，每一列都帶著自己的 <code>rows</code> 值與 <code>stmt.SQL.buf</code> 原始長度。上面那張八條語句的肖像，就是從這個畫面逐字抄下來的。 <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/gorm-demo-mcp-article-20260723-latency/" target="_blank" rel="noopener noreferrer">打開線上面板 →</a></span></figcaption>
+                    </figure>
 
                     <div class="article-callout">
                         <p>📊 <strong>本文的遠端觀測面板</strong>（實證數據，可線上檢視）：<a href="https://codebull-dashboard-service.web.app/gorm-demo-mcp-article-20260723-latency/" target="_blank" rel="noopener noreferrer">gorm-demo-mcp-article-20260723-latency</a></p>

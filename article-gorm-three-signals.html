@@ -138,6 +138,13 @@
                         </table>
                     </div>
 
+                    <figure class="article-figure figure-wide">
+                        <a href="https://codebull-dashboard-service.web.app/gorm-demo-mcp-article-20260723-latency/" target="_blank" rel="noopener noreferrer">
+                            <img src="asset/gorm-three-signals-dashboard-metrics.webp" alt="CodeBull remote dashboard, Metrics tab: latency_ms next to the template variables from the same call" loading="lazy">
+                        </a>
+                        <figcaption>The <strong>Metrics</strong> tab for this run: <code>latency_ms</code> on the convergence point (top left, spiking past 100 ms) sitting next to the variables pulled from the same call — 102,017 samples out of one five-minute window. <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/gorm-demo-mcp-article-20260723-latency/" target="_blank" rel="noopener noreferrer">Open the live dashboard →</a></span></figcaption>
+                    </figure>
+
                     <h2>Four things the dashboard showed me</h2>
 
                     <h3>1. The tail is 10× the median (p50 5.7 ms → p95 60 ms)</h3>
@@ -182,6 +189,13 @@
                         </li>
                         <li>Dashboard upload: this round's metric/log history was uploaded via the MCP tool <code>codebull_generate_dashboard</code> with a custom <code>dashboardId</code> (readable, per-article id; the service keeps a rolling 72-hour window, and calling again with the same id overwrites in place).</li>
                     </ul>
+
+                    <figure class="article-figure figure-wide">
+                        <a href="https://codebull-dashboard-service.web.app/gorm-demo-mcp-article-20260723-latency/" target="_blank" rel="noopener noreferrer">
+                            <img src="asset/gorm-three-signals-dashboard-logs.webp" alt="CodeBull remote dashboard, Logs tab: verbatim GORM statements with rows and stmt.SQL.buf lengths" loading="lazy">
+                        </a>
+                        <figcaption>The <strong>Logs</strong> tab: the same convergence point rendered as verbatim SQL, each line carrying its <code>rows</code> value and the raw <code>stmt.SQL.buf</code> lengths. The eight-statement portrait above was transcribed from exactly this view. <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/gorm-demo-mcp-article-20260723-latency/" target="_blank" rel="noopener noreferrer">Open the live dashboard →</a></span></figcaption>
+                    </figure>
 
                     <div class="article-callout">
                         <p>📊 <strong>Remote dashboard for this article</strong> (real measured data, viewable online): <a href="https://codebull-dashboard-service.web.app/gorm-demo-mcp-article-20260723-latency/" target="_blank" rel="noopener noreferrer">gorm-demo-mcp-article-20260723-latency</a></p>

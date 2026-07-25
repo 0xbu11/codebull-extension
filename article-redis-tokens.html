@@ -143,6 +143,13 @@
                     <p>What <code>t.String()</code> actually serializes into is something I never think about — it's just "storing a timestamp," right? But laid out verbatim on the dashboard, I could see that what I stored isn't a clean timestamp at all, but <strong>a whole string of Go's internal representation</strong>: wall clock + timezone + monotonic clock reading. Try to compare, sort, or parse that across machines later and all of it breaks (the monotonic reading only means anything inside this process).</p>
                     <p>This isn't a bug, and nothing errored — it's just <strong>something you thought you knew but had never actually looked at</strong>. That's the value of observability: it doesn't wait for an incident, it lets you <strong>see it the moment it gets stored</strong>.</p>
 
+                    <figure class="article-figure figure-wide">
+                        <a href="https://codebull-dashboard-service.web.app/redis-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">
+                            <img src="asset/redis-tokens-dashboard-logs.webp" alt="CodeBull remote dashboard, Logs tab: Redis wire tokens including a time.Time carrying a monotonic reading" loading="lazy">
+                        </a>
+                        <figcaption>The <strong>Logs</strong> tab: 2,822 token events captured at <code>proto.(*Writer).string</code>, one row per string that actually went on the wire. Line 2776 is the finding — a <code>time.Time</code> written through <code>SET</code>, monotonic reading <code>m=+398.083350707</code> and all. <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/redis-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">Open the live dashboard →</a></span></figcaption>
+                    </figure>
+
                     <h2>An honest caveat: the dashboard doesn't pretend about type boundaries</h2>
                     <p>Look at the ZADD row. What the dashboard captured is:</p>
                     <pre class="code-block"><code>zadd · leaderboard · CodeBull</code></pre>
@@ -195,6 +202,13 @@
                         <li>Type boundary: ZADD's float score goes through the numeric encoder (<code>w.int</code>/<code>w.float</code>), not the string exit, so it is <strong>outside the string observation point's field of view</strong> this round — disclosed honestly, not fabricated</li>
                         <li>This round attached Metric + Log only, with no latency measurement (attaching latency to the client's per-call hot path breaks the observation bridge), so no millisecond figures appear anywhere in this piece</li>
                     </ul>
+
+                    <figure class="article-figure figure-wide">
+                        <a href="https://codebull-dashboard-service.web.app/redis-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">
+                            <img src="asset/redis-tokens-dashboard-metrics.webp" alt="CodeBull remote dashboard, Metrics tab: entry hit counter for redis.(*Client).Process" loading="lazy">
+                        </a>
+                        <figcaption>The <strong>Metrics</strong> tab: the entry counter on <code>redis.(*Client).Process</code> over the same five minutes — the command-level number that the 2,822 wire tokens above are reconciled against. <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/redis-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">Open the live dashboard →</a></span></figcaption>
+                    </figure>
 
                     <div class="article-callout">
                         <p>📊 <strong>Remote dashboard for this article</strong> (real measured data, viewable online): <a href="https://codebull-dashboard-service.web.app/redis-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">redis-observing-runtime-20260724</a></p>
