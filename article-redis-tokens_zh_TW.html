@@ -6,6 +6,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CodeBull - 我盯著 Redis client 送上線的每一個 token</title>
     <meta name="description" content="不改一行 code，在執行中的 go-redis client 內部掛兩個觀測點，看見一行 HSet 其實是六個依序上線的 token，以及一個不該被存進 Redis 的時間字串。">
+    <meta property="og:type" content="article">
+    <meta property="og:site_name" content="CodeBull">
+    <meta property="og:locale" content="zh_TW">
+    <meta property="og:title" content="我盯著 Redis client 送上線的每一個 token，然後發現我存了一串不該存的東西">
+    <meta property="og:description" content="一行 HSet 在線上是六個有序 token；而一個直接用 SET 存進去的 time.Time，把 Go 的 monotonic clock 讀數一起寫進了 Redis。">
+    <meta property="og:url" content="https://0xbu11.github.io/codebull-extension/article-redis-tokens_zh_TW.html">
+    <meta property="og:image" content="https://0xbu11.github.io/codebull-extension/asset/og-redis-tokens-zh.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="627">
+    <meta property="og:image:alt" content="我盯著 Redis client 送上線的每一個 token，然後發現我存了一串不該存的東西">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="我盯著 Redis client 送上線的每一個 token，然後發現我存了一串不該存的東西">
+    <meta name="twitter:description" content="一行 HSet 在線上是六個有序 token；而一個直接用 SET 存進去的 time.Time，把 Go 的 monotonic clock 讀數一起寫進了 Redis。">
+    <meta name="twitter:image" content="https://0xbu11.github.io/codebull-extension/asset/og-redis-tokens-zh.png">
     <link rel="stylesheet" href="style.css?v=16">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

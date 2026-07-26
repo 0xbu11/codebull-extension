@@ -6,6 +6,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CodeBull - 我在 MySQL driver 的門口站了八分鐘</title>
     <meta name="description" content="不改一行 code，在執行中的 Go 服務的 MySQL driver 掛兩個觀測點，然後看到一次「改個數量」寫了三張表。">
+    <meta property="og:type" content="article">
+    <meta property="og:site_name" content="CodeBull">
+    <meta property="og:locale" content="zh_TW">
+    <meta property="og:title" content="我在 MySQL driver 的門口站了八分鐘，然後看到一次「改個數量」寫了三張表">
+    <meta property="og:description" content="驅動門口兩個點、應用層三個計數：一次列表查詢是 3 條 SQL 而不是 N+1，一次 PUT 在底下展開成六條，而一個沒人操作的分頁每秒要走 8 條查詢。">
+    <meta property="og:url" content="https://0xbu11.github.io/codebull-extension/article-inventory-fanout_zh_TW.html">
+    <meta property="og:image" content="https://0xbu11.github.io/codebull-extension/asset/og-inventory-fanout-zh.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="627">
+    <meta property="og:image:alt" content="我在 MySQL driver 的門口站了八分鐘，然後看到一次「改個數量」寫了三張表">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="我在 MySQL driver 的門口站了八分鐘，然後看到一次「改個數量」寫了三張表">
+    <meta name="twitter:description" content="驅動門口兩個點、應用層三個計數：一次列表查詢是 3 條 SQL 而不是 N+1，一次 PUT 在底下展開成六條，而一個沒人操作的分頁每秒要走 8 條查詢。">
+    <meta name="twitter:image" content="https://0xbu11.github.io/codebull-extension/asset/og-inventory-fanout-zh.png">
     <link rel="stylesheet" href="style.css?v=17">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

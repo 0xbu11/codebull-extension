@@ -6,6 +6,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CodeBull - I Watched a Running GORM for Eight Minutes</title>
     <meta name="description" content="No code changes: two observation points inside a running Go service's GORM, and eight minutes later an UPDATE that had lost its primary key.">
+    <meta property="og:type" content="article">
+    <meta property="og:site_name" content="CodeBull">
+    <meta property="og:locale" content="en_US">
+    <meta property="og:title" content="I watched a running GORM for eight minutes, and saw it lose the primary key">
+    <meta property="og:description" content="Two observation points inside a running service's GORM, no code changes: soft deletes rewriting DELETE into UPDATE, one Preload becoming two SELECTs, and an UPDATE degenerating into a full-table shape — caught live.">
+    <meta property="og:url" content="https://0xbu11.github.io/codebull-extension/article-gorm-runtime.html">
+    <meta property="og:image" content="https://0xbu11.github.io/codebull-extension/asset/og-gorm-runtime.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="627">
+    <meta property="og:image:alt" content="I watched a running GORM for eight minutes, and saw it lose the primary key">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="I watched a running GORM for eight minutes, and saw it lose the primary key">
+    <meta name="twitter:description" content="Two observation points inside a running service's GORM, no code changes: soft deletes rewriting DELETE into UPDATE, one Preload becoming two SELECTs, and an UPDATE degenerating into a full-table shape — caught live.">
+    <meta name="twitter:image" content="https://0xbu11.github.io/codebull-extension/asset/og-gorm-runtime.png">
     <link rel="stylesheet" href="style.css?v=16">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
