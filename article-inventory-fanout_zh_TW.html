@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeBull - 我在 MySQL driver 的門口站了八分鐘</title>
+    <meta name="description" content="不改一行 code，在執行中的 Go 服務的 MySQL driver 掛兩個觀測點，然後看到一次「改個數量」寫了三張表。">
+    <link rel="stylesheet" href="style.css?v=17">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&display=swap" rel="stylesheet">
+    <script src="theme.js"></script>
+</head>
+
+<body>
+    <div class="announcement-banner">
+        目前支援的 Go 版本：V1.22.0 與 V1.26.0。
+    </div>
+    <header>
+        <div class="container">
+            <div class="logo">
+                <a href="index_zh_TW.html">Code<span>Bull</span></a>
+            </div>
+            <div class="header-logo-center">
+                <a href="https://marketplace.visualstudio.com/items?itemName=0xbu11.codebull" target="_blank" rel="noopener noreferrer" aria-label="Open CodeBull on VS Code Marketplace">
+                    <img src="asset/codebull-logo.png" alt="CodeBull Logo">
+                </a>
+            </div>
+            <nav>
+                <ul>
+                    <li><a href="index_zh_TW.html#features">功能</a></li>
+                    <li><a href="index_zh_TW.html#articles">實測筆記</a></li>
+                    <li><a href="tutorial_zh_TW.html">教學</a></li>
+                    <li><a href="docs_zh_TW.html">文件</a></li>
+                    <li><a href="platform_zh_TW.html">支援平台</a></li>
+                    <li><a href="https://github.com/0xbu11/codebull" target="_blank">GitHub</a></li>
+                    <li><a href="article-inventory-fanout.html" class="lang-switch">English</a></li>
+                    <li><button id="theme-toggle" class="theme-toggle" aria-label="切換主題">☀️</button></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <section class="article-header">
+            <div class="container">
+                <a class="article-back" href="index_zh_TW.html#articles">← 回文章列表</a>
+                <span class="article-card-source">Gin + GORM + MySQL · 實測筆記</span>
+                <h1>我在 MySQL driver 的門口站了八分鐘，然後看到一次「改個數量」寫了三張表</h1>
+                <div class="article-meta">
+                    <span>2026-07-26</span>
+                    <span>8 分鐘窗口 / 4,341 條語句</span>
+                    <span>inventory-example + MySQL 8.0</span>
+                </div>
+                <p class="article-lede">前幾天我又做了一件平常不太會做的事：不改任何一行 code，對一個<strong>正在跑的</strong>庫存管理服務（Gin + GORM + MySQL）掛了幾個觀測點，然後坐著看八分鐘。</p>
+            </div>
+        </section>
+
+        <section class="article-section">
+            <div class="container">
+                <article class="article-body">
+                    <p>八分鐘裡，我看到一件到現在還讓我有點在意的事——<strong>前端只是改了某個商品的數量，資料庫這邊卻收到六條語句，其中兩條是往 <code>categories</code> 和 <code>suppliers</code> 這兩張「我根本沒打算動」的表寫 INSERT。</strong></p>
+                    <p>這篇聊的不是工具，是「站在對的位置，把一個 CRUD 服務底下真正發生的事看完」這件事本身。</p>
+
+                    <h2>先決定要站在哪裡看</h2>
+                    <p>這個服務是最典型的三層：Gin handler → service → repository → GORM → MySQL。你寫的是 <code>db.Save(product)</code>，真正送到 MySQL 的是什麼，中間隔了兩層。</p>
+                    <p>我第一次選的位置是 GORM 內部的收斂點 <code>gorm.(*processor).Execute</code>——上次觀測另一個服務時就是站在那裡。模板照抄：<code>SQL={string(stmt.SQL.buf)}</code>。</p>
+                    <p><strong>結果面板上抓到的是這個：</strong></p>
+                    <pre class="code-block"><code>SQL=len=67 | rows=6
+SQL=len=63 | rows=5</code></pre>
+                    <p><code>stmt.SQL</code> 是個 <code>strings.Builder</code>，它的內部 buffer 沒被展開成字串，我只拿到長度。這次的 GORM 版本、這次的建置條件下，這條路走不通。</p>
+                    <p>所以我往下退了一層，退到<strong>驅動的門口</strong>：</p>
+                    <pre class="code-block"><code>func (mc *mysqlConn) QueryContext(
+        ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error)
+
+func (mc *mysqlConn) ExecContext(
+        ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error)</code></pre>
+                    <p><code>query</code> 在這裡是一個<strong>實實在在的 <code>string</code> 參數</strong>——它就是即將送上線的那條 SQL。讀走 <code>QueryContext</code>、寫走 <code>ExecContext</code>，兩個點就把整個服務對資料庫做的每一件事切成乾淨的兩半。</p>
+                    <p>於是這一輪的觀測設定是這樣：</p>
+                    <ul>
+                        <li><strong>讀</strong>（<code>connection.go:510</code>）：<code>Q={query}</code></li>
+                        <li><strong>寫</strong>（<code>connection.go:529</code>）：<code>Q={query}</code></li>
+                        <li>另外在應用自己那一層放三個純計數：<code>ProductRepository.FindAll</code>、<code>ProductRepository.Create</code>、<code>StatRepository.GetStats</code>——用來跟底下的 SQL <strong>對帳</strong>。</li>
+                    </ul>
+                    <p>上層數「一次 API 呼叫」，底層數「幾條 SQL」。這兩個數字之間的比例，等一下就是整篇的主角。</p>
+
+                    <h2>前四分鐘：沒有人在看的服務</h2>
+                    <p>第一段窗口（2026-07-25 16:19:31Z → 16:23:31Z）我什麼都沒做，只有服務內建的 demo 模擬器每兩秒動一次：抓一次商品清單，然後隨機做新增／修改／刪除。四分鐘，底下跑了 <strong>1,203 條 SQL</strong>（讀 800、寫 403）。</p>
+                    <p>去重之後長這樣（逐字抄自面板）：</p>
+                    <div class="article-table-wrap">
+                        <table>
+                            <thead>
+                                <tr><th>我寫的 Go</th><th>面板上真正送到 MySQL 的</th><th>次數</th></tr>
+                            </thead>
+                            <tbody>
+                                <tr><td><code>repo.FindAll("")</code> 的第一趟</td><td><code>SELECT * FROM `products`</code></td><td>121</td></tr>
+                                <tr><td>（同一行 <code>Preload("Category")</code>）</td><td><code>SELECT * FROM `categories` WHERE `categories`.`id` IN (?,?,?,?,?,?)</code></td><td>121</td></tr>
+                                <tr><td>（同一行 <code>Preload("Supplier")</code>）</td><td><code>SELECT * FROM `suppliers` WHERE `suppliers`.`id` IN (?,?,?,?,?)</code></td><td>121</td></tr>
+                                <tr><td><code>db.Create(product)</code></td><td><code>INSERT INTO `products` (`name`,…,`created_at`,`updated_at`) VALUES (?,?,?,?,?,?,?,?)</code></td><td>114</td></tr>
+                                <tr><td><code>db.Delete(&amp;Product{}, id)</code></td><td><code>DELETE FROM `products` WHERE `products`.`id` = ?</code></td><td>91</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <p>第一件對得上的事：<strong><code>FindAll</code> 那個純計數，四分鐘剛好也是 121 次</strong>——而面板上 <code>SELECT * FROM `products`</code> 也是 121。上層一次呼叫，底層一條主查詢，一分不差。同樣的，<code>Create</code> 計數 114 對上 <code>INSERT INTO products</code> 114。<strong>兩層之間對得起來，後面所有推論才站得住。</strong></p>
+                    <p>第二件事我本來以為會看到、結果沒看到：<strong>N+1</strong>。一次 <code>Preload</code> 兩張關聯表，我等著看它對每一列商品各發一條 SELECT，結果面板上是兩條 <code>IN (?,?,…)</code> 的批次查詢。GORM 幫你收好了——所以<strong>一次列表查詢是 1 + 2 = 3 條 SQL，不是 1 + N</strong>。這是「我知道，但沒真的看過」的第一項。</p>
+                    <p>第三件事跟上一個服務相反：<strong>這裡的 <code>Delete</code> 真的是 <code>DELETE</code></strong>。上次那個服務因為 model 內嵌了 <code>gorm.Model</code>，<code>db.Delete()</code> 底下跑的其實是軟刪除的 <code>UPDATE</code>；這個 <code>Product</code> 沒有 <code>DeletedAt</code> 欄位，所以刪除就是刪除，查詢也不會被偷加 <code>deleted_at IS NULL</code>。<strong>同一個 ORM、同一行 API，形狀完全取決於你的 model 長什麼樣</strong>——而這件事只有把 SQL 攤開才看得到。</p>
+                    <p>到這裡都還算「有趣但不驚訝」。真正讓我坐直的，是表格底下那一段——六條語句，次數整整齊齊都是 <strong>66</strong>。</p>
+
+                    <h2>六條一模一樣的 66</h2>
+                    <p>同一段四分鐘裡，面板上還有這幾條：</p>
+                    <div class="article-table-wrap">
+                        <table>
+                            <thead>
+                                <tr><th>SQL</th><th>次數</th></tr>
+                            </thead>
+                            <tbody>
+                                <tr><td><code>SELECT * FROM `products` WHERE `products`.`id` = ? ORDER BY `products`.`id` LIMIT ?</code></td><td>67</td></tr>
+                                <tr><td><code>SELECT * FROM `categories` WHERE `categories`.`id` = ?</code></td><td>66</td></tr>
+                                <tr><td><code>SELECT * FROM `suppliers` WHERE `suppliers`.`id` = ?</code></td><td>66</td></tr>
+                                <tr><td><code>INSERT INTO `categories` (`name`,`created_at`,`updated_at`,`id`) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE `id`=`id`</code></td><td><strong>66</strong></td></tr>
+                                <tr><td><code>INSERT INTO `suppliers` (`name`,`contact`,`created_at`,`updated_at`,`id`) VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE `id`=`id`</code></td><td><strong>66</strong></td></tr>
+                                <tr><td><code>UPDATE `products` SET `name`=?,`description`=?,`price`=?,`quantity`=?,`category_id`=?,`supplier_id`=?,`created_at`=?,`updated_at`=? WHERE `id` = ?</code></td><td>66</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <p>六條不同的語句，同一個次數。這種整齊不會是巧合——<strong>它們是同一條因果鏈上的六個節點</strong>。而且在面板的 Logs 分頁裡，它們就是連號的六列（#4293 到 #4298），照著順序排在一起。</p>
+
+                    <figure class="article-figure figure-wide">
+                        <a href="https://codebull-dashboard-service.web.app/inventory-observing-runtime-20260726/" target="_blank" rel="noopener noreferrer">
+                            <img src="asset/inventory-runtime-dashboard-update-chain.webp" alt="面板上連號的六列：三條 SELECT、兩條 INSERT ... ON DUPLICATE KEY UPDATE、最後一條 UPDATE products" loading="lazy">
+                        </a>
+                        <figcaption><strong>Logs</strong> 分頁的 #4293–#4298：一次 <code>PUT /products/:id</code> 在底下展開成三條 <code>QueryContext</code> 的 SELECT、兩條 <code>ExecContext</code> 對 <code>categories</code> 與 <code>suppliers</code> 的 upsert，最後才是 <code>UPDATE products</code>。 <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/inventory-observing-runtime-20260726/" target="_blank" rel="noopener noreferrer">打開線上面板 →</a></span></figcaption>
+                    </figure>
+
+                    <p>那條鏈是這樣的，一次「使用者改了商品數量」的 <code>PUT /api/v1/products/:id</code>：</p>
+                    <ol class="causal-chain">
+                        <li><span>controller 先用 id 把商品讀回來（<code>FindByID</code>，帶兩個 <code>Preload</code>）</span><span class="count">3 條 SELECT</span></li>
+                        <li><span><code>ShouldBindJSON</code> 把請求的 JSON 蓋在這個「已經帶著 Category 和 Supplier 物件」的結構上</span><span class="count">—</span></li>
+                        <li><span><code>db.Save(product)</code>：GORM 看到結構上掛著兩個關聯物件，先幫它們各做一次 upsert</span><span class="count">2 條 INSERT</span></li>
+                        <li><span>最後才是真正的 <code>UPDATE products</code></span><span class="count">1 條 UPDATE</span></li>
+                    </ol>
+                    <p>而前端做的事，是最自然不過的：<code>GET /products</code> 拿到的 JSON 裡本來就帶著 <code>category</code> 和 <code>supplier</code> 兩個巢狀物件，改完數量原封不動 <code>PUT</code> 回去。<strong>你把讀到的東西原樣送回來，GORM 就認為你想連關聯一起存。</strong></p>
+                    <p>還有那條 <code>UPDATE</code>：它 <code>SET</code> 了<strong>每一個欄位</strong>，包括 <code>created_at</code>。<code>Save</code> 是全欄位寫回——不是「只更新你改的那兩欄」。</p>
+
+                    <h2>誠實一點：這件事有多嚴重</h2>
+                    <p>我不打算把它寫成災難，因為面板上的證據不支持：</p>
+                    <ul>
+                        <li>那兩條 <code>INSERT … ON DUPLICATE KEY UPDATE `id`=`id`</code> 是<strong>沒有副作用的</strong>。撞到既有主鍵時，它把 <code>id</code> 更新成 <code>id</code>——什麼都沒改。所以 <code>categories</code> 和 <code>suppliers</code> 的資料不會被這條路徑寫壞。</li>
+                        <li><strong>但它仍然是一次寫入。</strong> MySQL 這邊要走一次寫路徑、拿一次列鎖、進一次 binlog。四分鐘 132 次（66 + 66），只因為前端把讀到的物件原樣送回來。</li>
+                        <li>那條 <code>SET</code> 了 <code>created_at</code> 的全欄位 <code>UPDATE</code> 才是我比較在意的：它意味著<strong>任何沒被帶回來的欄位都會被寫成當初讀到的值</strong>。這一輪我<strong>沒有</strong>觀測到因此掉資料的證據——沒量到的我就不寫，只是把這條 SQL 的形狀擺在這裡。</li>
+                    </ul>
+                    <p>觀測點本身也有盲區，一起說清楚：</p>
+                    <ul>
+                        <li>這一輪只掛了 <strong>Metric + Log，沒有量延遲</strong>，所以全篇不會出現任何毫秒數字。</li>
+                        <li>站在驅動門口看到的是<strong>帶 <code>?</code> 佔位符的語句</strong>，參數是另外送的——所以面板上看得到「改了哪些欄位」，<strong>看不到改成什麼值</strong>。想看值就得再往下站一層，這一輪我沒有。</li>
+                        <li>掛在 <code>GetStats</code> 上那個計數點抓的是回傳值，而它在函式入口還是零值——所以面板上那條線是<strong>五條全零的序列</strong>，只能當「被呼叫過幾次」用，不能當統計值讀。這是我選點的代價，不是資料的意思。</li>
+                    </ul>
+                    <p><strong>看得到就是看得到，看不到就標明看不到。</strong></p>
+
+                    <h2>然後我把那個頁面打開了</h2>
+                    <p>第二段四分鐘（16:23:31Z → 16:27:32Z），我什麼程式都沒改，只做了一件事：<strong>開一個瀏覽器分頁盯著那個庫存後台頁面</strong>——它的 <code>refreshAll()</code> 每秒跑一次，同時打 <code>/categories</code>、<code>/suppliers</code>、<code>/products</code>、<code>/stats</code> 四支 API。</p>
+                    <p>同樣四分鐘，底下的 SQL 從 <strong>1,203 條變成 3,138 條</strong>。</p>
+                    <p>多出來的 1,935 條是誰？把面板上的次數拆開來算就知道了：</p>
+                    <div class="article-table-wrap">
+                        <table>
+                            <thead>
+                                <tr><th>那一秒的四支 API</th><th>底下的 SQL</th><th>條數</th></tr>
+                            </thead>
+                            <tbody>
+                                <tr><td><code>GET /categories</code></td><td><code>SELECT * FROM `categories`</code></td><td>1</td></tr>
+                                <tr><td><code>GET /suppliers</code></td><td><code>SELECT * FROM `suppliers`</code></td><td>1</td></tr>
+                                <tr><td><code>GET /products</code></td><td>主查詢 + 兩條 <code>IN</code> 預載</td><td>3</td></tr>
+                                <tr><td><code>GET /stats</code></td><td><code>count(*)</code> × 3 + 一條 <code>SUM(quantity), SUM(quantity*price)</code></td><td>4</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <p><strong>一次畫面刷新 = 9 條 SQL。</strong> 面板上 <code>/stats</code> 那四條語句這段窗口各出現 <strong>214</strong> 次，也就是頁面刷新了 214 次：<strong>9 × 214 = 1,926</strong>，跟實測多出來的 1,935 只差 9 條——剛好是一次刷新。數字自己兜起來了。</p>
+                    <p>一個沒有人在操作、只是開著的頁面，每秒讓 MySQL 跑 8 條查詢。其中 <code>SELECT * FROM `products`</code> 是<strong>沒有 WHERE、沒有 LIMIT 的整表查詢</strong>，每秒一次。</p>
+                    <p>這件事在 Metrics 分頁上更好看：<code>FindAll</code> 那條累積計數線，<strong>在 16:23:31 有一個明顯的斜率轉折</strong>——從每兩秒一次變成每秒一次多。而旁邊 <code>Create</code> 那條線是直的，斜率完全沒變。<strong>讀的行為被我打開的分頁改變了，寫的行為沒有</strong>，一眼就分得出來。</p>
+
+                    <figure class="article-figure figure-wide">
+                        <a href="https://codebull-dashboard-service.web.app/inventory-observing-runtime-20260726/" target="_blank" rel="noopener noreferrer">
+                            <img src="asset/inventory-runtime-dashboard-metrics.webp" alt="CodeBull 面板 Metrics 分頁：FindAll 的累積線在中段折上去，Create 的累積線維持同一個斜率" loading="lazy">
+                        </a>
+                        <figcaption><strong>Metrics</strong> 分頁：<code>FindAll</code>（左上）在分頁被打開的那一刻折上去，<code>Create</code>（右上）的斜率完全沒變——一個裸計數換成累積來看，就把「讀取負載改變的那一秒」自己標了出來。 <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/inventory-observing-runtime-20260726/" target="_blank" rel="noopener noreferrer">打開線上面板 →</a></span></figcaption>
+                    </figure>
+
+                    <p>順帶對照一下服務自己的 log。Gin 的 access log 沒有瞎——這四分鐘它記了 <strong>1,698 行</strong>，每一行都是 <code>200</code> / <code>201</code> / <code>204</code>，該有的一行都沒漏：</p>
+                    <pre class="code-block"><code>GET /api/v1/products    335
+GET /api/v1/categories  330
+GET /api/v1/suppliers   330
+GET /api/v1/stats       215</code></pre>
+                    <p>但 1,698 行 HTTP，底下是 <strong>3,138 條 SQL</strong>。access log 告訴你「請求成功了」，不會告訴你這些成功底下發了幾條查詢——<strong>HTTP 層的日誌天生就看不到扇出</strong>。那個把 1 變成 9 的倍率，只有站到驅動門口才數得出來。</p>
+                    <p>（這份 access log 還幫我把更新鏈補完了：前四分鐘它記到 <strong>67 次 <code>PUT</code></strong>，而面板上那條 <code>FindByID</code> 的 SELECT 剛好也是 67、後面五條卻是 66——那第 67 次的後半段跨過了窗口邊界。兩邊的數字連誤差都對得起來。）</p>
+
+                    <h2>收尾</h2>
+                    <p>我沒有改一行 code、沒有重啟服務、沒有先接一套 APM。就只是挑了驅動的兩個門口掛觀測點、在應用層放三個計數，然後認真看了八分鐘。</p>
+                    <p>換來的是：我看到一次列表查詢是 3 條 SQL 而不是 N+1、看到這個服務的 <code>Delete</code> 是真刪不是軟刪、看到一次「改數量」在底下變成六條語句並且寫了三張表、看到 <code>Save</code> 會把 <code>created_at</code> 一起寫回去、最後看到一個沒人在操作的頁面每秒替我發 8 條查詢。</p>
+                    <p>這些東西沒有一件是 bug 報告會告訴你的，也沒有一件需要重現步驟——<strong>它們一直都在跑，只是預設看不見</strong>。挑對位置站，它們自己就會現形。</p>
+
+                    <h3>附：這次的觀測設定（可重現）</h3>
+                    <ul>
+                        <li>觀測點（共五個，全部動態掛載、不改原始碼）：
+                            <ul>
+                                <li><code>mysql.(*mysqlConn).QueryContext</code>（<code>go-sql-driver/mysql@v1.8.1/connection.go:510</code>）—— log，模板 <code>Q={query}</code>，所有讀</li>
+                                <li><code>mysql.(*mysqlConn).ExecContext</code>（同檔 <code>:529</code>）—— log，模板 <code>Q={query}</code>，所有寫</li>
+                                <li><code>repositories.(*ProductRepository).FindAll</code>（<code>product_repository.go:18</code>）—— metric，純計數</li>
+                                <li><code>repositories.(*ProductRepository).Create</code>（<code>product_repository.go:34</code>）—— metric，純計數</li>
+                                <li><code>repositories.(*StatRepository).GetStats</code>（<code>stat_repository.go:18</code>）—— metric，抓回傳值（入口為零值，只能當計數用）</li>
+                            </ul>
+                        </li>
+                        <li>被觀測的服務：inventory-example（Gin 1.9.1 + GORM 1.31.1 + MySQL 8.0），<code>DEMO_MODE=1</code>，內建模擬器每 2 秒經由自己的 HTTP API 做一輪新增／修改／刪除</li>
+                        <li>觀測窗口：2026-07-25 16:19:33.700Z → 16:27:32.249Z（8 分鐘），16:23:31Z 分成兩段——前四分鐘沒開頁面 <strong>1,203 條</strong>（讀 800 / 寫 403），後四分鐘開一個每秒刷新的分頁 <strong>3,138 條</strong>（讀 2,724 / 寫 414）</li>
+                        <li>對帳：<code>FindAll</code> 計數 121 / 333 對上 <code>SELECT * FROM `products`</code> 的 121 / 333；<code>Create</code> 計數 114 / 115 對上 <code>INSERT INTO products</code> 的 114 / 115</li>
+                        <li>更新鏈：六條語句在前四分鐘各 66 次、後四分鐘各 71 次（<code>FindByID</code> 的那條 SELECT 是 67 / 71，多出來的那次的後半段跨過了窗口邊界）</li>
+                        <li>交叉核對：服務自己的 Gin access log 同期記了 631 行（前四分鐘）與 1,698 行（後四分鐘），全是 2xx；<code>PUT</code> 67 / 72 次，對得上面板上的 66 / 71 條更新鏈</li>
+                        <li>失敗的嘗試：先掛在 <code>gorm.(*processor).Execute</code> 出口、用 <code>{string(stmt.SQL.buf)}</code> 取 SQL，面板只拿到 <code>len=67</code> 這種長度資訊（<code>strings.Builder</code> 的內部 buffer 沒展開），所以改站到驅動門口</li>
+                        <li>這一輪<strong>沒有掛 latency</strong>，所以全篇不出現任何毫秒數；驅動門口只看得到帶 <code>?</code> 的語句，<strong>看不到參數值</strong></li>
+                    </ul>
+
+                    <figure class="article-figure figure-wide">
+                        <a href="https://codebull-dashboard-service.web.app/inventory-observing-runtime-20260726/" target="_blank" rel="noopener noreferrer">
+                            <img src="asset/inventory-runtime-dashboard-logs.webp" alt="CodeBull 面板 Logs 分頁：每一列都是一條逐字的 MySQL 語句，標著 QueryContext 或 ExecContext 與時間戳" loading="lazy">
+                        </a>
+                        <figcaption><strong>Logs</strong> 分頁：一列就是一條真的送到 MySQL 的語句，標著來源是 <code>QueryContext:510</code>（讀）還是 <code>ExecContext:529</code>（寫）。文中引用的每一條語句都能在這裡讀回來。 <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/inventory-observing-runtime-20260726/" target="_blank" rel="noopener noreferrer">打開線上面板 →</a></span></figcaption>
+                    </figure>
+
+                    <div class="article-callout">
+                        <p>📊 <strong>本文的遠端觀測面板</strong>（實測數據，可線上檢視）：<a href="https://codebull-dashboard-service.web.app/inventory-observing-runtime-20260726/" target="_blank" rel="noopener noreferrer">inventory-observing-runtime-20260726</a></p>
+                        <p>上面每一條 SQL 與每一個次數，都能在這個面板的 <strong>Logs</strong> 分頁逐字對帳（那六條連號的更新鏈在 #4293–#4298）；<strong>Metrics</strong> 分頁則是 <code>FindAll</code> / <code>Create</code> 的累積計數線，以及 16:23:31 那個斜率轉折。</p>
+                    </div>
+
+                    <div class="article-footnote">
+                        <p>這篇裡「不改 code、對執行中的 process 掛觀測點、然後盯著看」用的是 <strong>CodeBull</strong> —— 一個 VS Code extension，能對正在跑的 Go 服務動態插入 Metric / Log / Latency 觀測點，不改原始碼、不重編譯、不重啟。那條把兩張關聯表一起寫進去的更新鏈，就是這樣被我當場看到的。</p>
+                        <p><em>文中每一條 SQL、每一個數字均出自 CodeBull 對 inventory-example 執行中服務的實測證據，並可在上方面板連結線上對帳。</em></p>
+                        <p><a class="btn" href="https://marketplace.visualstudio.com/items?itemName=0xbu11.codebull" target="_blank" rel="noopener noreferrer">安裝 CodeBull</a></p>
+                    </div>
+                </article>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2026 CodeBull. 版權所有。</p>
+            <div class="links">
+                <a href="https://github.com/0xbu11/codebull">GitHub</a>
+                <a href="mailto:codebull.0xbu11@gmail.com">codebull.0xbu11@gmail.com</a>
+                <a href="#">隱私權</a>
+                <a href="#">服務條款</a>
+            </div>
+        </div>
+    </footer>
+</body>
+
+</html>

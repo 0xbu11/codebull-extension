@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeBull - I Stood at the MySQL Driver's Door for Eight Minutes</title>
+    <meta name="description" content="No code changes: two observation points at a running Go service's MySQL driver, and one quantity change turned out to write to three tables.">
+    <link rel="stylesheet" href="style.css?v=17">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&display=swap" rel="stylesheet">
+    <script src="theme.js"></script>
+</head>
+
+<body>
+    <div class="announcement-banner">
+        Currently supported Go versions: V1.22.0 and V1.26.0.
+    </div>
+    <header>
+        <div class="container">
+            <div class="logo">
+                <a href="index.html">Code<span>Bull</span></a>
+            </div>
+            <div class="header-logo-center">
+                <a href="https://marketplace.visualstudio.com/items?itemName=0xbu11.codebull" target="_blank" rel="noopener noreferrer" aria-label="Open CodeBull on VS Code Marketplace">
+                    <img src="asset/codebull-logo.png" alt="CodeBull Logo">
+                </a>
+            </div>
+            <nav>
+                <ul>
+                    <li><a href="index.html#features">Features</a></li>
+                    <li><a href="index.html#articles">Field Notes</a></li>
+                    <li><a href="tutorial.html">Tutorial</a></li>
+                    <li><a href="docs.html">Docs</a></li>
+                    <li><a href="platform.html">Platform</a></li>
+                    <li><a href="https://github.com/0xbu11/codebull" target="_blank">GitHub</a></li>
+                    <li><a href="article-inventory-fanout_zh_TW.html" class="lang-switch">中文</a></li>
+                    <li><button id="theme-toggle" class="theme-toggle" aria-label="Switch Theme">☀️</button></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <section class="article-header">
+            <div class="container">
+                <a class="article-back" href="index.html#articles">← Back to articles</a>
+                <span class="article-card-source">Gin + GORM + MySQL · Field Notes</span>
+                <h1>I stood at the MySQL driver's door for eight minutes, and watched one quantity change write to three tables</h1>
+                <div class="article-meta">
+                    <span>2026-07-26</span>
+                    <span>8 min window / 4,341 statements</span>
+                    <span>inventory-example + MySQL 8.0</span>
+                </div>
+                <p class="article-lede">Without changing a single line of code, I attached a handful of observation points to a <strong>running</strong> inventory service (Gin + GORM + MySQL) and sat there for eight minutes.</p>
+            </div>
+        </section>
+
+        <section class="article-section">
+            <div class="container">
+                <article class="article-body">
+                    <p>In those eight minutes I saw something that still bothers me a little: <strong>the frontend only changed a product's quantity, but the database received six statements — two of which were INSERTs into <code>categories</code> and <code>suppliers</code>, two tables I never intended to touch.</strong></p>
+                    <p>This piece isn't about a tool. It's about what happens when you stand in the right place and watch everything a CRUD service actually does underneath.</p>
+
+                    <h2>First decide where to stand</h2>
+                    <p>This service is the textbook three-layer app: Gin handler → service → repository → GORM → MySQL. You write <code>db.Save(product)</code>; what reaches MySQL is two layers away.</p>
+                    <p>My first choice was GORM's internal convergence point, <code>gorm.(*processor).Execute</code> — the same place I stood the last time I watched a service like this. I copied the template over: <code>SQL={string(stmt.SQL.buf)}</code>.</p>
+                    <p><strong>Here's what the dashboard gave me:</strong></p>
+                    <pre class="code-block"><code>SQL=len=67 | rows=6
+SQL=len=63 | rows=5</code></pre>
+                    <p><code>stmt.SQL</code> is a <code>strings.Builder</code>, and its internal buffer never got expanded into a string — I only got the length. On this GORM version, under this build, that road was closed.</p>
+                    <p>So I stepped down one layer, to the <strong>driver's door</strong>:</p>
+                    <pre class="code-block"><code>func (mc *mysqlConn) QueryContext(
+        ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error)
+
+func (mc *mysqlConn) ExecContext(
+        ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error)</code></pre>
+                    <p>Here <code>query</code> is <strong>an honest <code>string</code> parameter</strong> — it is the statement about to go on the wire. Reads go through <code>QueryContext</code>, writes through <code>ExecContext</code>, so two points cut everything the service does to its database into two clean halves.</p>
+                    <p>That gave me this setup:</p>
+                    <ul>
+                        <li><strong>Reads</strong> (<code>connection.go:510</code>): <code>Q={query}</code></li>
+                        <li><strong>Writes</strong> (<code>connection.go:529</code>): <code>Q={query}</code></li>
+                        <li>Plus three plain counters up in the application itself: <code>ProductRepository.FindAll</code>, <code>ProductRepository.Create</code>, <code>StatRepository.GetStats</code> — there to <strong>reconcile</strong> against what happens below.</li>
+                    </ul>
+                    <p>The top counts "one API call," the bottom counts "how many SQL statements." The ratio between those two numbers is what this whole piece is about.</p>
+
+                    <h2>The first four minutes: a service nobody is looking at</h2>
+                    <p>For the first window (2026-07-25 16:19:31Z → 16:23:31Z) I did nothing at all. Only the service's built-in demo simulator was running, every two seconds: fetch the product list, then randomly create / update / delete one. Four minutes, <strong>1,203 SQL statements</strong> underneath (800 reads, 403 writes).</p>
+                    <p>Deduplicated, they look like this (transcribed verbatim from the dashboard):</p>
+                    <div class="article-table-wrap">
+                        <table>
+                            <thead>
+                                <tr><th>The Go I wrote</th><th>What actually reached MySQL</th><th>Count</th></tr>
+                            </thead>
+                            <tbody>
+                                <tr><td><code>repo.FindAll("")</code>, first trip</td><td><code>SELECT * FROM `products`</code></td><td>121</td></tr>
+                                <tr><td>(same line, <code>Preload("Category")</code>)</td><td><code>SELECT * FROM `categories` WHERE `categories`.`id` IN (?,?,?,?,?,?)</code></td><td>121</td></tr>
+                                <tr><td>(same line, <code>Preload("Supplier")</code>)</td><td><code>SELECT * FROM `suppliers` WHERE `suppliers`.`id` IN (?,?,?,?,?)</code></td><td>121</td></tr>
+                                <tr><td><code>db.Create(product)</code></td><td><code>INSERT INTO `products` (`name`,…,`created_at`,`updated_at`) VALUES (?,?,?,?,?,?,?,?)</code></td><td>114</td></tr>
+                                <tr><td><code>db.Delete(&amp;Product{}, id)</code></td><td><code>DELETE FROM `products` WHERE `products`.`id` = ?</code></td><td>91</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <p>First thing that lines up: <strong>the <code>FindAll</code> counter fired exactly 121 times in those four minutes</strong> — and the dashboard shows <code>SELECT * FROM `products`</code> exactly 121 times too. One call up top, one main query below, to the digit. Same for <code>Create</code>: counter 114, <code>INSERT INTO products</code> 114. <strong>The two layers reconcile, which is what everything after this rests on.</strong></p>
+                    <p>Second thing — the one I expected and didn't get: <strong>N+1</strong>. One <code>Preload</code> across two related tables, and I sat waiting for a SELECT per product row. Instead the dashboard showed two batched <code>IN (?,?,…)</code> queries. GORM had already folded it up, so <strong>a list query is 1 + 2 = 3 statements, not 1 + N</strong>. That's the first "I knew that, but I'd never actually watched it."</p>
+                    <p>Third thing, and it's the opposite of the last service I watched: <strong>here <code>Delete</code> really is a <code>DELETE</code></strong>. That service embedded <code>gorm.Model</code>, so <code>db.Delete()</code> underneath was a soft-delete <code>UPDATE</code>; this <code>Product</code> has no <code>DeletedAt</code> field, so a delete is a delete, and no query gets a silent <code>deleted_at IS NULL</code> bolted on. <strong>Same ORM, same API call, and the shape depends entirely on what your model looks like</strong> — which you only see once the SQL is laid out.</p>
+                    <p>All of that is interesting but not surprising. What made me sit up was underneath that table: six statements, all with exactly the same count — <strong>66</strong>.</p>
+
+                    <h2>Six statements, all exactly 66</h2>
+                    <p>In the same four minutes, the dashboard also held these:</p>
+                    <div class="article-table-wrap">
+                        <table>
+                            <thead>
+                                <tr><th>SQL</th><th>Count</th></tr>
+                            </thead>
+                            <tbody>
+                                <tr><td><code>SELECT * FROM `products` WHERE `products`.`id` = ? ORDER BY `products`.`id` LIMIT ?</code></td><td>67</td></tr>
+                                <tr><td><code>SELECT * FROM `categories` WHERE `categories`.`id` = ?</code></td><td>66</td></tr>
+                                <tr><td><code>SELECT * FROM `suppliers` WHERE `suppliers`.`id` = ?</code></td><td>66</td></tr>
+                                <tr><td><code>INSERT INTO `categories` (`name`,`created_at`,`updated_at`,`id`) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE `id`=`id`</code></td><td><strong>66</strong></td></tr>
+                                <tr><td><code>INSERT INTO `suppliers` (`name`,`contact`,`created_at`,`updated_at`,`id`) VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE `id`=`id`</code></td><td><strong>66</strong></td></tr>
+                                <tr><td><code>UPDATE `products` SET `name`=?,`description`=?,`price`=?,`quantity`=?,`category_id`=?,`supplier_id`=?,`created_at`=?,`updated_at`=? WHERE `id` = ?</code></td><td>66</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <p>Six different statements, one identical count. That kind of tidiness is never a coincidence — <strong>they are six nodes on the same causal chain</strong>. And on the dashboard's Logs tab they sit as six consecutive rows (#4293 through #4298), in order.</p>
+
+                    <figure class="article-figure figure-wide">
+                        <a href="https://codebull-dashboard-service.web.app/inventory-observing-runtime-20260726/" target="_blank" rel="noopener noreferrer">
+                            <img src="asset/inventory-runtime-dashboard-update-chain.webp" alt="Six consecutive dashboard log rows: three SELECTs, two INSERT ... ON DUPLICATE KEY UPDATE, then UPDATE products" loading="lazy">
+                        </a>
+                        <figcaption>Rows #4293–#4298 on the <strong>Logs</strong> tab: one <code>PUT /products/:id</code>, rendered as three <code>QueryContext</code> SELECTs, two <code>ExecContext</code> upserts into <code>categories</code> and <code>suppliers</code>, and only then the <code>UPDATE products</code>. <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/inventory-observing-runtime-20260726/" target="_blank" rel="noopener noreferrer">Open the live dashboard →</a></span></figcaption>
+                    </figure>
+
+                    <p>Here's the chain, for one <code>PUT /api/v1/products/:id</code> that means "the user changed a product's quantity":</p>
+                    <ol class="causal-chain">
+                        <li><span>The controller reads the product back by id (<code>FindByID</code>, with two <code>Preload</code>s)</span><span class="count">3 SELECTs</span></li>
+                        <li><span><code>ShouldBindJSON</code> binds the request body onto that struct — which already carries a Category and a Supplier object</span><span class="count">—</span></li>
+                        <li><span><code>db.Save(product)</code>: GORM sees two associated objects hanging off the struct and upserts each one first</span><span class="count">2 INSERTs</span></li>
+                        <li><span>Only then the actual <code>UPDATE products</code></span><span class="count">1 UPDATE</span></li>
+                    </ol>
+                    <p>And the frontend was doing the most natural thing in the world: the JSON from <code>GET /products</code> already contains nested <code>category</code> and <code>supplier</code> objects, so after changing the quantity it <code>PUT</code>s the whole thing back. <strong>Send back what you read, and GORM concludes you want the associations saved too.</strong></p>
+                    <p>And that <code>UPDATE</code>: it <code>SET</code>s <strong>every column</strong>, <code>created_at</code> included. <code>Save</code> is a full-column write-back — not "update the two fields you changed."</p>
+
+                    <h2>Honestly: how bad is this?</h2>
+                    <p>I'm not going to write it up as a disaster, because the evidence on the dashboard doesn't support that:</p>
+                    <ul>
+                        <li>Those two <code>INSERT … ON DUPLICATE KEY UPDATE `id`=`id`</code> statements are <strong>side-effect free</strong>. On a primary-key collision they set <code>id</code> to <code>id</code> — nothing changes. This path cannot corrupt <code>categories</code> or <code>suppliers</code>.</li>
+                        <li><strong>But it is still a write.</strong> MySQL takes the write path, takes a row lock, goes into the binlog. That's 132 of them (66 + 66) in four minutes, purely because the frontend echoed back the object it had read.</li>
+                        <li>The full-column <code>UPDATE</code> that sets <code>created_at</code> is what I'd actually worry about: it means <strong>any field not sent back gets rewritten with whatever was read a moment ago</strong>. I did <strong>not</strong> observe any data loss from this in this run — what I didn't measure I don't write — so all I'm doing is putting the shape of that statement on the table.</li>
+                    </ul>
+                    <p>The observation points have blind spots too, so here they are:</p>
+                    <ul>
+                        <li>This round attached <strong>Metric + Log only, no latency</strong>, so no millisecond figures appear anywhere in this piece.</li>
+                        <li>At the driver's door you see the statement <strong>with its <code>?</code> placeholders</strong>; the arguments travel separately. So the dashboard shows which columns were written, <strong>not what they were written to</strong>. Seeing values would mean standing one layer lower, which I didn't do this time.</li>
+                        <li>The counter on <code>GetStats</code> captures the return value, which at function entry is still zero — so on the dashboard it's <strong>five all-zero series</strong>, usable as "how many times was this called" and nothing else. That's the price of where I put the point, not a fact about the data.</li>
+                    </ul>
+                    <p><strong>What you can see, you can see; what you can't, you mark as unseen.</strong></p>
+
+                    <h2>Then I opened the page</h2>
+                    <p>For the second four minutes (16:23:31Z → 16:27:32Z) I changed no code. I did exactly one thing: <strong>opened a browser tab on the inventory admin page</strong>. Its <code>refreshAll()</code> runs once a second, hitting <code>/categories</code>, <code>/suppliers</code>, <code>/products</code> and <code>/stats</code> together.</p>
+                    <p>Same four minutes: the SQL underneath went from <strong>1,203 to 3,138</strong>.</p>
+                    <p>Who are those extra 1,935? Break the dashboard counts apart and it's obvious:</p>
+                    <div class="article-table-wrap">
+                        <table>
+                            <thead>
+                                <tr><th>The four API calls in that one second</th><th>SQL underneath</th><th>Statements</th></tr>
+                            </thead>
+                            <tbody>
+                                <tr><td><code>GET /categories</code></td><td><code>SELECT * FROM `categories`</code></td><td>1</td></tr>
+                                <tr><td><code>GET /suppliers</code></td><td><code>SELECT * FROM `suppliers`</code></td><td>1</td></tr>
+                                <tr><td><code>GET /products</code></td><td>main query + two <code>IN</code> preloads</td><td>3</td></tr>
+                                <tr><td><code>GET /stats</code></td><td><code>count(*)</code> × 3 + one <code>SUM(quantity), SUM(quantity*price)</code></td><td>4</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <p><strong>One screen refresh = 9 SQL statements.</strong> Each of those four <code>/stats</code> statements appears <strong>214</strong> times in this window, so the page refreshed 214 times: <strong>9 × 214 = 1,926</strong>, against a measured delta of 1,935 — nine statements apart, which is exactly one more refresh. The numbers close on themselves.</p>
+                    <p>A page nobody is touching, just sitting open, makes MySQL run 8 queries a second. And one of them, <code>SELECT * FROM `products`</code>, is <strong>a full-table read with no WHERE and no LIMIT</strong> — once per second.</p>
+                    <p>It looks even better on the Metrics tab: the cumulative <code>FindAll</code> line has <strong>a visible bend at 16:23:31</strong>, going from once every two seconds to a bit over once a second. The <code>Create</code> line next to it stays straight, same slope throughout. <strong>The tab I opened changed the read behaviour and not the write behaviour</strong>, and you can see which is which at a glance.</p>
+
+                    <figure class="article-figure figure-wide">
+                        <a href="https://codebull-dashboard-service.web.app/inventory-observing-runtime-20260726/" target="_blank" rel="noopener noreferrer">
+                            <img src="asset/inventory-runtime-dashboard-metrics.webp" alt="CodeBull dashboard Metrics tab: the FindAll cumulative line bends upward mid-window while the Create line keeps the same slope" loading="lazy">
+                        </a>
+                        <figcaption>The <strong>Metrics</strong> tab: <code>FindAll</code> (top left) bends upward the moment the browser tab opens, while <code>Create</code> (top right) keeps its slope — a bare hit counter, viewed cumulatively, marks the exact second the read load changed. <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/inventory-observing-runtime-20260726/" target="_blank" rel="noopener noreferrer">Open the live dashboard →</a></span></figcaption>
+                    </figure>
+
+                    <p>For fairness, I checked the service's own log. Gin's access log isn't blind — it recorded <strong>1,698 lines</strong> in those four minutes, every one of them a <code>200</code> / <code>201</code> / <code>204</code>, nothing missing:</p>
+                    <pre class="code-block"><code>GET /api/v1/products    335
+GET /api/v1/categories  330
+GET /api/v1/suppliers   330
+GET /api/v1/stats       215</code></pre>
+                    <p>But 1,698 lines of HTTP sit on top of <strong>3,138 SQL statements</strong>. An access log tells you the request succeeded; it will never tell you how many queries that success took. <strong>HTTP-level logging is structurally blind to fan-out.</strong> The multiplier that turns 1 into 9 only gets counted at the driver's door.</p>
+                    <p>(That access log also finished the update chain for me: in the first four minutes it recorded <strong>67 <code>PUT</code>s</strong>, and the <code>FindByID</code> SELECT on the dashboard is 67 while the five statements behind it are 66 — the back half of that 67th call fell outside the window. Even the discrepancies reconcile.)</p>
+
+                    <h2>Wrapping up</h2>
+                    <p>I didn't change a line of code, didn't restart the service, didn't wire up an APM first. I picked two doors in the driver, put three counters in the application, and watched carefully for eight minutes.</p>
+                    <p>What I got: a list query is 3 statements and not N+1; this service's <code>Delete</code> is a real delete, not a soft one; one "change the quantity" becomes six statements and writes three tables; <code>Save</code> writes <code>created_at</code> back along with everything else; and a page nobody is touching issues 8 queries a second on my behalf.</p>
+                    <p>None of this would show up in a bug report, and none of it needs reproduction steps — <strong>it was all running the whole time, just invisible by default</strong>. Stand in the right place and it surfaces on its own.</p>
+
+                    <h3>Appendix: this round's setup (reproducible)</h3>
+                    <ul>
+                        <li>Observation points (five, all attached dynamically, no source changes):
+                            <ul>
+                                <li><code>mysql.(*mysqlConn).QueryContext</code> (<code>go-sql-driver/mysql@v1.8.1/connection.go:510</code>) — log, template <code>Q={query}</code>, every read</li>
+                                <li><code>mysql.(*mysqlConn).ExecContext</code> (same file, <code>:529</code>) — log, template <code>Q={query}</code>, every write</li>
+                                <li><code>repositories.(*ProductRepository).FindAll</code> (<code>product_repository.go:18</code>) — metric, plain count</li>
+                                <li><code>repositories.(*ProductRepository).Create</code> (<code>product_repository.go:34</code>) — metric, plain count</li>
+                                <li><code>repositories.(*StatRepository).GetStats</code> (<code>stat_repository.go:18</code>) — metric on the return value (zero-valued at entry, usable as a call count only)</li>
+                            </ul>
+                        </li>
+                        <li>Observed service: inventory-example (Gin 1.9.1 + GORM 1.31.1 + MySQL 8.0) with <code>DEMO_MODE=1</code>; the built-in simulator runs one create / update / delete round every 2 seconds through the service's own HTTP API</li>
+                        <li>Observation window: 2026-07-25 16:19:33.700Z → 16:27:32.249Z (8 minutes), split at 16:23:31Z — first half <strong>1,203</strong> statements (800 reads / 403 writes) with no page open, second half <strong>3,138</strong> (2,724 / 414) with one tab refreshing every second</li>
+                        <li>Reconciliation: <code>FindAll</code> counter 121 / 333 against <code>SELECT * FROM `products`</code> 121 / 333; <code>Create</code> counter 114 / 115 against <code>INSERT INTO products</code> 114 / 115</li>
+                        <li>Update chain: six statements at 66 each in the first half, 71 each in the second (the <code>FindByID</code> SELECT is 67 / 71 — the back half of one call crossed the window boundary)</li>
+                        <li>Cross-check: the service's own Gin access log recorded 631 lines (first half) and 1,698 lines (second half), all 2xx, with 67 / 72 <code>PUT</code>s — matching the 66 / 71 update chains on the dashboard</li>
+                        <li>Failed attempt: I first attached to <code>gorm.(*processor).Execute</code> and pulled the SQL with <code>{string(stmt.SQL.buf)}</code>; the dashboard only ever showed length information like <code>len=67</code> (the <code>strings.Builder</code> buffer never expanded), which is why I moved down to the driver's door</li>
+                        <li>No latency was attached this round, so no millisecond figures appear anywhere; and at the driver's door the statements carry <code>?</code> placeholders, so <strong>argument values are not visible</strong></li>
+                    </ul>
+
+                    <figure class="article-figure figure-wide">
+                        <a href="https://codebull-dashboard-service.web.app/inventory-observing-runtime-20260726/" target="_blank" rel="noopener noreferrer">
+                            <img src="asset/inventory-runtime-dashboard-logs.webp" alt="CodeBull dashboard Logs tab: every row a verbatim MySQL statement tagged QueryContext or ExecContext with a timestamp" loading="lazy">
+                        </a>
+                        <figcaption>The <strong>Logs</strong> tab: one row per statement that reached MySQL, tagged with <code>QueryContext:510</code> (reads) or <code>ExecContext:529</code> (writes). Every statement quoted in this piece can be read back here. <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/inventory-observing-runtime-20260726/" target="_blank" rel="noopener noreferrer">Open the live dashboard →</a></span></figcaption>
+                    </figure>
+
+                    <div class="article-callout">
+                        <p>📊 <strong>Remote dashboard for this article</strong> (real measured data, viewable online): <a href="https://codebull-dashboard-service.web.app/inventory-observing-runtime-20260726/" target="_blank" rel="noopener noreferrer">inventory-observing-runtime-20260726</a></p>
+                        <p>Every statement and every count above can be reconciled verbatim on the <strong>Logs</strong> tab (the six-row update chain is at #4293–#4298); the <strong>Metrics</strong> tab holds the cumulative <code>FindAll</code> / <code>Create</code> counters and the slope change at 16:23:31.</p>
+                    </div>
+
+                    <div class="article-footnote">
+                        <p>The "no code changes, attach observation points to a running process, then watch" part of this piece was done with <strong>CodeBull</strong> — a VS Code extension that dynamically injects Metric / Log / Latency observation points into running Go services: no source edits, no recompile, no restart. That update chain writing two association tables is exactly how I caught it live.</p>
+                        <p><em>Every SQL statement and every number here comes from CodeBull's measurements against the running inventory-example service, and can be reconciled online via the dashboard link above.</em></p>
+                        <p><a class="btn" href="https://marketplace.visualstudio.com/items?itemName=0xbu11.codebull" target="_blank" rel="noopener noreferrer">Install CodeBull</a></p>
+                    </div>
+                </article>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2026 CodeBull. All rights reserved.</p>
+            <div class="links">
+                <a href="https://github.com/0xbu11/codebull">GitHub</a>
+                <a href="mailto:codebull.0xbu11@gmail.com">codebull.0xbu11@gmail.com</a>
+                <a href="#">Privacy</a>
+                <a href="#">Terms</a>
+            </div>
+        </div>
+    </footer>
+</body>
+
+</html>
