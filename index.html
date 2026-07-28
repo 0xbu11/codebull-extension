@@ -75,6 +75,18 @@
                     <p>Write-ups from real instrumentation runs against live Go services — every SQL statement, token, and percentile comes from measured data, with the remote dashboard linked for reconciliation.</p>
                 </div>
                 <div class="article-grid">
+                    <a class="article-card" href="article-gin-middleware.html">
+                        <span class="article-card-source">gin · Field Notes</span>
+                        <h3>I counted a running gin for ten minutes, and for two of them my middleware was never called</h3>
+                        <p>One path driven to five endings: the chain is re-entered 4, 4, 4, 3 and 0 times per request. That last zero is 120 requests that never reached the chain, with nothing in the service's own access log for those two minutes — and the cost differences I thought I had measured turned out to be 77–94% my own probes.</p>
+                        <span class="article-card-link">Read article →</span>
+                    </a>
+                    <a class="article-card" href="article-etcd-write-path.html">
+                        <span class="article-card-source">etcd · Field Notes</span>
+                        <h3>I watched a running etcd for nine minutes, and its fsync was fourteen times faster when busy than when idle</h3>
+                        <p>Twenty observation points covering the whole write path, from gRPC to fdatasync: one put leaves twenty-three footprints, a flush carrying sixteen operations costs the same as one carrying three — and the fsync everyone assumes gets slower under load ran 5.9 ms when quiet and 0.4 ms when busy.</p>
+                        <span class="article-card-link">Read article →</span>
+                    </a>
                     <a class="article-card" href="article-gorm-runtime.html">
                         <span class="article-card-source">GORM · Field Notes</span>
                         <h3>I watched a running GORM for eight minutes, and saw it lose the primary key</h3>

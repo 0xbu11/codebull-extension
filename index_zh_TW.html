@@ -72,6 +72,18 @@
                     <p>對執行中的 Go 服務實際掛觀測點的紀錄。文中每一條 SQL、每一個數字都出自實測數據，並附上遠端面板可線上對帳。</p>
                 </div>
                 <div class="article-grid">
+                    <a class="article-card" href="article-gin-middleware_zh_TW.html">
+                        <span class="article-card-source">gin · 實測筆記</span>
+                        <h3>我對一個跑著的 gin 數了十分鐘，然後看到有兩分鐘我的中介層一次都沒被叫到</h3>
+                        <p>同一條路徑餵出五種結局，中介層鏈每請求被重入 4、4、4、3、0 次。最後那個 0 是 120 個請求連鏈的門都沒進去，服務自己的 access log 對那兩分鐘一行都沒有——而我以為順便量到的成本差異，有 77–94% 其實是我自己的觀測點。</p>
+                        <span class="article-card-link">閱讀文章 →</span>
+                    </a>
+                    <a class="article-card" href="article-etcd-write-path_zh_TW.html">
+                        <span class="article-card-source">etcd · 實測筆記</span>
+                        <h3>我盯著一個跑著的 etcd 看了九分鐘，然後看到它的 fsync 在忙的時候比閒的時候快十四倍</h3>
+                        <p>整條寫入路徑掛滿二十個觀測點，從 gRPC 到 fdatasync：一次 put 留下二十三個腳印、攤了 16 筆的落盤跟攤 3 筆一樣快——而那個「越忙越慢」的直覺整個是反的，同一行 fsync 閒的時候 5.9 毫秒、忙的時候 0.4 毫秒。</p>
+                        <span class="article-card-link">閱讀文章 →</span>
+                    </a>
                     <a class="article-card" href="article-gorm-runtime_zh_TW.html">
                         <span class="article-card-source">GORM · 實測筆記</span>
                         <h3>我盯著一個跑著的 GORM 看了八分鐘，然後看到它把主鍵弄丟了</h3>

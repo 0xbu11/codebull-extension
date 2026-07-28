@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeBull - 我盯著一個跑著的 etcd 看了九分鐘</title>
+    <meta name="description" content="不改一行 code，在跑著的 etcd 上掛滿二十個觀測點，從 gRPC 到 fdatasync 整條寫入路徑一次看穿。一次 put 留下二十三個腳印，而同一行 fsync 閒的時候 5.9 毫秒、忙的時候 0.4 毫秒。">
+    <meta property="og:type" content="article">
+    <meta property="og:site_name" content="CodeBull">
+    <meta property="og:locale" content="zh_TW">
+    <meta property="og:title" content="我盯著一個跑著的 etcd 看了九分鐘，然後看到它的 fsync 在忙的時候比閒的時候快十四倍">
+    <meta property="og:description" content="二十個觀測點從 gRPC 到 fdatasync：一次 put 留下二十三個腳印、攤了 16 筆的落盤跟攤 3 筆一樣快，而那個「越忙越慢」的直覺整個是反的。">
+    <meta property="og:url" content="https://0xbu11.github.io/codebull-extension/article-etcd-write-path_zh_TW.html">
+    <meta property="og:image" content="https://0xbu11.github.io/codebull-extension/asset/og-site.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="627">
+    <meta property="og:image:alt" content="我盯著一個跑著的 etcd 看了九分鐘，然後看到它的 fsync 在忙的時候比閒的時候快十四倍">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="我盯著一個跑著的 etcd 看了九分鐘，然後看到它的 fsync 在忙的時候比閒的時候快十四倍">
+    <meta name="twitter:description" content="二十個觀測點從 gRPC 到 fdatasync：一次 put 留下二十三個腳印、攤了 16 筆的落盤跟攤 3 筆一樣快，而那個「越忙越慢」的直覺整個是反的。">
+    <meta name="twitter:image" content="https://0xbu11.github.io/codebull-extension/asset/og-site.png">
+    <link rel="stylesheet" href="style.css?v=17">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&display=swap" rel="stylesheet">
+    <script src="theme.js"></script>
+</head>
+
+<body>
+    <div class="announcement-banner">
+        目前支援的 Go 版本：V1.22.0 與 V1.26.0。
+    </div>
+    <header>
+        <div class="container">
+            <div class="logo">
+                <a href="index_zh_TW.html">Code<span>Bull</span></a>
+            </div>
+            <div class="header-logo-center">
+                <a href="https://marketplace.visualstudio.com/items?itemName=0xbu11.codebull" target="_blank" rel="noopener noreferrer" aria-label="Open CodeBull on VS Code Marketplace">
+                    <img src="asset/codebull-logo.png" alt="CodeBull Logo">
+                </a>
+            </div>
+            <nav>
+                <ul>
+                    <li><a href="index_zh_TW.html#features">功能</a></li>
+                    <li><a href="index_zh_TW.html#articles">實測筆記</a></li>
+                    <li><a href="tutorial_zh_TW.html">教學</a></li>
+                    <li><a href="docs_zh_TW.html">文件</a></li>
+                    <li><a href="platform_zh_TW.html">支援平台</a></li>
+                    <li><a href="https://github.com/0xbu11/codebull" target="_blank">GitHub</a></li>
+                    <li><a href="article-etcd-write-path.html" class="lang-switch">English</a></li>
+                    <li><button id="theme-toggle" class="theme-toggle" aria-label="切換主題">☀️</button></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <section class="article-header">
+            <div class="container">
+                <a class="article-back" href="index_zh_TW.html#articles">← 回文章列表</a>
+                <span class="article-card-source">etcd · 實測筆記</span>
+                <h1>我盯著一個跑著的 etcd 看了九分鐘，然後看到它的 fsync 在忙的時候比閒的時候快十四倍</h1>
+                <div class="article-meta">
+                    <span>2026-07-28</span>
+                    <span>9 分鐘窗口 / 8,390 次寫入 / 20 個觀測點</span>
+                    <span>etcd v3.7 單節點</span>
+                </div>
+                <p class="article-lede">前幾天我做了一件平常不太會做的事：不改任何一行 code，直接對一個<strong>正在跑的</strong> etcd，把它從 gRPC 收下一個 <code>put</code>、到磁碟上那一次 <code>fdatasync</code> 為止的整條路掛滿觀測點，然後坐著看九分鐘。</p>
+            </div>
+        </section>
+
+        <section class="article-section">
+            <div class="container">
+                <article class="article-body">
+                    <p>不是挑幾個「最關鍵的層」看看而已——是那條路上每一個我叫得出名字的關卡，<strong>二十個位置，同時看</strong>。不重編譯、不重啟。</p>
+                    <p>我原本想看的是「一次寫入在裡面被拆成幾件事」。結果最後讓我坐直的，是一件跟次數完全無關的事：<strong>同一行 <code>fdatasync</code>，在每秒只寫一筆的時候要花 5.9 毫秒，在全速灌的時候只要 0.4 毫秒。</strong>越閒越慢。這篇聊的不是工具，是「盯著執行中的東西看」這件事本身。</p>
+
+                    <h2>先決定要站在哪裡看</h2>
+                    <p>etcd 的黑盒性質很特別：它不像 ORM 那樣「你寫的一行變成什麼 SQL」，而是「你送的一個 key，要被幾層各自有節奏的機制輪流處理過，才算真的寫進去」。gRPC 收下、包成 raft 提案、寫進 WAL、fsync、等提交、套用到狀態機、寫進 MVCC、更新記憶體索引、丟進 bbolt 的交易緩衝、最後某個時刻整批落盤。</p>
+                    <p>從外面，你只看得到 <code>OK</code>。</p>
+                    <p>通常掛觀測點的做法是挑幾個代表性的關卡，中間用推測接起來。這次我想試試看不推測——<strong>把每一層的入口都放一個點，讓比例自己說話</strong>。二十個位置是這樣分配的：</p>
+                    <div class="article-table-wrap">
+                    <table>
+                        <thead><tr><th>層</th><th>收斂點</th><th>位置</th><th>種類</th></tr></thead>
+                        <tbody>
+                            <tr><td>gRPC 入口</td><td><code>v3rpc.(*kvServer).Put</code></td><td><code>api/v3rpc/key.go:91</code></td><td>metric</td></tr>
+                            <tr><td>server API</td><td><code>etcdserver.(*EtcdServer).Put</code></td><td><code>v3_server.go:296</code></td><td>metric</td></tr>
+                            <tr><td>raft 提案</td><td><code>processInternalRaftRequestOnce</code></td><td><code>v3_server.go:1059</code></td><td>metric</td></tr>
+                            <tr><td>raft 心跳</td><td><code>etcdserver.(*raftNode).tick</code></td><td><code>raft.go:160</code></td><td>metric</td></tr>
+                            <tr><td>WAL 寫入輪</td><td><code>wal.(*WAL).Save</code></td><td><code>wal.go:973</code></td><td>metric</td></tr>
+                            <tr><td>WAL entry</td><td><code>wal.(*WAL).saveEntry</code></td><td><code>wal.go:939</code></td><td>metric</td></tr>
+                            <tr><td>WAL hard state</td><td><code>wal.(*WAL).saveState</code></td><td><code>wal.go:949</code></td><td>metric</td></tr>
+                            <tr><td><strong>真正的 fsync</strong></td><td><code>wal.(*WAL).sync</code></td><td><code>wal.go:843 → 846</code></td><td><strong>latency</strong></td></tr>
+                            <tr><td>raft Ready 輪</td><td><code>applyAll</code></td><td><code>server.go:973</code></td><td>metric</td></tr>
+                            <tr><td>套用批次</td><td><code>applyEntries</code></td><td><code>server.go:1186</code></td><td>metric</td></tr>
+                            <tr><td>套用單一 entry</td><td><code>applyEntryNormal</code></td><td><code>server.go:1946</code></td><td>metric</td></tr>
+                            <tr><td>applier</td><td><code>apply.(*applierV3backend).Put</code></td><td><code>apply/backend.go:51</code></td><td>metric</td></tr>
+                            <tr><td><strong>MVCC 寫入</strong></td><td><code>mvcc.(*storeTxnWrite).put</code></td><td><code>kvstore_txn.go:225</code></td><td><strong>log</strong> <code>k={string(key)} rev={rev}</code></td></tr>
+                            <tr><td>記憶體索引</td><td><code>mvcc.(*treeIndex).Put</code></td><td><code>index.go:55</code></td><td>metric</td></tr>
+                            <tr><td>bbolt 單筆寫</td><td><code>backend.(*batchTx).unsafePut</code></td><td><code>batch_tx.go:150</code></td><td>metric</td></tr>
+                            <tr><td>交易解鎖</td><td><code>backend.(*batchTxBuffered).Unlock</code></td><td><code>batch_tx.go:309</code></td><td>metric</td></tr>
+                            <tr><td><strong>落盤批次大小</strong></td><td><code>backend.(*batchTx).commit</code></td><td><code>batch_tx.go:268</code></td><td><strong>log</strong> <code>pending={t.pending}</code></td></tr>
+                            <tr><td><strong>落盤耗時</strong></td><td><code>backend.(*batchTx).commit</code></td><td><code>batch_tx.go:271 → 278</code></td><td><strong>latency</strong></td></tr>
+                            <tr><td>100ms 批次計時器</td><td><code>backend.(*backend).run</code></td><td><code>backend.go:455</code></td><td>metric</td></tr>
+                            <tr><td>讀取路徑</td><td><code>etcdserver.(*EtcdServer).Range</code></td><td><code>v3_server.go:107</code></td><td>metric</td></tr>
+                        </tbody>
+                    </table>
+                    </div>
+                    <p>有三個點我要先講清楚，因為它們是這篇的骨架。</p>
+                    <p><strong>落盤那個點，我沒有只放一個計數器。</strong> 「這段時間落盤幾次」這個數字本身其實不太說明問題——真正想問的是<strong>每一次落盤到底攤了多少工作</strong>。<code>commit()</code> 裡剛好有一個決定要不要落盤的計數器 <code>t.pending</code>，所以我把它直接抓出來當 log 模板。<strong>每一次落盤攤了幾筆，逐次寫在面板上。</strong></p>
+                    <p><strong>兩條 latency 線，一開始一個樣本都收不到。</strong> 註冊回報成功、狀態顯示已插樁，<code>hitCount</code> 也在跳，但延遲那張表整個是空的。後來我試著在註冊時多給一個 template 別名（<code>wal_fsync_latency</code>），同一行、同一個 process，樣本就出來了——最後收到 8,380 個。同一件事、換個掛法，從「量不到」變成「量得到」，這種踩坑我覺得比結論本身還值得寫。</p>
+                    <p><strong>還有一個點，我掛上去了，但它從頭到尾一次都沒響。</strong> 就是那個 100ms 的 backend 批次計時器。留到誠實段講。</p>
+                    <p>負載我刻意讓九分鐘長得不一樣，五個相位：<strong>兩分鐘完全不碰它</strong> → <strong>兩分鐘每秒寫一筆</strong> → <strong>兩分鐘一個 client 全速灌</strong> → <strong>兩分鐘四個 client 一起灌</strong> → <strong>一分鐘只讀不寫</strong>。</p>
+
+                    <h2>前兩分鐘：一個沒人使用的 etcd</h2>
+                    <p>觀測窗口是 2026-07-27 16:15:08.635Z 到 16:24:11.029Z，九分零二秒。第一段兩分鐘，我一個字都沒送給它。</p>
+                    <p>二十個點裡面，<strong>只有一個動了</strong>：<code>raftNode.tick</code>，1,200 次。120.03 秒，正好每秒 10 下，對得上 etcd 預設的 100ms tick。</p>
+                    <p>其他十九個全是 0。gRPC 是 0、提案是 0、WAL 是 0、fsync 是 0、MVCC 是 0、落盤是 0。我去對了 etcd 自己的 <code>/metrics</code>，同期 <code>etcd_disk_wal_fsync_duration_seconds_count</code> 和 <code>etcd_disk_backend_commit_duration_seconds_count</code> 的差值也都是 <strong>0</strong>。</p>
+                    <p><strong>一個閒置的 etcd 不是在空轉磁碟，它只是在數拍子。</strong> 這件事我「知道」，但沒真的看過整條路同時安靜下來長什麼樣——十九個點一起壓在 0 上，只有心跳在走。</p>
+
+                    <h2>中間兩分鐘：一次 put，在十六個位置上留下二十三個腳印</h2>
+                    <p>第二段我每秒送一筆 <code>etcdctl put</code>，送了 114 筆。這是全篇唯一一個「什麼都還沒開始批次」的相位，所以它剛好照出一次 <code>put</code> 的素顏：</p>
+                    <div class="article-table-wrap">
+                    <table>
+                        <thead><tr><th>我下的指令</th><th>面板上真正跑的</th><th>114 筆寫入的命中數</th><th>每筆</th></tr></thead>
+                        <tbody>
+                            <tr><td><code>etcdctl put steady/key-0 v0</code></td><td><code>kvServer.Put</code> gRPC 收下</td><td>114</td><td>1</td></tr>
+                            <tr><td>〃</td><td><code>EtcdServer.Put</code> 進 server API</td><td>114</td><td>1</td></tr>
+                            <tr><td>〃</td><td><code>processInternalRaftRequestOnce</code> 提一個 raft 案</td><td>114</td><td>1</td></tr>
+                            <tr><td>〃</td><td><code>WAL.Save</code> 寫入輪</td><td><strong>228</strong></td><td><strong>2</strong></td></tr>
+                            <tr><td>〃</td><td><code>WAL.saveEntry</code> 附加一個 entry</td><td>114</td><td>1</td></tr>
+                            <tr><td>〃</td><td><code>WAL.saveState</code> 附加 hard state</td><td><strong>228</strong></td><td><strong>2</strong></td></tr>
+                            <tr><td>〃</td><td><code>WAL.sync</code> 真的 fdatasync</td><td>114</td><td>1</td></tr>
+                            <tr><td>〃</td><td><code>applyAll</code> raft Ready 輪</td><td><strong>228</strong></td><td><strong>2</strong></td></tr>
+                            <tr><td>〃</td><td><code>applyEntries</code> 套用批次</td><td><strong>228</strong></td><td><strong>2</strong></td></tr>
+                            <tr><td>〃</td><td><code>applyEntryNormal</code> 套用一個 entry</td><td>114</td><td>1</td></tr>
+                            <tr><td>〃</td><td><code>applierV3backend.Put</code></td><td>114</td><td>1</td></tr>
+                            <tr><td>〃</td><td><code>mvcc.(*storeTxnWrite).put</code> 寫進 MVCC</td><td>114</td><td>1</td></tr>
+                            <tr><td>〃</td><td><code>treeIndex.Put</code> 更新記憶體索引</td><td>114</td><td>1</td></tr>
+                            <tr><td>〃</td><td><code>batchTx.unsafePut</code> 寫進 bbolt 交易</td><td><strong>342</strong></td><td><strong>3</strong></td></tr>
+                            <tr><td>〃</td><td><code>batchTxBuffered.Unlock</code></td><td><strong>228</strong></td><td><strong>2</strong></td></tr>
+                            <tr><td>〃</td><td><code>batchTx.commit</code> bbolt 交易落盤</td><td>114</td><td>1</td></tr>
+                            <tr><td>（我沒下任何指令）</td><td><code>raftNode.tick</code></td><td>1,191</td><td>—</td></tr>
+                        </tbody>
+                    </table>
+                    </div>
+                    <p>把「每筆」那一欄加起來：<code>1+1+1+2+1+2+1+2+2+1+1+1+1+3+2+1 = 23</code>。乘回去 <code>114 × 23 = 2,622</code>，跟這十六個點在這兩分鐘的命中數總和一分不差。</p>
+                    <p><strong>一次 <code>etcdctl put</code>，在我掛的十六個位置上總共留下二十三個腳印。</strong></p>
+                    <p>有三個「2」和一個「3」是我以為我知道、其實沒真的看過的：</p>
+                    <ul>
+                        <li><strong><code>WAL.Save</code> 是兩次，<code>saveEntry</code> 只有一次。</strong> 一次寫入在 WAL 上是兩輪：一輪把 entry 附加進去，另一輪只更新 hard state（提交索引往前）。第二輪沒有 entry，所以 <code>MustSync</code> 判定不必 fsync——<strong><code>WAL.Save</code> 228 次，但 <code>WAL.sync</code> 只有 114 次。</strong>寫入輪數跟落磁碟次數不是同一件事。</li>
+                        <li><strong><code>applyAll</code> 也是兩次。</strong> raft 的 Ready 迴圈為同一筆寫入轉了兩圈（一圈附加、一圈提交後套用），但真正被套用的 entry 只有一個。</li>
+                        <li><strong><code>unsafePut</code> 是三次。</strong> 一次寫入在 bbolt 這一層是三筆 key/value：使用者那筆進 key bucket，另外兩筆是 etcd 自己的 meta（consistent index 之類）。</li>
+                    </ul>
+                    <p>MVCC 那個點抓到的逐字內容長這樣：</p>
+                    <pre><code>k=steady/key-0 rev=2
+k=steady/key-113 rev=115</code></pre>
+                    <p>修訂號一筆一號往上跑。<strong>那個 <code>rev</code>，最後會變成我驗算整篇文章的尺。</strong></p>
+
+                    <h2>順手做的對照：只讀不寫的時候，這二十個點動了幾個</h2>
+                    <p>最後一分鐘我只發 <code>etcdctl get</code>，61.9 秒送了 5,276 次。二十個點裡面動的有幾個？</p>
+                    <p><strong>三個。</strong> <code>Range</code> 5,276 次，<code>applyAll</code> 和 <code>applyEntries</code> 各 5,380 次。</p>
+                    <p>其餘全部是 0——沒有提案、沒有 WAL entry、沒有 fsync、沒有 MVCC 寫入、沒有 bbolt 落盤。（面板上這個相位還掛著 116 筆 <code>conc/</code> 開頭的紀錄，逐字看 key 就知道那是上一個相位的尾巴溢出來的，不是這裡產生的。）</p>
+                    <p>有意思的是那個 5,380：<strong>一次線性化讀取，還是要讓 raft 的 Ready 迴圈轉一圈。</strong>它不寫任何東西，但它不是免費的。</p>
+
+                    <h2>然後我把負載推上去，看哪幾欄開始脫隊</h2>
+                    <p>第三段一個 client 全速灌，兩分鐘 4,038 筆（約 33.8/s）。第四段換成四個 client 一起灌，兩分鐘 4,238 筆。</p>
+                    <p>同樣一批點，這次只看兩個關鍵比例：</p>
+                    <div class="article-table-wrap">
+                    <table>
+                        <thead><tr><th>相位</th><th>客戶端寫入</th><th>WAL fsync</th><th>幾筆寫入 = 1 次 fsync</th><th>bbolt commit</th><th>幾筆寫入 = 1 次落盤</th></tr></thead>
+                        <tbody>
+                            <tr><td>B 每秒一筆</td><td>114</td><td>114</td><td><strong>1.0</strong></td><td>114</td><td><strong>1.0</strong></td></tr>
+                            <tr><td>C 一個 client 全速</td><td>4,038</td><td>4,038</td><td><strong>1.0</strong></td><td>780</td><td><strong>5.18</strong></td></tr>
+                            <tr><td>D 四個 client 全速</td><td>4,238</td><td>4,227</td><td><strong>1.003</strong></td><td>436</td><td><strong>9.72</strong></td></tr>
+                        </tbody>
+                    </table>
+                    </div>
+                    <p><strong>只有 bbolt 那一欄脫隊了，而且脫得越來越遠。</strong> 1 比 1 → 5.18 比 1 → 9.72 比 1。</p>
+                    <p><strong>WAL 幾乎完全不批次。</strong> 整個九分鐘 8,390 筆寫入，8,379 次 fsync——<strong>只省下 11 次，佔 0.13%</strong>。而且那 11 次全部發生在四 client 那一段。</p>
+                    <p>這裡我要老實說一句：<strong>第四相位是我特地設計來抓 WAL 批次化的，然後它幾乎沒發生。</strong> 我的想法是「多個 client 同時送，raft 就會把好幾個 entry 塞進同一輪 Ready，於是好幾筆寫入共用一次 fsync」。機制是對的，而且面板上找得到它的殘影：<code>WAL.saveEntry</code> 全程 8,390 次，跟客戶端寫入一比一；但 <code>WAL.Save</code> 是 16,739 次，比「每筆寫入兩輪」的 16,780 少了 <strong>41 輪</strong>。有幾輪 Save 確實塞進了不只一個 entry。<strong>它真的發生了，只是幾乎沒發生。</strong>（少掉的 41 輪 Save 和省下的 11 次 fsync 兜不成一個乾淨的比例，這中間還有我沒看清楚的東西。）我的四個 client 加起來也只推到每秒 35 筆，隊列根本沒排起來。預測方向對、量級完全落空——這比預測成功值得寫。</p>
+
+                    <h2>那每一次落盤，到底攤了幾筆？</h2>
+                    <p>「9.72 比 1」是個平均值，而平均值最會騙人的地方就在這裡：它可能是每次都攤 9 到 10 筆，也可能是有的攤兩筆、有的攤三十筆。這兩種情況對儲存層的意義完全不一樣，但算出來的平均值一模一樣。</p>
+                    <p>所以我在落盤那個點抓的不是次數，是 <code>pending</code> 本身。全窗口 1,331 次落盤，逐次攤開來是這樣：</p>
+                    <div class="article-table-wrap">
+                    <table>
+                        <thead><tr><th>相位</th><th>落盤次數</th><th>每次攤了幾筆（平均）</th><th>最少</th><th>最多</th></tr></thead>
+                        <tbody>
+                            <tr><td>B 每秒一筆</td><td>114</td><td><strong>3.0</strong></td><td><strong>3</strong></td><td><strong>3</strong></td></tr>
+                            <tr><td>C 一個 client 全速</td><td>759</td><td>7.18</td><td>3</td><td>8</td></tr>
+                            <tr><td>D 四個 client 全速</td><td>444</td><td>11.5</td><td>3</td><td><strong>16</strong></td></tr>
+                        </tbody>
+                    </table>
+                    </div>
+                    <p>（這裡的「幾筆」是 bbolt 層的操作數，不是客戶端寫入數——每秒一筆的時候剛好是 3 比 1，但負載一高這個比例自己也會縮，見誠實段。）</p>
+                    <p><strong>每秒一筆的時候，114 次落盤，每一次都剛好是 3，沒有任何一次例外。</strong> 一筆寫入、三筆 bbolt 操作、一次落盤，一比一比一，乾淨到有點無聊。</p>
+                    <p>負載上來之後分佈就散開了：整個窗口最常見的是 7（399 次）和 8（319 次），那是一 client 全速的形狀；四 client 那段跑出另一群 13、14、15（各 83、93、90 次），最大一次攤了 16 筆。把每一次的筆數乘上出現次數加總是 <strong>11,054</strong>，跟 <code>unsafePut</code> 那個點在同一窗口的 11,052 次命中對得起來（多的 2 筆是窗口開始前那一次落盤）。</p>
+                    <p>面板的 Logs 分頁上，這件事甚至不用查詢就看得出來——<code>mvcc.put</code> 的紀錄一行一行跑，然後蹦出一行 <code>pending=13</code>，再十幾行，又一行 <code>pending=8</code>：</p>
+
+                    <figure class="article-figure figure-wide">
+                        <a href="https://codebull-dashboard-service.web.app/etcd-write-path-20260728/" target="_blank" rel="noopener noreferrer">
+                            <img src="asset/etcd-write-path-logs.webp" alt="CodeBull 面板 Logs 分頁：mvcc.(*storeTxnWrite).put 的逐字紀錄一行一筆往下跑（k=conc/w4-key-494 rev=6130、k=conc/w1-key-494 rev=6131…），中間穿插著 backend.(*batchTx).commit 的 pending=13、pending=8、pending=15、pending=5，角落 ROWS 顯示 7277" loading="lazy">
+                        </a>
+                        <figcaption><strong>Logs</strong> 分頁，兩個 log 觀測點交錯在一起。數一數兩行 <code>pending=</code> 之間夾了幾行 <code>k=… rev=…</code>，那個批次你就直接從螢幕上讀出來了。<strong>批次不是一個統計概念，它就是這樣一行一行疊起來的。</strong> <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/etcd-write-path-20260728/" target="_blank" rel="noopener noreferrer">打開線上面板 →</a></span></figcaption>
+                    </figure>
+
+                    <p>到這裡都還算有趣但不驚訝。真正讓我坐直的是那兩條 latency 線。</p>
+
+                    <h2>那個 fsync，閒的時候比忙的時候慢十四倍</h2>
+                    <p>先說我以為會看到什麼：磁碟上的 <code>fdatasync</code>，負載越高越慢。這幾乎是條件反射。</p>
+                    <p>面板上是反過來的：</p>
+                    <div class="article-table-wrap">
+                    <table>
+                        <thead><tr><th>相位</th><th>客戶端寫入</th><th>fsync 樣本數</th><th><strong>p50</strong></th><th>p95</th><th>p99</th></tr></thead>
+                        <tbody>
+                            <tr><td>B 每秒一筆</td><td>114</td><td>114</td><td><strong>5.901 ms</strong></td><td>6.045 ms</td><td>6.292 ms</td></tr>
+                            <tr><td>C 一個 client 全速（33.8/s）</td><td>4,038</td><td>3,930</td><td><strong>0.405 ms</strong></td><td>0.506 ms</td><td>0.983 ms</td></tr>
+                            <tr><td>D 四個 client 全速（35.0/s）</td><td>4,238</td><td>4,221</td><td><strong>0.415 ms</strong></td><td>0.768 ms</td><td>5.936 ms</td></tr>
+                        </tbody>
+                    </table>
+                    </div>
+                    <p>（樣本數是照時間戳切相位的，所以跟該相位的寫入數在邊界上差一點，全窗口總共 8,380 個樣本。）</p>
+                    <p><strong>5.901 → 0.405。同一行 <code>fileutil.Fdatasync</code>，忙的時候快了十四倍。</strong></p>
+                    <p>而且這兩組數字都不是雜訊堆出來的平均：每秒一筆那 114 個樣本，p50 到 p99 從 5.901 到 6.292——<strong>整組緊緊貼在 6 毫秒上</strong>；全速那 3,930 個樣本，p50 到 p95 從 0.405 到 0.506——<strong>整組緊緊貼在 0.4 毫秒上</strong>。兩個都是很窄的分佈，只是落在完全不同的地方。</p>
+                    <p>畫出來就是一條平線突然掉下去：</p>
+
+                    <figure class="article-figure figure-wide">
+                        <a href="https://codebull-dashboard-service.web.app/etcd-write-path-20260728/" target="_blank" rel="noopener noreferrer">
+                            <img src="asset/etcd-write-path-fsync-latency.webp" alt="CodeBull 面板上 wal.(*WAL).sync 的 wal_fsync_latency 圖：00:19:08 之前是一條貼在 6 毫秒左右的平線，之後整條掉到 1 毫秒以下、只剩零星尖峰，00:20 附近有一根 71.5 毫秒的單一尖峰，最後一段變成一條貼在底部的密集帶" loading="lazy">
+                        </a>
+                        <figcaption>那條線在面板本地時間 00:19:08 掉下去的那一刻，就是我把節流拿掉的那一刻。其他什麼都沒變——同一個 process、同一個 WAL 檔案、同一行程式碼。 <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/etcd-write-path-20260728/" target="_blank" rel="noopener noreferrer">打開線上面板 →</a></span></figcaption>
+                    </figure>
+
+                    <p><strong>為什麼？我不知道。</strong> 我能講的只有我量到的東西：這是同一個 process、同一個 WAL 檔案、同一行 <code>fdatasync</code>，唯一改變的是它被呼叫的頻率。至於那 5.5 毫秒的差額是花在裝置的寫入快取上、還是檔案系統上、還是 CPU 從閒置狀態爬回來的時間——<strong>在 process 裡面看不出來，我不打算掰一個機制給讀者。</strong></p>
+                    <p>但這件事對「怎麼讀 p99」是有意義的：<strong>如果你在低流量時段量 etcd 的 fsync 延遲，然後拿那個數字當 SLO 基準，你會嚴重高估你系統忙起來的時候的成本。</strong></p>
+
+                    <h2>那攤了十六筆的那一次落盤，有沒有比較慢？</h2>
+                    <p>這是「批次到底划不划算」的真正關鍵——如果攤越多就越慢，那 batching 只是把成本挪到別的地方。我有兩條線可以對：<code>pending=N</code> 的逐次紀錄，和同一個函式的 <code>bolt_commit_latency</code> 樣本，照時間對起來：</p>
+                    <div class="article-table-wrap">
+                    <table>
+                        <thead><tr><th>那一次落盤攤了幾筆</th><th>樣本數</th><th>落盤耗時 p50</th></tr></thead>
+                        <tbody>
+                            <tr><td>3</td><td>134</td><td>1.030 ms</td></tr>
+                            <tr><td>7</td><td>399</td><td>0.938 ms</td></tr>
+                            <tr><td>8</td><td>319</td><td>0.906 ms</td></tr>
+                            <tr><td>13</td><td>83</td><td>0.991 ms</td></tr>
+                            <tr><td>14</td><td>93</td><td>1.023 ms</td></tr>
+                            <tr><td>15</td><td>90</td><td>1.002 ms</td></tr>
+                            <tr><td><strong>16</strong></td><td>15</td><td><strong>0.985 ms</strong></td></tr>
+                        </tbody>
+                    </table>
+                    </div>
+                    <p><strong>攤 16 筆跟攤 3 筆，一樣快。</strong>中位數全部在 1 毫秒上下晃，看不出任何隨批次變大而變慢的趨勢。</p>
+                    <p>換成相位來看是同一個結論：每秒一筆時每次攤 3 筆、耗時 p50 0.991 毫秒；四 client 時每次攤 11.5 筆、耗時 p50 1.230 毫秒。<strong>攤了將近四倍的工作，只多花 24% 的時間。</strong>平均到每一筆操作上，從 0.33 毫秒掉到 0.107 毫秒——<strong>便宜了三倍。</strong></p>
+
+                    <figure class="article-figure figure-wide">
+                        <a href="https://codebull-dashboard-service.web.app/etcd-write-path-20260728/" target="_blank" rel="noopener noreferrer">
+                            <img src="asset/etcd-write-path-commit-latency.webp" alt="CodeBull 面板上 backend.(*batchTx).commit 的 bolt_commit_latency 圖：整條線從頭到尾都在 1 毫秒附近，00:20 附近有一根 55.7 毫秒的尖峰，沒有隨負載上升的趨勢" loading="lazy">
+                        </a>
+                        <figcaption>批次越攤越大，落盤耗時卻沒有跟著往上走。<strong>一次 bbolt 交易的成本幾乎全是固定成本，你多塞進去的每一筆，邊際上幾乎免費</strong>——這是量出來的，不是講道理講出來的。（00:20 附近那根 55.7 毫秒的尖峰，跟 fsync 那張圖上 71.5 毫秒那根同一時刻：磁碟打了個嗝，兩層同時被它撞到。） <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/etcd-write-path-20260728/" target="_blank" rel="noopener noreferrer">打開線上面板 →</a></span></figcaption>
+                    </figure>
+
+                    <h2>誠實話：這一輪我搞砸的、看不到的、和說不準的</h2>
+                    <p><strong>我第一次跑出來的數字全部是錯的，而且錯得很好看。</strong> 正式窗口之前我先跑了一次排練，那一輪送出 2,721 筆寫入之後，面板上 gRPC 入口的<strong>累計</strong>命中數才 1,685 次、server API 1,332 次、raft 提案 1,131 次——連那一輪自己送出的筆數都不到，而且每個點少的幅度還不一樣。<strong>沒有任何警告。</strong>查下去才發現 SDK 預設帶一個每秒 1,000 事件的 token bucket，超過就靜靜丟掉——我二十個點掛在寫入路徑上，大概每秒 44 筆客戶端寫入就撞頂了。把上限調高之後重跑一次控制實驗（480 筆、八路併發），每一個點都跟 etcd 自己的計數器一分不差，正式窗口的 8,390 筆也是七組交叉核對全部吻合。<strong>這一段本來可以不寫，但「看起來合理的錯數字」正是觀測工具最危險的失敗模式</strong>，我寧可把它攤開。</p>
+                    <p><strong>有一個點我掛上去了，它從頭到尾一次都沒響。</strong> <code>backend.(*backend).run</code> 那個 100ms 批次計時器——註冊成功、狀態顯示已插樁，<code>hitCount</code> 整整九分鐘都是 <strong>0</strong>。我換了一行（<code>:452</code> 和 <code>:455</code> 都試過），還是 0。其他十九個點全都有數字。這個函式是 process 啟動時進去、然後就永遠不出來的 goroutine 迴圈，我的猜測是動態插樁只在「函式被呼叫」的那一刻才接得上，所以一個沒有人會再呼叫的函式，永遠走不到那份被插樁的副本。<strong>這是我的推測，不是我從裡面驗證過的事實。</strong>所以那個 100ms 計時器的節奏，這一輪我沒看到。</p>
+                    <p><strong><code>pending</code> 不是客戶端寫入數。</strong> 它是 bbolt 層排在那個交易裡的操作數。要換算回客戶端寫入要除以 3（而且那個 3 在高負載下會漂——<code>unsafePut</code> 全窗口 11,052 次、客戶端寫入 8,390 筆，比例是 1.32 而不是 3，因為 meta 那幾筆自己也批次化了）。我上面所有寫「幾筆」的地方，講的都是 bbolt 操作。</p>
+                    <p><strong>心跳掉拍那件事，我分不清是誰造成的。</strong> <code>raftNode.tick</code> 在閒置時是每秒 10.0 下，四 client 全速時掉到 <strong>5.54 下</strong>，讀取相位又回到 10.15 下。方向很清楚——raft 的心跳跟處理 Ready 的迴圈共用同一條路，忙起來就掉拍。但<strong>二十個觀測點本身也有成本</strong>，這個掉幅有多少是 etcd、有多少是我，我從面板上分不出來。所以我只把它當成一個「值得再查」的訊號，不當結論。</p>
+
+                    <figure class="article-figure figure-wide">
+                        <a href="https://codebull-dashboard-service.web.app/etcd-write-path-20260728/" target="_blank" rel="noopener noreferrer">
+                            <img src="asset/etcd-write-path-tick.webp" alt="CodeBull 面板上 etcdserver.(*raftNode).tick 的累積曲線：00:19 之前是一條斜率固定的直線，之後斜率逐段變緩，00:21 之後最平" loading="lazy">
+                        </a>
+                        <figcaption>心跳的累積曲線。閒置時斜率固定，負載一上來就逐段變緩——<strong>一個本來應該固定在 100ms 的節拍器在掉拍</strong>。這個彎有多少是 etcd、有多少是觀測本身的成本，我從這裡分不出來。 <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/etcd-write-path-20260728/" target="_blank" rel="noopener noreferrer">打開線上面板 →</a></span></figcaption>
+                    </figure>
+
+                    <p><strong>相位邊界有大約 50 筆的歸屬誤差。</strong> 面板的命中計數器比伺服器晚一點點，所以在相位交界處，前一段的尾巴會被算進後一段。總數是準的（八個點全部落在 8,390），而且 MVCC 那條 log 帶著 key 前綴，所以每一筆寫入到底屬於哪個相位，逐字查得出來——但<strong>每個相位的計數器差值在邊緣是近似的</strong>，我沒有拿它去支撐任何比例。</p>
+                    <p><strong>線上面板只裝得下前七分鐘。</strong> 整個窗口的資料量超過面板上傳的上限（試過就被回 <code>Invalid string length</code>），所以我把上傳範圍縮到 16:15:08–16:22:09，也就是閒置 + 每秒一筆 + 一 client 全速 + 四 client 的前一半，7 分 1 秒、126,515 筆。<strong>上面所有的比例和延遲數字都在這段裡看得到</strong>，但線上面板的 <code>ROWS: 7277</code> 對應的是這個子窗口，不是全篇引用的 8,390。</p>
+                    <p><strong>看得到就是看得到，看不到就標明看不到，不給讀者一個假裝完整的東西。</strong></p>
+
+                    <h2>一個對照：etcd 自己的 metrics 為什麼還不夠</h2>
+                    <p>這次的對照組特別強：etcd 自己的 Prometheus endpoint 非常完整，而且我整篇的信心有一半是它給的。窗口首尾一減，七組數字全部對上：</p>
+                    <div class="article-table-wrap">
+                    <table>
+                        <thead><tr><th>etcd 自己的計數器</th><th>差值</th><th>我的觀測點</th><th>命中數</th></tr></thead>
+                        <tbody>
+                            <tr><td><code>etcd_mvcc_put_total</code></td><td>8,390</td><td><code>mvcc.(*storeTxnWrite).put</code></td><td><strong>8,390</strong></td></tr>
+                            <tr><td><code>etcd_server_proposals_committed_total</code></td><td>8,390</td><td><code>processInternalRaftRequestOnce</code></td><td><strong>8,390</strong></td></tr>
+                            <tr><td><code>etcd_server_proposals_applied_total</code></td><td>8,390</td><td><code>applyEntryNormal</code></td><td><strong>8,390</strong></td></tr>
+                            <tr><td><code>grpc_server_handled_total{Put,OK}</code></td><td>8,390</td><td><code>v3rpc.(*kvServer).Put</code></td><td><strong>8,390</strong></td></tr>
+                            <tr><td><code>etcd_disk_wal_fsync_duration_seconds_count</code></td><td>8,379</td><td><code>wal.(*WAL).sync</code></td><td><strong>8,379</strong></td></tr>
+                            <tr><td><code>etcd_disk_backend_commit_duration_seconds_count</code></td><td>1,331</td><td><code>backend.(*batchTx).commit</code></td><td><strong>1,331</strong></td></tr>
+                            <tr><td><code>grpc_server_handled_total{Range,OK}</code></td><td>5,276</td><td><code>EtcdServer.Range</code></td><td><strong>5,276</strong></td></tr>
+                        </tbody>
+                    </table>
+                    </div>
+                    <p>論「數東西」，它比我的觀測點成熟得多。那觀測點多給了什麼？</p>
+                    <ol>
+                        <li><strong>它只導出它想導出的東西。</strong> 上面那張二十三個腳印的表裡，只有五行有對應的 Prometheus metric。<code>WAL.Save</code> 兩次而 <code>WAL.sync</code> 一次、<code>unsafePut</code> 三次、<code>applyAll</code> 兩次——這些 etcd 一個都不 export。我之所以數得出來，是因為我可以<strong>把計數器放在我自己挑的那一行</strong>上。</li>
+                        <li><strong>它是聚合的，不給你逐字現場。</strong> <code>etcd_mvcc_put_total</code> 告訴你寫了幾筆，不告訴你哪一個 key、拿到第幾號修訂。<code>etcd_disk_backend_commit_duration_seconds</code> 給你落盤耗時的直方圖，但<strong>不會告訴你那一次落盤攤了幾筆</strong>——<code>pending=16</code> 這種東西不存在於任何 metric 裡，因為沒有人事先決定要 export 它。</li>
+                        <li><strong>它不對帳，是我拿它來對帳我自己。</strong> 上面那張表的價值不是「證明 etcd 沒錯」，是<strong>證明面板上的數字可以信</strong>。有了這個，前面那個十四倍才站得住。</li>
+                    </ol>
+                    <p>把那把修訂號的尺拿出來驗算一次：整個窗口的 <code>rev</code> 從 <strong>2</strong> 跑到 <strong>8,391</strong>，<code>8,391 − 2 + 1 = 8,390</code>，跟面板 log 的 8,390 行、跟客戶端自己數的 8,390 筆一分不差。三個彼此獨立的來源指向同一個數字。</p>
+
+                    <figure class="article-figure figure-wide">
+                        <a href="https://codebull-dashboard-service.web.app/etcd-write-path-20260728/" target="_blank" rel="noopener noreferrer">
+                            <img src="asset/etcd-write-path-metrics.webp" alt="CodeBull 面板 Metrics 分頁的十六格圖表：十四條累積命中曲線加兩條 latency 散點。raftNode.tick 的斜率逐段變緩；kvServer.Put、EtcdServer.Put、processInternalRaftRequestOnce、saveEntry、applyEntryNormal、applierV3backend.Put、treeIndex.Put 七條線形狀完全相同、都爬到約 6,000；WAL.Save、saveState、applyAll、applyEntries 四條爬到約 12,000；unsafePut 爬到約 8,000" loading="lazy">
+                        </a>
+                        <figcaption>完整的 <strong>Metrics</strong> 分頁。這張圖最好看的地方是<strong>形狀的重複</strong>：七條線長得一模一樣（那是 1:1 的那幾層），四條線長得一模一樣但高度剛好兩倍（那是 2:1 的那幾層）。一次寫入被拆成什麼形狀，不用看數字，看輪廓就看出來了。 <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/etcd-write-path-20260728/" target="_blank" rel="noopener noreferrer">打開線上面板 →</a></span></figcaption>
+                    </figure>
+
+                    <h2>收尾</h2>
+                    <p>我沒有改一行 code、沒有重啟 etcd、沒有先埋一套 trace backend。就只是在一個跑著的 process 上挑了二十個位置掛觀測點，然後把負載從「完全不碰」推到「四個 client 全速灌」，再切成只讀不寫，認真看了九分鐘。</p>
+                    <p>換來的是：我看到一個閒置的 etcd 兩分鐘裡心跳 1,200 下、其餘十九個點全是 0；看到一次 <code>put</code> 在十六個位置上留下二十三個腳印，其中 <code>WAL.Save</code> 兩次但只 fsync 一次、bbolt 那層寫了三筆；看到只讀不寫的時候二十個點只有三個會動，但線性化讀取還是要讓 raft 轉一圈；看到負載上來以後只有 bbolt 那一欄脫隊，從 1:1 退到 9.72:1，而 WAL 的 fsync 整整九分鐘只省下 11 次；看到每一次落盤到底攤了幾筆——每秒一筆時永遠是 3，四 client 時最多攤到 16；看到攤 16 筆跟攤 3 筆一樣快，所以 batching 幾乎是白賺的；最後看到那條我完全沒預期的線：<strong>同一行 <code>fdatasync</code>，閒的時候 5.9 毫秒，忙的時候 0.4 毫秒。</strong></p>
+                    <p>etcd 是黑盒子，但黑盒子只是「預設看不見」，不是「不能看」。我進去之前對這條路有一套想像，九分鐘之後，那套想像有的被證實、有的被打臉、還有一個位置我根本掛不上去。<strong>這三種結果我都寫了，因為它們都是這九分鐘真的發生的事。</strong></p>
+
+                    <h3>附：這次的觀測設定（可重現）</h3>
+                    <ul>
+                        <li><strong>這一輪掛的 20 個點</strong>：見前文表格；16 個 metric（變數過濾只留 <code>trace_hits</code>，面板才乾淨）、2 個 log、2 個 latency，分佈在 19 個函式上（<code>backend.(*batchTx).commit</code> 同時掛了 log 和 latency）。</li>
+                        <li><strong>被觀測的服務</strong>：單節點 etcd v3.7，<code>go build -gcflags="all=-dwarflocationlists=true -N -l"</code>，全新 data-dir，client 走 <code>http://127.0.0.1:2379</code>；SDK <code>github.com/0xbu11/codebull v0.0.28</code>。</li>
+                        <li><strong>觀測窗口</strong>：2026-07-27 16:15:08.635Z → 16:24:11.029Z（9 分 02 秒），五個相位：
+                            <ul>
+                                <li>A 閒置 120s：0 筆寫入 / tick 1,200（10.0/s）/ 其餘 19 個點全 0</li>
+                                <li>B 每秒一筆 120s：114 筆 / 每筆 23 個腳印 / fsync 114 / 落盤 114（每次 pending 恆為 3）</li>
+                                <li>C 一 client 全速 120s：4,038 筆（33.8/s）/ fsync 4,038 / 落盤 780（5.18:1）</li>
+                                <li>D 四 client 全速 120s：4,238 筆（35.0/s）/ fsync 4,227 / 落盤 436（9.72:1，最大 pending 16）</li>
+                                <li>E 只讀 62s：5,276 次 Range / 二十個點只有 Range、applyAll、applyEntries 會動</li>
+                                <li>合計：8,390 筆寫入 / 5,276 次讀取</li>
+                            </ul>
+                        </li>
+                        <li><strong>交叉核對</strong>（同一窗口首尾差值，七組全部吻合）：<code>etcd_mvcc_put_total</code> 8,390、<code>etcd_server_proposals_committed_total</code> 8,390、<code>etcd_server_proposals_applied_total</code> 8,390、<code>grpc_server_handled_total{Put,OK}</code> 8,390、<code>etcd_disk_wal_fsync_duration_seconds_count</code> 8,379、<code>etcd_disk_backend_commit_duration_seconds_count</code> 1,331、<code>grpc_server_handled_total{Range,OK}</code> 5,276</li>
+                        <li><strong>修訂號驗算</strong>：窗口內 <code>rev</code> 2 → 8,391，共 8,390 個，與客戶端 tally 及面板 log 行數三方一致</li>
+                        <li><strong>延遲</strong>：<code>wal_fsync_latency</code> 8,380 個樣本（B 相位 p50 5.901ms / C 0.405ms / D 0.415ms，全窗口 max 71.491ms）；<code>bolt_commit_latency</code> 1,332 個樣本（B p50 0.991ms / C 0.929ms / D 1.230ms，全窗口 max 55.739ms）</li>
+                        <li><strong>這一輪沒做到的事</strong>：
+                            <ul>
+                                <li><code>backend.(*backend).run</code> 的 100ms 批次計時器<strong>掛得上但一次都沒響</strong>（<code>:452</code>、<code>:455</code> 都試過，九分鐘 hitCount 0），所以那個計時器的節奏全篇沒有數字</li>
+                                <li>第四相位沒有做出我想抓的 WAL 批次化——四個 client 只推到 35/s，隊列沒排起來，全窗口只省下 11 次 fsync</li>
+                                <li><code>{len(ents)}</code> 這種模板渲染不出來（回 <code>&lt;missing&gt;</code>），每輪 Save 帶幾個 entry 只能用兩個計數點的比值反推</li>
+                                <li>心跳掉拍（10.0/s → 5.54/s）分不清有多少是觀測本身的成本</li>
+                                <li>線上面板只涵蓋窗口的前 7 分 1 秒（126,515 筆），全窗口超過上傳上限</li>
+                            </ul>
+                        </li>
+                    </ul>
+
+                    <div class="article-callout">
+                        <p>📊 <strong>本文的遠端觀測面板</strong>（實測數據，可線上檢視）：<a href="https://codebull-dashboard-service.web.app/etcd-write-path-20260728/" target="_blank" rel="noopener noreferrer">etcd-write-path-20260728</a></p>
+                        <p><strong>Metrics</strong> 分頁有十六格：十四條累積命中曲線（七條 1:1 的線形狀完全相同、四條 2:1 的線高度剛好兩倍）加兩條 latency 散點——<code>wal_fsync_latency</code> 那條在 00:19:08 掉下去的地方就是我把節流拿掉的那一刻；<strong>Logs</strong> 分頁是 <code>k=… rev=…</code> 與 <code>pending=…</code> 交錯的逐字紀錄，batching 就是在那裡一行一行疊起來的。（面板時間軸是本地時間 UTC+8，對應內文的 UTC 時間。）</p>
+                    </div>
+
+                    <div class="article-footnote">
+                        <p>這篇裡「不改 code、對執行中的 process 掛觀測點、然後盯著看」用的是 <strong>CodeBull</strong> —— 一個 VS Code extension，能對正在跑的 Go 服務動態插入 Metric / Log / Latency 觀測點，不改原始碼、不重編譯、不重啟。上面那條「閒的時候 5.9 毫秒、忙的時候 0.4 毫秒」的 fsync 曲線，就是這樣被我當場看到的。</p>
+                        <p><em>文中每一個次數、每一個毫秒數、每一個修訂號均出自 CodeBull 對執行中 etcd 的實測證據，並可在上方面板連結線上對帳。</em></p>
+                        <p><a class="btn" href="https://marketplace.visualstudio.com/items?itemName=0xbu11.codebull" target="_blank" rel="noopener noreferrer">安裝 CodeBull</a></p>
+                    </div>
+                </article>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2026 CodeBull. 版權所有。</p>
+            <div class="links">
+                <a href="https://github.com/0xbu11/codebull">GitHub</a>
+                <a href="mailto:codebull.0xbu11@gmail.com">codebull.0xbu11@gmail.com</a>
+                <a href="#">隱私權</a>
+                <a href="#">條款</a>
+            </div>
+        </div>
+    </footer>
+</body>
+
+</html>

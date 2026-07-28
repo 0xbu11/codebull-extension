@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeBull - 我對一個跑著的 gin 數了十分鐘</title>
+    <meta name="description" content="不改一行 code，在執行中的 gin 框架內部掛五個觀測點：同一條路徑餵出五種結局，然後看到有兩分鐘 120 個請求連中介層的門都沒進去，而服務自己的 access log 一行都沒有。">
+    <meta property="og:type" content="article">
+    <meta property="og:site_name" content="CodeBull">
+    <meta property="og:locale" content="zh_TW">
+    <meta property="og:title" content="我對一個跑著的 gin 數了十分鐘，然後看到有兩分鐘我的中介層一次都沒被叫到">
+    <meta property="og:description" content="同一條路徑、五種結局：中介層鏈每請求被重入 4、4、4、3、0 次。最後那個 0 是 120 個請求連鏈的門都沒進去——而我以為順便量到的成本差異，有 77–94% 是我自己的觀測點。">
+    <meta property="og:url" content="https://0xbu11.github.io/codebull-extension/article-gin-middleware_zh_TW.html">
+    <meta property="og:image" content="https://0xbu11.github.io/codebull-extension/asset/og-site-zh.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="627">
+    <meta property="og:image:alt" content="我對一個跑著的 gin 數了十分鐘，然後看到有兩分鐘我的中介層一次都沒被叫到">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="我對一個跑著的 gin 數了十分鐘，然後看到有兩分鐘我的中介層一次都沒被叫到">
+    <meta name="twitter:description" content="同一條路徑、五種結局：中介層鏈每請求被重入 4、4、4、3、0 次。最後那個 0 是 120 個請求連鏈的門都沒進去。">
+    <meta name="twitter:image" content="https://0xbu11.github.io/codebull-extension/asset/og-site-zh.png">
+    <link rel="stylesheet" href="style.css?v=17">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&display=swap" rel="stylesheet">
+    <script src="theme.js"></script>
+</head>
+
+<body>
+    <div class="announcement-banner">
+        目前支援的 Go 版本：V1.22.0 與 V1.26.0。
+    </div>
+    <header>
+        <div class="container">
+            <div class="logo">
+                <a href="index_zh_TW.html">Code<span>Bull</span></a>
+            </div>
+            <div class="header-logo-center">
+                <a href="https://marketplace.visualstudio.com/items?itemName=0xbu11.codebull" target="_blank" rel="noopener noreferrer" aria-label="在 VS Code Marketplace 開啟 CodeBull">
+                    <img src="asset/codebull-logo.png" alt="CodeBull Logo">
+                </a>
+            </div>
+            <nav>
+                <ul>
+                    <li><a href="index_zh_TW.html#features">功能</a></li>
+                    <li><a href="index_zh_TW.html#articles">實測筆記</a></li>
+                    <li><a href="tutorial_zh_TW.html">教學</a></li>
+                    <li><a href="docs_zh_TW.html">文件</a></li>
+                    <li><a href="platform_zh_TW.html">平台</a></li>
+                    <li><a href="https://github.com/0xbu11/codebull" target="_blank">GitHub</a></li>
+                    <li><a href="article-gin-middleware.html" class="lang-switch">EN</a></li>
+                    <li><button id="theme-toggle" class="theme-toggle" aria-label="切換主題">☀️</button></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <section class="article-header">
+            <div class="container">
+                <a class="article-back" href="index_zh_TW.html#articles">← 回到文章列表</a>
+                <span class="article-card-source">gin · 實測筆記</span>
+                <h1>我對一個跑著的 gin 數了十分鐘，然後看到有兩分鐘我的中介層一次都沒被叫到</h1>
+                <div class="article-meta">
+                    <span>2026-07-28</span>
+                    <span>10 分鐘窗口 / 600 個請求 / 5 個觀測點</span>
+                    <span>gin v1.12.0</span>
+                </div>
+                <p class="article-lede">不改任何一行 code，對一個<strong>正在跑的</strong> gin 服務，在框架內部掛了五個觀測點，然後坐著看十分鐘——並且讓同一條路徑產生五種不同的結局。</p>
+            </div>
+        </section>
+
+        <section class="article-section">
+            <div class="container">
+                <article class="article-body">
+                    <p>我想問的是一個很笨的問題——<strong>一個請求進來，我的中介層鏈到底被叫了幾次？</strong> 但這次我沒有隨便餵流量進去。我讓同一條路徑 <code>/health</code> 產生五種不同的結局：正常、找不到路由、方法不對、沒帶 token、多打一個斜線。一種結局兩分鐘，一秒一個請求，中間什麼都不改。</p>
+                    <p>十分鐘之後，那五個結局在面板上是這樣的：四次、四次、四次、三次，然後是<strong>零</strong>。最後那兩分鐘，服務照樣收了 120 個請求、照樣每一個都回了東西給客戶端，但我的中介層一層都沒跑，而服務自己的 access log 對這兩分鐘<strong>一個字都沒說</strong>。</p>
+                    <p>這篇聊的不是工具，是「盯著執行中的框架數數」這件事本身——包括它怎麼在最後騙了我一次。</p>
+
+                    <h2>先決定要站在哪裡看</h2>
+                    <p>框架的黑盒性質跟 ORM 是同一種形狀，只是換了個位置。ORM 是「你寫的一行 Go」和「真正送出去的 SQL」中間隔了一層；框架則是「客戶端敲的那個請求」和「你的 handler 被呼叫」中間隔了一層。路由比對、路徑正規化、轉址、405 的判定、404 的 fallback——這些在原始碼裡讀得到，但<strong>跑起來的時候沒有任何東西告訴你它們各發生了幾次</strong>。</p>
+                    <p>站在自己的 handler 裡最省事，但那是最沒用的位置：<strong>沒跑到 handler 的請求，正是我想看的那些。</strong> 往下站到 <code>net/http</code> 又太下面，那裡只剩一個入口，看不出 gin 內部把這個請求分岔到哪條路去了。所以我站進 gin 自己的路由層，挑了五個位置：</p>
+                    <div class="article-table-wrap">
+                    <table>
+                        <thead><tr><th>位置</th><th>種類</th><th>想回答的問題</th></tr></thead>
+                        <tbody>
+                            <tr><td><code>gin.(*Engine).handleHTTPRequest</code> <code>gin.go:708</code></td><td>log，<code>M={httpMethod} P={rPath}</code></td><td>router 實際拿到的是哪個方法、哪條路徑</td></tr>
+                            <tr><td><code>gin.(*Context).Next</code> <code>context.go:189</code></td><td>metric</td><td>中介層鏈<strong>被重入幾次</strong></td></tr>
+                            <tr><td><code>gin.serveError</code> <code>gin.go:765</code></td><td>log，<code>status={code}</code></td><td>404 / 405 各發生幾次</td></tr>
+                            <tr><td><code>gin.redirectTrailingSlash</code> <code>gin.go:782</code></td><td>metric</td><td>尾斜線轉址發生幾次</td></tr>
+                            <tr><td><code>gin.(*Engine).ServeHTTP</code> <code>gin.go:667 → 674</code></td><td>latency</td><td>從拿 Context 到還回去，一個請求在框架裡花多久</td></tr>
+                        </tbody>
+                    </table>
+                    </div>
+                    <p><code>Next</code> 那個計數，等一下會變成整篇的主角。最後那個 latency，等一下會反過來咬我一口。</p>
+                    <p><strong>這裡有兩個踩過的坑值得先講。</strong></p>
+                    <p>第一個是掛 log 的時候要明確限定抓哪幾個變數——這是我上一輪掛同一個點時踩出來的。<code>gin.go:708</code> 那一行的作用域裡，後面才會被賦值的那些 local（<code>i</code>、<code>root</code>、<code>allowed</code>）此刻都還不是值，是還沒進入生存區間的堆疊記憶體；不限定就會把它們一起渲染出來，那一輪還為此重跑了好幾次。所以這次我從一開始就只抓 <code>httpMethod</code> 和 <code>rPath</code>。<strong>掛點的位置不只決定你看得到什麼，也決定你會不小心讀到什麼。</strong></p>
+                    <p>第二個是 latency。同樣是 <code>ServeHTTP</code> 的 <code>667 → 674</code> 這個區間，我兩天前掛過三種寫法，每一種都回報註冊成功、狀態顯示已插樁，但延遲表整個是空的、命中數恆為 0。這次我只多做了一件事：註冊時給它一個名字（<code>gin_serve_latency</code>）。<strong>同一行、同一個區間，樣本立刻出來，602 個，跟 router 那個點的 602 次一比一。</strong> 一個看起來像是選填的參數，實際上決定了這個維度存不存在——這種踩坑我覺得比結論本身還值得寫。</p>
+                    <p>被觀測的是一支很平凡的 gin：<code>gin.New()</code>、三層全域中介層（<code>requestID</code> → <code>accessLog</code> → <code>auth</code>）、四條路由、一個 <code>NoRoute</code>。</p>
+
+                    <h2>這次不亂餵流量：一條路徑，五種結局</h2>
+                    <p>上一輪我把各種請求混在同一個相位裡餵進去，結果是「數得出來次數，但分不出成本」——面板上那個延遲是一鍋粥。所以這次我把流量切成五段，<strong>每一段只有一種請求</strong>，而且盡量只換一個變數：</p>
+                    <div class="article-table-wrap">
+                    <table>
+                        <thead><tr><th>相位</th><th>我送的</th><th>結局</th><th>為什麼是它</th></tr></thead>
+                        <tbody>
+                            <tr><td>A</td><td><code>GET /health</code> 帶 token</td><td>200</td><td>基準線：打中路由、跑完整條鏈</td></tr>
+                            <tr><td>B</td><td><code>GET /nope</code> 帶 token</td><td>404</td><td>打不中任何路由</td></tr>
+                            <tr><td>C</td><td><code>PUT /health</code> 帶 token</td><td>405</td><td>路徑對、方法不對</td></tr>
+                            <tr><td>D</td><td><code>GET /health</code> 不帶 token</td><td>401</td><td><code>auth</code> 中途 abort</td></tr>
+                            <tr><td>E</td><td><code>GET /health/</code> 帶 token</td><td>301</td><td>只多一個斜線（而且我不跟隨轉址）</td></tr>
+                        </tbody>
+                    </table>
+                    </div>
+                    <p>每段兩分鐘、一秒一個請求、每段 120 個。窗口是 <code>2026-07-28T08:53:57Z</code> 到 <code>09:04:03Z</code>，十分零六秒。客戶端這邊自己數，總共 <strong>600 個</strong>請求；我中途另外手動打了 2 次 <code>/health</code> 確認服務還活著，所以面板上應該是 602——先記著這個數字。</p>
+
+                    <h2>素顏：一個請求在五種結局下的腳印</h2>
+                    <p>窗口結束時，面板上五個點的總數是：router 進入 <strong>602</strong>、<code>Next()</code> <strong>1808</strong>、<code>serveError</code> <strong>240</strong>、轉址 <strong>120</strong>、延遲樣本 <strong>602</strong>。</p>
+                    <p>把它按相位攤開，就是這篇的骨架：</p>
+                    <div class="article-table-wrap">
+                    <table>
+                        <thead><tr><th>相位</th><th>客戶端請求</th><th>router 進入</th><th><code>Next()</code> 命中</th><th>每請求</th><th><code>serveError</code></th><th>轉址</th></tr></thead>
+                        <tbody>
+                            <tr><td>A 200</td><td>120</td><td>121</td><td>484</td><td><strong>4.00</strong></td><td>0</td><td>0</td></tr>
+                            <tr><td>B 404</td><td>120</td><td>121</td><td>484</td><td><strong>4.00</strong></td><td>120</td><td>0</td></tr>
+                            <tr><td>C 405</td><td>120</td><td>120</td><td>480</td><td><strong>4.00</strong></td><td>120</td><td>0</td></tr>
+                            <tr><td>D 401</td><td>120</td><td>120</td><td>360</td><td><strong>3.00</strong></td><td>0</td><td>0</td></tr>
+                            <tr><td>E 301</td><td>120</td><td>120</td><td><strong>0</strong></td><td><strong>0.00</strong></td><td>0</td><td>120</td></tr>
+                        </tbody>
+                    </table>
+                    </div>
+                    <p>（A 和 B 的 121 各含我那次手動健康檢查。）</p>
+                    <p>四個相位除下來全是整數：<code>484 ÷ 121 = 4.00</code>、<code>480 ÷ 120 = 4.00</code>、<code>360 ÷ 120 = 3.00</code>。加起來 <code>484 + 484 + 480 + 360 + 0 = 1808</code>，跟面板總數一分不差。<strong>沒有任何請求走了我沒算到的路徑。</strong></p>
+                    <p>先講那個 <strong>4.00</strong>。一個打中路由的請求，<code>c.Next()</code> 被呼叫四次：引擎自己在 <code>gin.go:722</code> 呼叫第一次，然後我那三層中介層<strong>每一層裡的 <code>c.Next()</code> 各算一次</strong>。這是 gin 的鏈式設計——<code>Next()</code> 不是「執行下一個」，是「<strong>把剩下的鏈整條跑完，跑完再回到我這裡</strong>」，所以三層中介層等於 1 + 3 = 4 次重入。我知道 <code>c.Next()</code> 要自己呼叫，但我從來沒想過那個數字<strong>每一個請求都剛好是四</strong>。</p>
+                    <p>再看 B 和 C 那兩行：<strong>404 和 405 也是 4.00</strong>，一次都沒少。<code>gin.go:758</code> 把 handler 換成 <code>engine.allNoRoute</code> 之後，<code>serveError</code> 在 <code>gin.go:766</code> 照樣把整條鏈跑完。<strong>打不中路由的請求，你的全域中介層一個都沒少跑</strong>——你掛在上面的 auth、限流、logging、metrics，404 和 405 全部照跑一遍。</p>
+                    <p>D 那個 <strong>3.00</strong> 是 token 被我拿掉的那兩分鐘：<code>auth</code> 走 <code>c.AbortWithStatusJSON(401)</code> 然後 <code>return</code>，它<strong>沒有呼叫 <code>c.Next()</code></strong>，整整一層的重入從計數裡消失。</p>
+                    <p>到這裡都還算有趣但不驚訝。真正讓我坐直的是最後那一行。</p>
+
+                    <h2>那兩分鐘，鏈一次都沒有被叫到</h2>
+                    <p>E 相位我只改了一個字元：<code>/health</code> 變成 <code>/health/</code>。</p>
+                    <p>gin 沒有這條路由，但它知道去掉斜線就有。所以它在 <code>gin.go:728</code> 呼叫 <code>redirectTrailingSlash</code>、把 <code>req.URL.Path</code> 就地改寫、回一個 301，然後<strong>在 <code>gin.go:729</code> 直接 <code>return</code></strong>——那是 <code>c.Next()</code> 的上面。</p>
+                    <p>面板上這兩分鐘長這樣：</p>
+                    <ul>
+                        <li><code>handleHTTPRequest</code>：<strong>120</strong>（router 每一個都收到了）</li>
+                        <li><code>redirectTrailingSlash</code>：<strong>120</strong>（每一個都轉址了）</li>
+                        <li><code>gin_serve_latency</code>：<strong>120</strong>（每一個都真的跑完了 <code>ServeHTTP</code>）</li>
+                        <li><code>Next()</code>：<strong>0</strong></li>
+                        <li><code>serveError</code>：<strong>0</strong></li>
+                    </ul>
+                    <p><strong>120 個請求進來，120 個回應出去，我的中介層一次都沒有被叫到。</strong></p>
+                    <p>累積曲線上這件事不用解釋，它自己就攤在那裡：</p>
+
+                    <figure class="article-figure figure-wide">
+                        <a href="https://codebull-dashboard-service.web.app/gin-middleware-20260728/" target="_blank" rel="noopener noreferrer">
+                            <img src="asset/gin-middleware-chain-stops.webp" alt="CodeBull 面板 Metrics 分頁的 gin.(*Context).Next - trace_hits 累積命中曲線：從 16:54 一路爬到約 1,800，17:00 之後斜率明顯轉緩，17:02 之後整條線就沒有了" loading="lazy">
+                        </a>
+                        <figcaption>那條線有兩個轉折，剛好對應我改的兩件事。<strong>17:00 斜率變緩</strong>，是我把 token 拿掉的那一刻（每請求從 4 次變 3 次）；<strong>17:02 之後線直接消失</strong>，是我開始送尾斜線的那一刻。流量從頭到尾都是一秒一個沒有變過。<span class="figure-open"><a href="https://codebull-dashboard-service.web.app/gin-middleware-20260728/" target="_blank" rel="noopener noreferrer">打開線上面板 →</a></span></figcaption>
+                    </figure>
+
+                    <p>而 router 那個點在同一段時間裡一秒一筆、一個都沒漏，逐字抄的內容是這樣：</p>
+
+                    <figure class="article-figure figure-wide">
+                        <a href="https://codebull-dashboard-service.web.app/gin-middleware-20260728/" target="_blank" rel="noopener noreferrer">
+                            <img src="asset/gin-middleware-logs.webp" alt="CodeBull 面板 Logs 分頁：17:03:02 到 17:04:02 之間每秒一列 gin.(*Engine).handleHTTPRequest:708 的紀錄，內容全部是 M=GET P=/health/（httpMethod=GET, rPath=/health/），左下角 ROWS 顯示 842" loading="lazy">
+                        </a>
+                        <figcaption>整整兩分鐘，一秒一列，全部是 <code>M=GET P=/health/</code>。左下角那個 <code>ROWS: 842</code> 也兜得起來：router 的 602 筆加上 <code>serveError</code> 的 240 筆，剛好 842。<span class="figure-open"><a href="https://codebull-dashboard-service.web.app/gin-middleware-20260728/" target="_blank" rel="noopener noreferrer">打開線上面板 →</a></span></figcaption>
+                    </figure>
+
+                    <p>注意那個 <code>rPath=/health/</code>——<strong>它是客戶端敲進來的原樣</strong>，而 <code>gin.go:790-792</code> 會把 <code>req.URL.Path</code> 就地覆蓋掉。（這一輪那條鏈根本沒跑，所以「下游會讀到被改過的路徑」這件事我<strong>沒有量到</strong>，那是讀原始碼得到的；我量到的是：router 這一層看到的還是帶斜線的原樣。）想知道客戶端到底送了什麼，只能站在改寫的上游。</p>
+
+                    <h2>然後是延遲——這一段我差點寫錯</h2>
+                    <p>五個相位、同一個速率、同一支腳本，延遲應該可以直接比。面板上的中位數是這樣：</p>
+                    <div class="article-table-wrap">
+                    <table>
+                        <thead><tr><th>相位</th><th>p50</th><th>相對 A</th></tr></thead>
+                        <tbody>
+                            <tr><td>A 200</td><td>0.524 ms</td><td>1.00</td></tr>
+                            <tr><td>B 404</td><td>0.613 ms</td><td><strong>1.17</strong></td></tr>
+                            <tr><td>C 405</td><td>0.612 ms</td><td><strong>1.17</strong></td></tr>
+                            <tr><td>D 401</td><td>0.463 ms</td><td>0.88</td></tr>
+                            <tr><td>E 301</td><td>0.321 ms</td><td>0.61</td></tr>
+                        </tbody>
+                    </table>
+                    </div>
+                    <p>我當下的解讀是現成的：404 和 405 比正常請求<strong>貴 17%</strong>，因為它們要多掃一次其他方法的路由樹（<code>gin.go:738-749</code> 真的有這段）；401 便宜一點，因為少跑一層；301 最便宜，因為整條鏈都沒進。</p>
+                    <p>故事很順，順到我差點就這樣寫下去。</p>
+                    <p>但有件事對不上。我把每個相位「一個請求會額外觸發幾次探針」數了一下——扣掉延遲那個點本身（它兩輪都在），剩下的是：A <strong>5 次</strong>（1 次 router log + 4 次 <code>Next</code>）、B 和 C <strong>6 次</strong>（多一次 <code>serveError</code> 的 log）、D <strong>4 次</strong>（<code>Next</code> 只有 3 次）、E <strong>2 次</strong>（1 次 router log + 1 次轉址計數）。</p>
+                    <p><strong>這個排序，跟延遲的排序一模一樣。</strong></p>
+                    <p>也就是說，我根本分不出「404 比較貴」是 gin 的性質，還是<strong>我自己那顆探針的價錢</strong>。兩者在這個實驗裡完全共線。</p>
+                    <p>所以我把觀測點全部拔掉，只留 latency 那一個，換一個乾淨的 process，<strong>用完全同一支腳本、同樣的 120 × 5、同樣一秒一個，再跑十分鐘</strong>：</p>
+                    <div class="article-table-wrap">
+                    <table>
+                        <thead><tr><th>相位</th><th>五個點時 p50</th><th>只留延遲點 p50</th><th>差</th><th>相對 A（乾淨）</th></tr></thead>
+                        <tbody>
+                            <tr><td>A 200</td><td>0.524 ms</td><td><strong>0.119 ms</strong></td><td>0.405</td><td>1.00</td></tr>
+                            <tr><td>B 404</td><td>0.613 ms</td><td><strong>0.104 ms</strong></td><td>0.509</td><td><strong>0.87</strong></td></tr>
+                            <tr><td>C 405</td><td>0.612 ms</td><td><strong>0.065 ms</strong></td><td>0.547</td><td><strong>0.55</strong></td></tr>
+                            <tr><td>D 401</td><td>0.463 ms</td><td><strong>0.072 ms</strong></td><td>0.391</td><td>0.60</td></tr>
+                            <tr><td>E 301</td><td>0.321 ms</td><td><strong>0.020 ms</strong></td><td>0.301</td><td><strong>0.17</strong></td></tr>
+                        </tbody>
+                    </table>
+                    </div>
+                    <p><strong>排序整個翻掉了。</strong></p>
+                    <p>乾淨的 gin 裡，一個 404 比正常請求<strong>便宜 13%</strong>，一個 405 便宜 <strong>45%</strong>——跟我上面那段推論剛好相反。我看到的那個「17% 比較貴」，是<strong>我掛在 <code>serveError</code> 上的那個 log 點自己的重量</strong>。</p>
+                    <p>405 那個 45% 我有把握解釋：<code>gin.go:751</code> 把 handler 換成 <code>engine.allNoMethod</code>，而我這支 demo 從來沒有註冊過 <code>NoMethod</code>，所以那條鏈跑完就結束了、<strong>後面沒有任何 handler</strong>，真正的回應是 <code>serveError</code> 寫出去的一行純文字 <code>default405Body</code>。相較之下 <code>/health</code> 要做一次 JSON 編碼。</p>
+                    <p>至於 404 為什麼比 200 便宜 13%，<strong>我沒有可以驗證的答案</strong>。這支 demo 的 <code>NoRoute</code> 是我自己寫的、一樣回 <code>c.JSON</code>，所以「404 不用編碼 JSON」這個現成解釋不成立。0.104 對 0.119 這個差我量到了，但機制我沒量到，就不編一個給讀者。</p>
+                    <p>順著這張表還看得到另一件事：<strong>觀測讓每個請求貴了 0.30 到 0.55 毫秒</strong>，佔了面板上那個數字的 <strong>77% 到 94%</strong>。E 相位最誇張——gin 自己只花 0.020 毫秒，面板上寫 0.321 毫秒，<strong>十六倍</strong>，因為那個請求本身太便宜了，探針的固定成本整個蓋過去。</p>
+                    <p>那 E 相位剩下的、真的屬於 gin 的那個數字是：<strong>0.020 毫秒</strong>，一個正常請求的六分之一（<code>0.119 ÷ 0.020 = 6.0</code>）。而且它的分佈非常窄——p25 到 p90 是 0.013 到 0.054 毫秒，<strong>整段最大值 0.097 毫秒，連 0.1 都沒破</strong>。</p>
+                    <p><strong>一個被 gin 就地轉址掉的請求，成本是正常請求的六分之一，而且不會在你的任何一份 log 裡出現。</strong></p>
+
+                    <h2>誠實話：這一輪我搞砸的、看不到的、和說不準的</h2>
+                    <p><strong>我第一輪的延遲數字有 77% 到 94% 是我自己。</strong> 上面那段就是。我要強調的不是「所以延遲觀測沒用」——同一個工具的另一輪就把真相量出來了——而是：<strong>當你的觀測點掛在每個請求都會經過的路徑上，你量到的是「被觀測的系統」，不是「系統」。</strong> 相位之間如果剛好觸發不同數量的探針，那個差就會偽裝成你想要的結論。我如果沒有數過探針數、沒有再跑一輪，這篇會有一段寫得很順、但完全錯的因果。</p>
+                    <p><strong>中間有一輪蒐證被吃掉了。</strong> 第一次跑對照輪的時候，觀測端的 host 在第 2 分 13 秒無聲死掉：被觀測的 gin 完全沒事、流量腳本照跑完十分鐘、最後還印出一份漂亮完整的 tally，但面板那邊只留下第一個相位的 121 個樣本，後面四個相位共 480 個樣本全部沒了，log 檔一行錯誤都沒有。<strong>我是靠「樣本數對不上客戶端計數」才發現的。</strong> 上面那張對照表是重跑一次之後的結果。這件事的教訓很直接：窗口結束後不對帳，你不會知道自己手上是不是只有五分之一的資料。</p>
+                    <p><strong>對照輪有 3% 的雜質。</strong> 那一輪我掛了一個每 30 秒打一次 <code>/health</code> 的健康檢查（就是為了偵測上面那件事），所以每個相位混進大約 4 個「正常請求」，樣本數是 124 不是 120。它們在樣本裡跟其他請求長得一模一樣，我挑不出來，也就沒有挑。另外那一輪的面板上看得到三根孤兒尖峰，落在 A、B、C 三個相位裡（三段的最大值分別是 45.2、44.9、35.1 毫秒），把平均值拉到 0.36–0.48 毫秒——所以上面我只引用中位數與四分位數，不引用平均值。</p>
+                    <p><strong><code>Next()</code> 這個計數看不出「少的是哪一層」。</strong> 它只告訴我鏈被重入了幾次。D 相位掉到 3.00，我知道少了一次，但「少的那次是 <code>auth</code>」是我從 4 − 3 = 1 加上程式碼推回去的，<strong>不是面板直接指認的</strong>。要面板自己講，得在每一層中介層身上各掛一個點。</p>
+                    <p><strong>相位邊界有大約一筆的歸屬誤差。</strong> 服務自己的 access log 只有秒級時間戳，所以交界處會有一兩行被算到隔壁相位（A 相位那 121 行裡有 1 行是 404）。總數是準的，但每個相位的邊緣是近似的。</p>
+                    <p><strong>這一輪全部跑在每秒一個請求上。</strong> 我沒有量過高負載，所以這篇沒有任何一句話是關於高吞吐的。那些比例在每秒幾千個請求下會不會變，我不知道，就不猜。</p>
+                    <p>看得到就是看得到，看不到就標明看不到，不給讀者一個假裝完整的東西。</p>
+
+                    <h2>對照：服務自己的 access log 為什麼還不夠</h2>
+                    <p>這支服務身上本來就有一層 <code>accessLog</code> 中介層，印的是最典型的那種格式：方法、路徑、狀態碼、耗時。公平講，它一點都不瞎——同一個窗口它記了 <strong>481 行</strong>：404、405、401 各 <strong>120 行</strong>，200 有 <strong>121 行</strong>（含我中途手動打的健康檢查），每一格都對得上我客戶端自己數的。</p>
+                    <p>問題是面板上 router 收到的是 <strong>602</strong> 個。</p>
+                    <p><strong>差 121。</strong> 其中 120 個就是 E 相位那些轉址（剩下 1 個是上面說的邊界誤差）。整份 access log 裡，<code>301</code> 出現 <strong>0 次</strong>、<code>/health/</code> 出現 <strong>0 次</strong>——不是記得比較粗，是<strong>整整兩分鐘的結構性空白</strong>。</p>
+                    <p>原因就是前面那張表：轉址路徑上 <code>Next()</code> 命中 0 次，而 <code>accessLog</code> 自己就是鏈上的一層，沒人呼叫它就不會跑，不跑就沒有那一行。同一份 log 反過來也印證了另一半：404 和 405 那兩個相位它<strong>一行都沒漏，各記了 120 行</strong>，正因為那條鏈真的跑完了。<strong>用它說了什麼，證明 404 跑滿整條鏈；用它沒說什麼，證明 301 一層都沒跑。</strong></p>
+                    <p>而且就算它有印出來，它印的那個耗時也不是你以為的那個耗時。把它自己的數字跟乾淨那一輪的 <code>ServeHTTP</code> 擺在一起：</p>
+                    <div class="article-table-wrap">
+                    <table>
+                        <thead><tr><th>相位</th><th>access log 的中位數</th><th>框架實際花的（乾淨輪 p50）</th><th>它看得到多少</th></tr></thead>
+                        <tbody>
+                            <tr><td>A 200</td><td>0.043 ms</td><td>0.119 ms</td><td><strong>36%</strong></td></tr>
+                            <tr><td>C 405</td><td>0.0006 ms</td><td>0.065 ms</td><td><strong>1%</strong></td></tr>
+                            <tr><td>E 301</td><td>—（沒有這一行）</td><td>0.020 ms</td><td><strong>0%</strong></td></tr>
+                        </tbody>
+                    </table>
+                    </div>
+                    <p>那個 405 的 <strong>0.0006 毫秒</strong>（中位數，也就是六百奈秒上下；那一整段每一行都是幾百奈秒）特別有意思。<code>accessLog</code> 是在自己呼叫 <code>c.Next()</code> 前後計時的，而 405 那條路上，<code>c.Next()</code> 跑的是 <code>engine.allNoMethod</code>——這支 demo 從沒註冊過 <code>NoMethod</code>，所以那條鏈裡只有我的三層中介層、後面沒有任何 handler，<strong>真正寫出 405 回應的動作發生在 <code>serveError</code> 裡、<code>c.Next()</code> 回來之後</strong>（<code>gin.go:766-778</code>）。所以它量到的那一段裡幾乎什麼都沒發生：你的 log 說這個請求花了 0.0006 毫秒，而框架實際上花了 0.065——<strong>它看到的是百分之一。</strong></p>
+                    <p>所以觀測點多給了什麼？三件事：</p>
+                    <ol>
+                        <li><strong>它站在鏈的外面。</strong> access log 只記得到「鏈有跑」的請求，router 那個點記的是「框架收到」的請求。這兩個數字的差，就是被框架在鏈啟動前處理掉的量。</li>
+                        <li><strong>它給的是逐字的、改寫前的內容。</strong> <code>M=GET P=/health/</code> 那 120 筆是 <code>req.URL.Path</code> 被覆蓋<strong>之前</strong>的原樣。</li>
+                        <li><strong>它會對帳。</strong> 602 對 481 這個差本身就是資訊。哪天這兩個數字的差開始變大，代表有一批請求正在框架層被攔掉，而你的 log 對此完全靜默。</li>
+                    </ol>
+
+                    <figure class="article-figure figure-wide">
+                        <a href="https://codebull-dashboard-service.web.app/gin-middleware-20260728/" target="_blank" rel="noopener noreferrer">
+                            <img src="asset/gin-middleware-metrics.webp" alt="CodeBull 面板 Metrics 分頁全景，三格圖表：左上 gin.(*Context).Next - trace_hits 的累積曲線爬到約 1,800 並在 17:02 結束；右上 gin.(*Engine).ServeHTTP - gin_serve_latency 的散點，整條貼在 1 毫秒以下、16:57 附近有一根 27.5 毫秒的尖峰；左下 gin.redirectTrailingSlash - trace_hits 從 0 爬到 120，橫軸只覆蓋 17:02:20 到 17:04" loading="lazy">
+                        </a>
+                        <figcaption>左下那格是整面板最沉默的一張圖：<strong>它只有兩分鐘寬</strong>。轉址這件事只在最後那一段發生過，面板連問都不用問。<span class="figure-open"><a href="https://codebull-dashboard-service.web.app/gin-middleware-20260728/" target="_blank" rel="noopener noreferrer">打開線上面板 →</a></span></figcaption>
+                    </figure>
+
+                    <h2>收尾</h2>
+                    <p>我沒有改一行 code、沒有重啟服務、沒有先埋一套 trace backend。就只是在一個跑著的 process 上挑了五個位置掛觀測點，把同一條路徑餵出五種結局，認真數了十分鐘——然後因為數字看起來太順，又把觀測點拔掉重跑了一次。</p>
+                    <p>換來的是：我看到一個請求會四次重入同一個函式、看到 404 和 405 把整條中介層鏈跑好跑滿一層不少、看到 auth 一 abort 就從 4.00 掉到 3.00 而且三個相位全部整除、看到有兩分鐘 120 個請求連鏈的門都沒進去而服務自己的 log 對它們一字未提、看到 router 那一層收到的還是客戶端敲的 <code>/health/</code>、看到那個被轉址掉的請求只花了正常請求的六分之一、也看到我自己的觀測點在面板上偽裝成了一個「404 比較貴 17%」的假結論。</p>
+                    <p>框架是黑盒子，但黑盒子只是「預設看不見」，不是「不能看」。而看得見之後還有第二件事要做：<strong>確認你看到的是它，不是你自己。</strong></p>
+
+                    <h3>附：這次的觀測設定（可重現）</h3>
+                    <ul>
+                        <li><strong>觀測點（五個，全部在 gin 內部，未修改任何一行原始碼）</strong>：
+                            <ul>
+                                <li><code>gin.(*Engine).handleHTTPRequest</code> <code>gin.go:708</code> — log，<code>M={httpMethod} P={rPath}</code>，<strong>必須限定 <code>variableNames</code> 只抓這兩個</strong>，否則會讀到該行尚未賦值的 local</li>
+                                <li><code>gin.(*Context).Next</code> <code>context.go:189</code> — metric（鏈重入計數）</li>
+                                <li><code>gin.serveError</code> <code>gin.go:765</code> — log，<code>status={code}</code></li>
+                                <li><code>gin.redirectTrailingSlash</code> <code>gin.go:782</code> — metric</li>
+                                <li><code>gin.(*Engine).ServeHTTP</code> <code>gin.go:667 → 674</code> — latency，<strong>模板別名 <code>gin_serve_latency</code>；不給別名這一維就是 0 樣本</strong></li>
+                            </ul>
+                        </li>
+                        <li><strong>被觀測的服務</strong>：gin v1.12.0（vendored 到 <code>./gin_pkg</code> 走 replace），<code>gin.New()</code> + 三層全域中介層 + 四條路由 + <code>NoRoute</code>，<code>:8080</code>；<code>HandleMethodNotAllowed</code> 顯式打開（gin 預設 false），<code>RedirectTrailingSlash</code> 維持預設 true</li>
+                        <li><strong>建置</strong>：<code>go build -gcflags="all=-dwarflocationlists=true -N -l"</code>；SDK <code>github.com/0xbu11/codebull v0.0.28</code></li>
+                        <li><strong>觀測窗口（五個點）</strong>：<code>2026-07-28T08:53:57Z</code> → <code>09:04:03Z</code>（10 分 06 秒），五個相位各 120 個請求、一秒一個：
+                            <ul>
+                                <li>A <code>GET /health</code> +token → 200：<code>Next</code> 484（4.00）</li>
+                                <li>B <code>GET /nope</code> +token → 404：<code>Next</code> 484（4.00）、<code>serveError</code> 120</li>
+                                <li>C <code>PUT /health</code> +token → 405：<code>Next</code> 480（4.00）、<code>serveError</code> 120</li>
+                                <li>D <code>GET /health</code> 無 token → 401：<code>Next</code> 360（3.00）</li>
+                                <li>E <code>GET /health/</code> +token → 301（不跟隨）：<code>Next</code> <strong>0</strong>、轉址 120</li>
+                            </ul>
+                        </li>
+                        <li><strong>面板總數</strong>：router 602、<code>Next</code> 1808、<code>serveError</code> 240、轉址 120、延遲樣本 602；Logs 分頁 <code>ROWS: 842</code> = 602 + 240</li>
+                        <li><strong>驗算</strong>：<code>484 + 484 + 480 + 360 + 0 = 1808</code>；<code>602 + 240 = 842</code>；602 = 600 個客戶端請求 + 2 次我手動的健康檢查</li>
+                        <li><strong>對照窗口（只留 latency 一個點，全新 process）</strong>：<code>10:27:29Z</code> → <code>10:37:35Z</code>，同一支腳本、同樣 120 × 5。p50：A 0.119、B 0.104、C 0.065、D 0.072、E 0.020 毫秒</li>
+                        <li><strong>交叉核對</strong>：服務自身 access log 同窗口 481 行（<code>301</code> 與 <code>/health/</code> 各 0 筆），與面板 602 差 121 = 120 個轉址 + 1 個邊界誤差</li>
+                        <li><strong>這一輪沒做到的事</strong>：
+                            <ul>
+                                <li>五個點那一輪的延遲有 <strong>77–94% 是觀測本身的成本</strong>，所以任何跨相位的成本結論都以對照輪為準</li>
+                                <li>第一次的對照輪被觀測端的無聲崩潰吃掉四個相位（只留 121 個樣本），整輪作廢重跑</li>
+                                <li>對照輪每個相位混入約 4 個健康檢查請求（約 3%），無法從樣本中剔除</li>
+                                <li>沒有在每層中介層各掛點，所以「少跑的那層是 <code>auth</code>」是推論而非面板指認</li>
+                                <li><code>req.URL.Path</code> 被就地改寫、以及 405 走的 <code>allNoMethod</code> 裡沒有 handler，這兩件事<strong>是讀原始碼得到的</strong>（<code>gin.go:790-792</code>、<code>gin.go:751</code>），這一輪沒有在下游掛點把它們量出來</li>
+                                <li>404 比 200 便宜 13% 這個差量到了，但機制沒量到，全篇不給它解釋</li>
+                                <li>全程一秒一個請求，全篇沒有任何高負載下的結論</li>
+                            </ul>
+                        </li>
+                    </ul>
+
+                    <div class="article-callout">
+                        <p>📊 <strong>本文的遠端觀測面板</strong>（實測數據，可線上檢視）：<a href="https://codebull-dashboard-service.web.app/gin-middleware-20260728/" target="_blank" rel="noopener noreferrer">gin-middleware-20260728</a></p>
+                        <p><strong>Metrics</strong> 分頁三格：<code>Next</code> 那條爬到 1808 並在 17:02 結束的累積線、<code>gin_serve_latency</code> 的散點、只有兩分鐘寬的 <code>redirectTrailingSlash</code>；<strong>Logs</strong> 分頁可以把 <code>M=…P=…</code> 與 <code>status=…</code> 逐字對帳，<code>ROWS: 842</code> 就是 602 + 240。對照輪另有一個面板：<a href="https://codebull-dashboard-service.web.app/gin-middleware-control-20260728/" target="_blank" rel="noopener noreferrer">gin-middleware-control-20260728</a>（只有一條延遲散點，而且圖被三根 45 毫秒的孤兒樣本壓扁了，結構在數字裡不在圖裡）。面板時間軸是本地時間 UTC+8，16:53–17:04 對應內文的 UTC 窗口。</p>
+                    </div>
+
+                    <div class="article-footnote">
+                        <p>這篇裡「不改 code、對執行中的 process 掛觀測點、然後盯著看」用的是 <strong>CodeBull</strong> —— 一個 VS Code extension，能對正在跑的 Go 服務動態插入 Metric / Log / Latency 觀測點，不改原始碼、不重編譯、不重啟。上面那條在最後兩分鐘直接消失的中介層曲線，還有那個把我自己的假結論拆掉的對照輪，都是這樣當場做出來的。</p>
+                        <p><em>文中每一個次數、每一個毫秒數均出自 CodeBull 對執行中 gin 服務的實測證據，並可在上方面板連結線上對帳。</em></p>
+                        <p><a class="btn" href="https://marketplace.visualstudio.com/items?itemName=0xbu11.codebull" target="_blank" rel="noopener noreferrer">安裝 CodeBull</a></p>
+                    </div>
+                </article>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2026 CodeBull. 版權所有。</p>
+            <div class="links">
+                <a href="https://github.com/0xbu11/codebull">GitHub</a>
+                <a href="mailto:codebull.0xbu11@gmail.com">codebull.0xbu11@gmail.com</a>
+                <a href="#">隱私權</a>
+                <a href="#">條款</a>
+            </div>
+        </div>
+    </footer>
+</body>
+
+</html>

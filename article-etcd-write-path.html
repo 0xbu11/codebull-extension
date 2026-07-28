@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeBull - I Watched a Running etcd for Nine Minutes</title>
+    <meta name="description" content="No code changes: twenty observation points covering a running etcd's whole write path, from gRPC to fdatasync. One put leaves twenty-three footprints — and the same fsync costs 5.9 ms when idle and 0.4 ms under load.">
+    <meta property="og:type" content="article">
+    <meta property="og:site_name" content="CodeBull">
+    <meta property="og:locale" content="en_US">
+    <meta property="og:title" content="I watched a running etcd for nine minutes, and its fsync was fourteen times faster when busy than when idle">
+    <meta property="og:description" content="Twenty observation points from gRPC to fdatasync: one put leaves twenty-three footprints, a flush carrying sixteen operations costs the same as one carrying three, and the fsync everyone assumes gets slower under load got faster.">
+    <meta property="og:url" content="https://0xbu11.github.io/codebull-extension/article-etcd-write-path.html">
+    <meta property="og:image" content="https://0xbu11.github.io/codebull-extension/asset/og-site.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="627">
+    <meta property="og:image:alt" content="I watched a running etcd for nine minutes, and its fsync was fourteen times faster when busy than when idle">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="I watched a running etcd for nine minutes, and its fsync was fourteen times faster when busy than when idle">
+    <meta name="twitter:description" content="Twenty observation points from gRPC to fdatasync: one put leaves twenty-three footprints, a flush carrying sixteen operations costs the same as one carrying three, and the fsync everyone assumes gets slower under load got faster.">
+    <meta name="twitter:image" content="https://0xbu11.github.io/codebull-extension/asset/og-site.png">
+    <link rel="stylesheet" href="style.css?v=17">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&display=swap" rel="stylesheet">
+    <script src="theme.js"></script>
+</head>
+
+<body>
+    <div class="announcement-banner">
+        Currently supported Go versions: V1.22.0 and V1.26.0.
+    </div>
+    <header>
+        <div class="container">
+            <div class="logo">
+                <a href="index.html">Code<span>Bull</span></a>
+            </div>
+            <div class="header-logo-center">
+                <a href="https://marketplace.visualstudio.com/items?itemName=0xbu11.codebull" target="_blank" rel="noopener noreferrer" aria-label="Open CodeBull on VS Code Marketplace">
+                    <img src="asset/codebull-logo.png" alt="CodeBull Logo">
+                </a>
+            </div>
+            <nav>
+                <ul>
+                    <li><a href="index.html#features">Features</a></li>
+                    <li><a href="index.html#articles">Field Notes</a></li>
+                    <li><a href="tutorial.html">Tutorial</a></li>
+                    <li><a href="docs.html">Docs</a></li>
+                    <li><a href="platform.html">Platform</a></li>
+                    <li><a href="https://github.com/0xbu11/codebull" target="_blank">GitHub</a></li>
+                    <li><a href="article-etcd-write-path_zh_TW.html" class="lang-switch">中文</a></li>
+                    <li><button id="theme-toggle" class="theme-toggle" aria-label="Switch Theme">☀️</button></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <section class="article-header">
+            <div class="container">
+                <a class="article-back" href="index.html#articles">← Back to articles</a>
+                <span class="article-card-source">etcd · Field Notes</span>
+                <h1>I watched a running etcd for nine minutes, and its fsync was fourteen times faster when busy than when idle</h1>
+                <div class="article-meta">
+                    <span>2026-07-28</span>
+                    <span>9 min window / 8,390 writes / 20 observation points</span>
+                    <span>etcd v3.7, single node</span>
+                </div>
+                <p class="article-lede">Without changing a single line of code, I attached observation points across the whole write path of a <strong>running</strong> etcd — from gRPC accepting a <code>put</code> to the <code>fdatasync</code> that lands it on disk — and sat there for nine minutes.</p>
+            </div>
+        </section>
+
+        <section class="article-section">
+            <div class="container">
+                <article class="article-body">
+                    <p>Not a few representative gates with the rest left to inference — every checkpoint on that path I could name, <strong>twenty positions, all at once</strong>. No recompile, no restart.</p>
+                    <p>What I meant to look at was "how many things does one write become on the inside". What actually made me sit up had nothing to do with counts: <strong>the same <code>fdatasync</code> takes 5.9 ms when I write one key per second, and 0.4 ms when I hammer it flat out.</strong> Quieter is slower. This piece isn't about a tool — it's about what watching a running system gets you.</p>
+
+                    <h2>First decide where to stand</h2>
+                    <p>etcd's black-box quality is a particular one. It isn't "what SQL does my line become", it's "how many mechanisms, each with its own rhythm, have to take a turn on my key before it counts as written". gRPC accepts it, it becomes a raft proposal, it goes into the WAL, it gets fsynced, it waits for commit, it's applied to the state machine, it lands in MVCC, the in-memory index updates, it joins a bbolt transaction buffer — and at some later moment the whole batch is flushed.</p>
+                    <p>From the outside, all you see is <code>OK</code>.</p>
+                    <p>The usual approach is to pick a few representative gates and join the rest with guesswork. This time I wanted to try not guessing — <strong>put a point at the entrance of every layer and let the ratios speak</strong>. Here is how the twenty positions went:</p>
+                    <div class="article-table-wrap">
+                    <table>
+                        <thead><tr><th>Layer</th><th>Convergence point</th><th>Location</th><th>Kind</th></tr></thead>
+                        <tbody>
+                            <tr><td>gRPC ingress</td><td><code>v3rpc.(*kvServer).Put</code></td><td><code>api/v3rpc/key.go:91</code></td><td>metric</td></tr>
+                            <tr><td>Server API</td><td><code>etcdserver.(*EtcdServer).Put</code></td><td><code>v3_server.go:296</code></td><td>metric</td></tr>
+                            <tr><td>Raft proposal</td><td><code>processInternalRaftRequestOnce</code></td><td><code>v3_server.go:1059</code></td><td>metric</td></tr>
+                            <tr><td>Raft heartbeat</td><td><code>etcdserver.(*raftNode).tick</code></td><td><code>raft.go:160</code></td><td>metric</td></tr>
+                            <tr><td>WAL write round</td><td><code>wal.(*WAL).Save</code></td><td><code>wal.go:973</code></td><td>metric</td></tr>
+                            <tr><td>WAL entry append</td><td><code>wal.(*WAL).saveEntry</code></td><td><code>wal.go:939</code></td><td>metric</td></tr>
+                            <tr><td>WAL hard state</td><td><code>wal.(*WAL).saveState</code></td><td><code>wal.go:949</code></td><td>metric</td></tr>
+                            <tr><td><strong>The fsync itself</strong></td><td><code>wal.(*WAL).sync</code></td><td><code>wal.go:843 → 846</code></td><td><strong>latency</strong></td></tr>
+                            <tr><td>Raft Ready round</td><td><code>applyAll</code></td><td><code>server.go:973</code></td><td>metric</td></tr>
+                            <tr><td>Apply batch</td><td><code>applyEntries</code></td><td><code>server.go:1186</code></td><td>metric</td></tr>
+                            <tr><td>Apply one entry</td><td><code>applyEntryNormal</code></td><td><code>server.go:1946</code></td><td>metric</td></tr>
+                            <tr><td>Applier</td><td><code>apply.(*applierV3backend).Put</code></td><td><code>apply/backend.go:51</code></td><td>metric</td></tr>
+                            <tr><td><strong>MVCC write</strong></td><td><code>mvcc.(*storeTxnWrite).put</code></td><td><code>kvstore_txn.go:225</code></td><td><strong>log</strong> <code>k={string(key)} rev={rev}</code></td></tr>
+                            <tr><td>In-memory index</td><td><code>mvcc.(*treeIndex).Put</code></td><td><code>index.go:55</code></td><td>metric</td></tr>
+                            <tr><td>bbolt single put</td><td><code>backend.(*batchTx).unsafePut</code></td><td><code>batch_tx.go:150</code></td><td>metric</td></tr>
+                            <tr><td>Transaction unlock</td><td><code>backend.(*batchTxBuffered).Unlock</code></td><td><code>batch_tx.go:309</code></td><td>metric</td></tr>
+                            <tr><td><strong>Flush batch size</strong></td><td><code>backend.(*batchTx).commit</code></td><td><code>batch_tx.go:268</code></td><td><strong>log</strong> <code>pending={t.pending}</code></td></tr>
+                            <tr><td><strong>Flush duration</strong></td><td><code>backend.(*batchTx).commit</code></td><td><code>batch_tx.go:271 → 278</code></td><td><strong>latency</strong></td></tr>
+                            <tr><td>100 ms batch timer</td><td><code>backend.(*backend).run</code></td><td><code>backend.go:455</code></td><td>metric</td></tr>
+                            <tr><td>Read path</td><td><code>etcdserver.(*EtcdServer).Range</code></td><td><code>v3_server.go:107</code></td><td>metric</td></tr>
+                        </tbody>
+                    </table>
+                    </div>
+                    <p>Three of these need saying up front, because they are the spine of this piece.</p>
+                    <p><strong>On the flush point I didn't just put a counter.</strong> "How many flushes happened in this stretch" doesn't actually tell you much — the real question is <strong>how much work each individual flush carried</strong>. <code>commit()</code> happens to keep exactly that in <code>t.pending</code>, the counter it uses to decide whether to flush at all, so I pulled it straight out as a log template. <strong>Every flush now records, on the panel, how much it carried.</strong></p>
+                    <p><strong>The two latency lines produced no samples at first.</strong> Registration reported success, the state showed as instrumented, <code>hitCount</code> was ticking up — and the latency table was completely empty. Then I tried giving the registration a template alias (<code>wal_fsync_latency</code>); same line, same process, and the samples appeared — 8,380 of them by the end. The same thing, attached slightly differently, going from "can't measure" to "can measure" is a trap worth writing down, maybe more than the conclusion itself.</p>
+                    <p><strong>And one point I attached that never fired once.</strong> The 100 ms backend batch timer. I'll come back to it in the honest section.</p>
+                    <p>I deliberately made the nine minutes uneven — five phases: <strong>two minutes not touching it</strong> → <strong>two minutes at one write per second</strong> → <strong>two minutes with one client flat out</strong> → <strong>two minutes with four clients at once</strong> → <strong>one minute of reads only</strong>.</p>
+
+                    <h2>First two minutes: an etcd nobody is using</h2>
+                    <p>The window ran from 2026-07-27 16:15:08.635Z to 16:24:11.029Z — nine minutes and two seconds. For the first stretch I sent it nothing.</p>
+                    <p>Of the twenty points, <strong>exactly one moved</strong>: <code>raftNode.tick</code>, 1,200 times. Over 120.03 seconds that is exactly ten per second, matching etcd's default 100 ms tick.</p>
+                    <p>The other nineteen are zero. gRPC zero, proposal zero, WAL zero, fsync zero, MVCC zero, flush zero. I checked etcd's own <code>/metrics</code>: over the same stretch the deltas for <code>etcd_disk_wal_fsync_duration_seconds_count</code> and <code>etcd_disk_backend_commit_duration_seconds_count</code> are also <strong>0</strong>.</p>
+                    <p><strong>An idle etcd isn't spinning the disk, it's just counting time.</strong> I "knew" that, but I had never watched the whole path go quiet at once — nineteen points pinned to zero, with only the heartbeat moving.</p>
+
+                    <h2>Middle two minutes: one put leaves twenty-three footprints across sixteen positions</h2>
+                    <p>For the second stretch I sent one <code>etcdctl put</code> per second, 114 of them. This is the only phase where nothing batches yet, so it shows a single <code>put</code> with its makeup off:</p>
+                    <div class="article-table-wrap">
+                    <table>
+                        <thead><tr><th>What I typed</th><th>What actually ran</th><th>Hits over 114 writes</th><th>Per write</th></tr></thead>
+                        <tbody>
+                            <tr><td><code>etcdctl put steady/key-0 v0</code></td><td><code>kvServer.Put</code> — gRPC accepts it</td><td>114</td><td>1</td></tr>
+                            <tr><td>〃</td><td><code>EtcdServer.Put</code> — into the server API</td><td>114</td><td>1</td></tr>
+                            <tr><td>〃</td><td><code>processInternalRaftRequestOnce</code> — files a raft proposal</td><td>114</td><td>1</td></tr>
+                            <tr><td>〃</td><td><code>WAL.Save</code> — WAL write round</td><td><strong>228</strong></td><td><strong>2</strong></td></tr>
+                            <tr><td>〃</td><td><code>WAL.saveEntry</code> — appends one entry</td><td>114</td><td>1</td></tr>
+                            <tr><td>〃</td><td><code>WAL.saveState</code> — appends hard state</td><td><strong>228</strong></td><td><strong>2</strong></td></tr>
+                            <tr><td>〃</td><td><code>WAL.sync</code> — the actual fdatasync</td><td>114</td><td>1</td></tr>
+                            <tr><td>〃</td><td><code>applyAll</code> — raft Ready round</td><td><strong>228</strong></td><td><strong>2</strong></td></tr>
+                            <tr><td>〃</td><td><code>applyEntries</code> — apply batch</td><td><strong>228</strong></td><td><strong>2</strong></td></tr>
+                            <tr><td>〃</td><td><code>applyEntryNormal</code> — applies one entry</td><td>114</td><td>1</td></tr>
+                            <tr><td>〃</td><td><code>applierV3backend.Put</code></td><td>114</td><td>1</td></tr>
+                            <tr><td>〃</td><td><code>mvcc.(*storeTxnWrite).put</code> — writes into MVCC</td><td>114</td><td>1</td></tr>
+                            <tr><td>〃</td><td><code>treeIndex.Put</code> — updates the in-memory index</td><td>114</td><td>1</td></tr>
+                            <tr><td>〃</td><td><code>batchTx.unsafePut</code> — writes into the bbolt transaction</td><td><strong>342</strong></td><td><strong>3</strong></td></tr>
+                            <tr><td>〃</td><td><code>batchTxBuffered.Unlock</code></td><td><strong>228</strong></td><td><strong>2</strong></td></tr>
+                            <tr><td>〃</td><td><code>batchTx.commit</code> — flushes the bbolt transaction</td><td>114</td><td>1</td></tr>
+                            <tr><td>(I typed nothing)</td><td><code>raftNode.tick</code></td><td>1,191</td><td>—</td></tr>
+                        </tbody>
+                    </table>
+                    </div>
+                    <p>Add up the "per write" column: <code>1+1+1+2+1+2+1+2+2+1+1+1+1+3+2+1 = 23</code>. Multiply back, <code>114 × 23 = 2,622</code>, which matches the total hits those sixteen points recorded over those two minutes to the digit.</p>
+                    <p><strong>One <code>etcdctl put</code> leaves twenty-three footprints across the sixteen positions I instrumented.</strong></p>
+                    <p>Three of those twos and that three are things I thought I knew and had never watched:</p>
+                    <ul>
+                        <li><strong><code>WAL.Save</code> runs twice, <code>saveEntry</code> only once.</strong> One write is two rounds at the WAL: one appends the entry, the other only advances the hard state (the commit index). The second round carries no entries, so <code>MustSync</code> decides no fsync is needed — <strong><code>WAL.Save</code> 228 times, <code>WAL.sync</code> only 114.</strong> Write rounds and disk syncs are not the same thing.</li>
+                        <li><strong><code>applyAll</code> also runs twice.</strong> Raft's Ready loop turns twice for the same write (once to append, once to apply after commit), but only one entry is ever actually applied.</li>
+                        <li><strong><code>unsafePut</code> runs three times.</strong> At the bbolt layer one write is three key/value writes: yours into the key bucket, plus two of etcd's own metadata (the consistent index and friends).</li>
+                    </ul>
+                    <p>The MVCC point rendered this, verbatim:</p>
+                    <pre><code>k=steady/key-0 rev=2
+k=steady/key-113 rev=115</code></pre>
+                    <p>The revision climbs one per write. <strong>That <code>rev</code> ends up being the ruler I check this entire article with.</strong></p>
+
+                    <h2>A side comparison: with reads only, how many of the twenty move?</h2>
+                    <p>For the last minute I sent only <code>etcdctl get</code> — 5,276 of them in 61.9 seconds. How many of the twenty points moved?</p>
+                    <p><strong>Three.</strong> <code>Range</code> 5,276 times, and <code>applyAll</code> and <code>applyEntries</code> 5,380 each.</p>
+                    <p>Everything else is zero — no proposals, no WAL entries, no fsyncs, no MVCC writes, no bbolt flushes. (The panel does still show 116 rows prefixed <code>conc/</code> in this phase; reading the keys verbatim tells you those are the tail of the previous phase spilling over, not something this one produced.)</p>
+                    <p>The interesting number is that 5,380: <strong>a linearizable read still costs one turn of raft's Ready loop.</strong> It writes nothing, but it isn't free.</p>
+
+                    <h2>Then I pushed the load up, to see which columns break away</h2>
+                    <p>Third stretch: one client flat out, 4,038 writes in two minutes (about 33.8/s). Fourth: four clients at once, 4,238 writes in two minutes.</p>
+                    <p>Same points, two ratios that matter:</p>
+                    <div class="article-table-wrap">
+                    <table>
+                        <thead><tr><th>Phase</th><th>Client writes</th><th>WAL fsync</th><th>Writes per fsync</th><th>bbolt commit</th><th>Writes per flush</th></tr></thead>
+                        <tbody>
+                            <tr><td>B one per second</td><td>114</td><td>114</td><td><strong>1.0</strong></td><td>114</td><td><strong>1.0</strong></td></tr>
+                            <tr><td>C one client flat out</td><td>4,038</td><td>4,038</td><td><strong>1.0</strong></td><td>780</td><td><strong>5.18</strong></td></tr>
+                            <tr><td>D four clients flat out</td><td>4,238</td><td>4,227</td><td><strong>1.003</strong></td><td>436</td><td><strong>9.72</strong></td></tr>
+                        </tbody>
+                    </table>
+                    </div>
+                    <p><strong>Only the bbolt column broke away, and it kept getting further out.</strong> 1 : 1 → 5.18 : 1 → 9.72 : 1.</p>
+                    <p><strong>The WAL barely batches at all.</strong> Across the whole nine minutes, 8,390 writes and 8,379 fsyncs — <strong>11 saved, 0.13%</strong>. And all 11 happened in the four-client phase.</p>
+                    <p>Here I have to be honest: <strong>phase four existed specifically to catch WAL batching, and it almost didn't happen.</strong> My reasoning was "with several clients sending at once, raft will pack multiple entries into one Ready round, so several writes share one fsync". The mechanism is real, and the panel even holds its afterimage: <code>WAL.saveEntry</code> ran 8,390 times, one per client write; but <code>WAL.Save</code> ran 16,739 times rather than the 16,780 that "two rounds per write" predicts — <strong>41 rounds short</strong>. A few Save rounds really did carry more than one entry. <strong>It happened, it just barely happened.</strong> (The 41 missing Save rounds and the 11 saved fsyncs don't divide into a clean ratio, so there is something in there I haven't seen clearly.) My four clients together only pushed 35 writes a second; no queue ever formed. Right direction, completely wrong magnitude — which is more worth writing than a prediction that worked.</p>
+
+                    <h2>So how much did each individual flush carry?</h2>
+                    <p>"9.72 to 1" is an average, and this is exactly where averages lie: it could be every flush carrying nine or ten, or it could be some carrying two and some carrying thirty. Those two mean completely different things to the storage layer, and they produce the identical average.</p>
+                    <p>So what I captured at the flush point isn't a count, it's <code>pending</code> itself. 1,331 flushes across the window, one row each:</p>
+                    <div class="article-table-wrap">
+                    <table>
+                        <thead><tr><th>Phase</th><th>Flushes</th><th>Operations carried (mean)</th><th>Min</th><th>Max</th></tr></thead>
+                        <tbody>
+                            <tr><td>B one per second</td><td>114</td><td><strong>3.0</strong></td><td><strong>3</strong></td><td><strong>3</strong></td></tr>
+                            <tr><td>C one client flat out</td><td>759</td><td>7.18</td><td>3</td><td>8</td></tr>
+                            <tr><td>D four clients flat out</td><td>444</td><td>11.5</td><td>3</td><td><strong>16</strong></td></tr>
+                        </tbody>
+                    </table>
+                    </div>
+                    <p>(These counts are bbolt-level operations, not client writes — at one write per second it happens to be exactly 3 to 1, but that ratio shrinks under load too; see the honest section.)</p>
+                    <p><strong>At one write per second, all 114 flushes carried exactly 3, without a single exception.</strong> One write, three bbolt operations, one flush — one to one to one, clean to the point of boredom.</p>
+                    <p>Under load the distribution spreads out: across the window the most common sizes are 7 (399 times) and 8 (319 times) — that's the one-client-flat-out shape — while the four-client stretch produces a second cluster at 13, 14 and 15 (83, 93 and 90 times), topping out at 16. Multiply each size by how often it occurred and sum: <strong>11,054</strong>, which lines up with the 11,052 hits <code>unsafePut</code> recorded over the same window (the extra 2 belong to a flush from before the window opened).</p>
+                    <p>On the Logs tab you don't even need a query to see it — the <code>mvcc.put</code> rows scroll past one per write, then a <code>pending=13</code> appears, then a dozen more rows, then a <code>pending=8</code>:</p>
+
+                    <figure class="article-figure figure-wide">
+                        <a href="https://codebull-dashboard-service.web.app/etcd-write-path-20260728/" target="_blank" rel="noopener noreferrer">
+                            <img src="asset/etcd-write-path-logs.webp" alt="CodeBull dashboard Logs tab: rows of mvcc.(*storeTxnWrite).put rendered verbatim as k=conc/w4-key-494 rev=6130, k=conc/w1-key-494 rev=6131 and so on, interleaved with backend.(*batchTx).commit rows reading pending=13, pending=8, pending=15 and pending=5, with ROWS 7277 in the corner" loading="lazy">
+                        </a>
+                        <figcaption>The <strong>Logs</strong> tab, both log points interleaved. Count the <code>k=… rev=…</code> rows between two <code>pending=</code> lines and you have read the batch off the screen. <strong>Batching isn't a statistical concept — it stacks up one row at a time, exactly like this.</strong> <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/etcd-write-path-20260728/" target="_blank" rel="noopener noreferrer">Open the live dashboard →</a></span></figcaption>
+                    </figure>
+
+                    <p>All still interesting but unsurprising. The two latency lines are where I sat up.</p>
+
+                    <h2>That fsync is fourteen times slower when idle than when busy</h2>
+                    <p>What I expected to see: an <code>fdatasync</code> on disk gets slower as load rises. That's close to a reflex.</p>
+                    <p>The panel says the opposite:</p>
+                    <div class="article-table-wrap">
+                    <table>
+                        <thead><tr><th>Phase</th><th>Client writes</th><th>fsync samples</th><th><strong>p50</strong></th><th>p95</th><th>p99</th></tr></thead>
+                        <tbody>
+                            <tr><td>B one per second</td><td>114</td><td>114</td><td><strong>5.901 ms</strong></td><td>6.045 ms</td><td>6.292 ms</td></tr>
+                            <tr><td>C one client flat out (33.8/s)</td><td>4,038</td><td>3,930</td><td><strong>0.405 ms</strong></td><td>0.506 ms</td><td>0.983 ms</td></tr>
+                            <tr><td>D four clients flat out (35.0/s)</td><td>4,238</td><td>4,221</td><td><strong>0.415 ms</strong></td><td>0.768 ms</td><td>5.936 ms</td></tr>
+                        </tbody>
+                    </table>
+                    </div>
+                    <p>(Samples are bucketed by timestamp, so they differ slightly from each phase's write count at the boundaries; 8,380 samples across the whole window.)</p>
+                    <p><strong>5.901 → 0.405. The same <code>fileutil.Fdatasync</code>, fourteen times faster when busy.</strong></p>
+                    <p>And neither figure is an average smeared out of noise: the 114 samples at one write per second run from 5.901 at p50 to 6.292 at p99 — <strong>the whole group sits tight against 6 ms</strong>; the 3,930 flat-out samples run from 0.405 at p50 to 0.506 at p95 — <strong>the whole group sits tight against 0.4 ms</strong>. Two narrow distributions, landing in completely different places.</p>
+                    <p>Drawn out, it is a flat line that suddenly drops:</p>
+
+                    <figure class="article-figure figure-wide">
+                        <a href="https://codebull-dashboard-service.web.app/etcd-write-path-20260728/" target="_blank" rel="noopener noreferrer">
+                            <img src="asset/etcd-write-path-fsync-latency.webp" alt="CodeBull dashboard chart of wal_fsync_latency on wal.(*WAL).sync: a flat line hugging about 6 ms until 00:19:08, then dropping below 1 ms with sparse spikes, a single 71.5 ms spike near 00:20, and a dense band along the bottom for the final stretch" loading="lazy">
+                        </a>
+                        <figcaption>The moment that line drops, at 00:19:08 on the panel's local clock, is the moment I removed the throttle. Nothing else changed — same process, same WAL file, same line of code. <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/etcd-write-path-20260728/" target="_blank" rel="noopener noreferrer">Open the live dashboard →</a></span></figcaption>
+                    </figure>
+
+                    <p><strong>Why? I don't know.</strong> All I can speak to is what I measured: same process, same WAL file, same line of <code>fdatasync</code>, and the only thing that changed is how often it gets called. Whether those 5.5 ms go into the device's write cache, the filesystem, or a CPU climbing back out of an idle state — <strong>you can't tell from inside the process, and I'm not going to invent a mechanism for the reader.</strong></p>
+                    <p>But it does mean something for how you read a p99: <strong>if you measure etcd's fsync latency during a quiet window and use that as your SLO baseline, you will badly overestimate what it costs you when the system is busy.</strong></p>
+
+                    <h2>So is the flush that carried sixteen slower?</h2>
+                    <p>This is what actually decides whether batching pays — if carrying more costs more, batching has only moved the cost somewhere else. I have two lines to put together: the flush-by-flush <code>pending=N</code> rows, and the <code>bolt_commit_latency</code> samples from the same function, matched up by time:</p>
+                    <div class="article-table-wrap">
+                    <table>
+                        <thead><tr><th>Operations that flush carried</th><th>Samples</th><th>Flush duration p50</th></tr></thead>
+                        <tbody>
+                            <tr><td>3</td><td>134</td><td>1.030 ms</td></tr>
+                            <tr><td>7</td><td>399</td><td>0.938 ms</td></tr>
+                            <tr><td>8</td><td>319</td><td>0.906 ms</td></tr>
+                            <tr><td>13</td><td>83</td><td>0.991 ms</td></tr>
+                            <tr><td>14</td><td>93</td><td>1.023 ms</td></tr>
+                            <tr><td>15</td><td>90</td><td>1.002 ms</td></tr>
+                            <tr><td><strong>16</strong></td><td>15</td><td><strong>0.985 ms</strong></td></tr>
+                        </tbody>
+                    </table>
+                    </div>
+                    <p><strong>Carrying 16 costs the same as carrying 3.</strong> Every median hovers around a millisecond; there is no trend of getting slower as the batch grows.</p>
+                    <p>By phase it's the same conclusion: at one write per second each flush carries 3 and takes 0.991 ms at p50; with four clients each carries 11.5 and takes 1.230 ms. <strong>Nearly four times the work for 24% more time.</strong> Per operation that's 0.33 ms down to 0.107 ms — <strong>three times cheaper</strong>.</p>
+
+                    <figure class="article-figure figure-wide">
+                        <a href="https://codebull-dashboard-service.web.app/etcd-write-path-20260728/" target="_blank" rel="noopener noreferrer">
+                            <img src="asset/etcd-write-path-commit-latency.webp" alt="CodeBull dashboard chart of bolt_commit_latency on backend.(*batchTx).commit: the line stays near 1 ms across the whole window with a single 55.7 ms spike near 00:20 and no upward trend as load rises" loading="lazy">
+                        </a>
+                        <figcaption>The flush duration never trends upward as the batches get bigger. <strong>A bbolt transaction is almost entirely fixed cost, so every extra operation you fold in is marginally close to free</strong> — measured, not argued. (That 55.7 ms spike near 00:20 lines up with the 71.5 ms spike on the fsync chart: the disk hiccupped and both layers felt it.) <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/etcd-write-path-20260728/" target="_blank" rel="noopener noreferrer">Open the live dashboard →</a></span></figcaption>
+                    </figure>
+
+                    <h2>Honest part: what I got wrong, can't see, and can't call</h2>
+                    <p><strong>The first numbers I produced were all wrong, and wrong in a very presentable way.</strong> Before the real window I ran a rehearsal. After 2,721 client writes, the panel's <em>cumulative</em> hit counts read 1,685 for the gRPC ingress, 1,332 for the server API and 1,131 for the raft proposal — below that run's own write count, each short by a different amount, with <strong>no warning of any kind</strong>. Digging in: the SDK ships a 1,000 events/s token bucket by default and silently drops the overflow. With twenty points on the write path, that ceiling is reached at roughly 44 client writes per second. After raising it I re-ran a controlled experiment (480 writes, 8-way concurrency) and every point matched etcd's own counters to the digit; the real window's 8,390 writes then matched on all seven cross-checks. <strong>I could have left this paragraph out, but "numbers that look reasonable and are wrong" is exactly the most dangerous failure mode an observability tool has</strong>, so I'd rather lay it open.</p>
+                    <p><strong>One point I attached never fired once.</strong> <code>backend.(*backend).run</code>, the 100 ms batch timer — registered, reported instrumented, and <code>hitCount</code> stayed at <strong>0</strong> for the full nine minutes. I moved it to a different line (<code>:452</code> and <code>:455</code> both tried); still 0. The other nineteen all produced numbers. That function is a goroutine loop entered once at process start that never returns; my guess is that dynamic instrumentation only takes hold at the moment a function is called, so a function nobody calls again never reaches the instrumented copy. <strong>That's my inference, not something I verified from the inside.</strong> Either way, the rhythm of that 100 ms timer is something this round did not see.</p>
+                    <p><strong><code>pending</code> is not a count of client writes.</strong> It counts bbolt-level operations queued in that transaction. Converting back means dividing by 3 — and that 3 drifts under load: <code>unsafePut</code> ran 11,052 times across the window against 8,390 client writes, a ratio of 1.32 rather than 3, because the metadata writes batch themselves too. Everywhere I wrote "operations carried" above, I mean bbolt operations.</p>
+                    <p><strong>I can't tell who caused the dropped heartbeats.</strong> <code>raftNode.tick</code> runs at 10.0 per second when idle, falls to <strong>5.54</strong> with four clients flat out, and returns to 10.15 during the read phase. The direction is clear enough — raft's heartbeat shares a path with the loop that processes Ready, so it drops beats when busy. But <strong>twenty observation points cost something too</strong>, and I can't separate etcd's share from mine on the panel. So I treat it as a signal worth chasing, not a conclusion.</p>
+
+                    <figure class="article-figure figure-wide">
+                        <a href="https://codebull-dashboard-service.web.app/etcd-write-path-20260728/" target="_blank" rel="noopener noreferrer">
+                            <img src="asset/etcd-write-path-tick.webp" alt="CodeBull dashboard cumulative chart of etcdserver.(*raftNode).tick: a straight constant-slope line until about 00:19, after which the slope flattens progressively, flattest after 00:21" loading="lazy">
+                        </a>
+                        <figcaption>The heartbeat as a cumulative curve. A constant slope while idle, bending progressively flatter as load goes on — <strong>a metronome that is supposed to be fixed at 100 ms losing beats</strong>. How much of that bend is etcd and how much is the cost of watching, I can't say from here. <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/etcd-write-path-20260728/" target="_blank" rel="noopener noreferrer">Open the live dashboard →</a></span></figcaption>
+                    </figure>
+
+                    <p><strong>Phase attribution carries about 50 writes of slop.</strong> The panel's hit counters trail the server slightly, so at a phase boundary the tail of one lands in the next. Totals are exact (eight points all land on 8,390), and the MVCC log carries the key prefix, so every one of the 8,390 writes can be attributed to the right phase verbatim — but <strong>the per-phase counter deltas are approximate at the edges</strong>, and I haven't used them to support any ratio.</p>
+                    <p><strong>The live dashboard only holds the first seven minutes.</strong> The full window exceeds the panel's upload ceiling (it comes back <code>Invalid string length</code>), so I narrowed the upload to 16:15:08–16:22:09 — idle, one per second, one client flat out, and the first half of the four-client phase: 7 min 1 s, 126,515 entries. <strong>Every ratio and latency figure above is visible in that stretch</strong>, but the panel's <code>ROWS: 7277</code> corresponds to that sub-window, not the 8,390 quoted throughout.</p>
+                    <p><strong>What you can see is what you can see; what you can't, you mark as unseen. You don't hand the reader something that only looks complete.</strong></p>
+
+                    <h2>A comparison: why etcd's own metrics still aren't enough</h2>
+                    <p>The control group here is unusually strong, and half my confidence in this piece comes from it. Subtract the window's endpoints and all seven pairs line up:</p>
+                    <div class="article-table-wrap">
+                    <table>
+                        <thead><tr><th>etcd's own counter</th><th>Delta</th><th>My observation point</th><th>Hits</th></tr></thead>
+                        <tbody>
+                            <tr><td><code>etcd_mvcc_put_total</code></td><td>8,390</td><td><code>mvcc.(*storeTxnWrite).put</code></td><td><strong>8,390</strong></td></tr>
+                            <tr><td><code>etcd_server_proposals_committed_total</code></td><td>8,390</td><td><code>processInternalRaftRequestOnce</code></td><td><strong>8,390</strong></td></tr>
+                            <tr><td><code>etcd_server_proposals_applied_total</code></td><td>8,390</td><td><code>applyEntryNormal</code></td><td><strong>8,390</strong></td></tr>
+                            <tr><td><code>grpc_server_handled_total{Put,OK}</code></td><td>8,390</td><td><code>v3rpc.(*kvServer).Put</code></td><td><strong>8,390</strong></td></tr>
+                            <tr><td><code>etcd_disk_wal_fsync_duration_seconds_count</code></td><td>8,379</td><td><code>wal.(*WAL).sync</code></td><td><strong>8,379</strong></td></tr>
+                            <tr><td><code>etcd_disk_backend_commit_duration_seconds_count</code></td><td>1,331</td><td><code>backend.(*batchTx).commit</code></td><td><strong>1,331</strong></td></tr>
+                            <tr><td><code>grpc_server_handled_total{Range,OK}</code></td><td>5,276</td><td><code>EtcdServer.Range</code></td><td><strong>5,276</strong></td></tr>
+                        </tbody>
+                    </table>
+                    </div>
+                    <p>At counting things, it is far more mature than my observation points. So what did the points add?</p>
+                    <ol>
+                        <li><strong>It only exports what it decided to export.</strong> Of the twenty-three footprints in that table, only five have a corresponding Prometheus metric. <code>WAL.Save</code> twice while <code>WAL.sync</code> runs once, <code>unsafePut</code> three times, <code>applyAll</code> twice — etcd exports none of these. I could count them only because I can <strong>put a counter on a line I choose</strong>.</li>
+                        <li><strong>It's aggregate, not a verbatim record.</strong> <code>etcd_mvcc_put_total</code> tells you how many writes happened, not which key got which revision. <code>etcd_disk_backend_commit_duration_seconds</code> gives you a histogram of flush durations, but <strong>never tells you how much that flush carried</strong> — <code>pending=16</code> exists in no metric anywhere, because nobody decided in advance to export it.</li>
+                        <li><strong>It doesn't reconcile for you — I used it to reconcile myself.</strong> The value of that table isn't "proving etcd is right", it's <strong>proving the panel's numbers can be trusted</strong>. That's what lets the fourteen-times figure stand up.</li>
+                    </ol>
+                    <p>And let me use that ruler once. Across the window <code>rev</code> runs from <strong>2</strong> to <strong>8,391</strong>, and <code>8,391 − 2 + 1 = 8,390</code> — matching the panel's 8,390 log rows and the 8,390 my client counted on its own. Three independent sources landing on the same number.</p>
+
+                    <figure class="article-figure figure-wide">
+                        <a href="https://codebull-dashboard-service.web.app/etcd-write-path-20260728/" target="_blank" rel="noopener noreferrer">
+                            <img src="asset/etcd-write-path-metrics.webp" alt="CodeBull dashboard Metrics tab with sixteen panels: fourteen cumulative hit curves plus two latency scatters. raftNode.tick climbs with a progressively flattening slope; kvServer.Put, EtcdServer.Put, processInternalRaftRequestOnce, saveEntry, applyEntryNormal, applierV3backend.Put and treeIndex.Put are seven identically shaped curves reaching about 6,000; WAL.Save, saveState, applyAll and applyEntries reach about 12,000; unsafePut reaches about 8,000" loading="lazy">
+                        </a>
+                        <figcaption>The full <strong>Metrics</strong> tab. The best thing here is the <strong>repetition of shape</strong>: seven curves look identical (those are the 1 : 1 layers), four look identical at exactly double the height (the 2 : 1 layers). You don't need to read the numbers to see what one write gets broken into — the outlines tell you. <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/etcd-write-path-20260728/" target="_blank" rel="noopener noreferrer">Open the live dashboard →</a></span></figcaption>
+                    </figure>
+
+                    <h2>Wrapping up</h2>
+                    <p>I didn't change a line of code, didn't restart etcd, didn't stand up a trace backend first. I attached twenty observation points to a running process, pushed the load from "not touching it" to "four clients flat out", switched to reads only, and paid attention for nine minutes.</p>
+                    <p>What that bought: an idle etcd ticking 1,200 times in two minutes with the other nineteen points at zero; one <code>put</code> leaving twenty-three footprints across sixteen positions, with <code>WAL.Save</code> running twice but fsyncing once and bbolt writing three times; reads moving only three of the twenty points while still costing raft a full Ready round; only the bbolt column breaking away under load, from 1 : 1 out to 9.72 : 1, while the WAL saved a grand total of 11 fsyncs in nine minutes; every flush's exact size — always 3 at one write per second, up to 16 with four clients; a flush carrying 16 costing the same as one carrying 3, which is why batching is nearly free; and finally the line I did not expect at all: <strong>the same <code>fdatasync</code>, 5.9 ms when quiet and 0.4 ms when busy.</strong></p>
+                    <p>etcd is a black box, but a black box is only "invisible by default", not "impossible to see". I went in with a picture of that path in my head; nine minutes later some of it was confirmed, some of it was contradicted, and one position I couldn't attach to at all. <strong>I've written up all three, because all three are what actually happened in those nine minutes.</strong></p>
+
+                    <h3>Appendix: this round's setup (reproducible)</h3>
+                    <ul>
+<li><strong>The 20 points</strong>: listed in the table above — 16 metric (variable filter kept to <code>trace_hits</code> so the panel stays clean), 2 log, 2 latency, spread across 19 functions (<code>backend.(*batchTx).commit</code> carries both a log and a latency point).</li>
+                        <li><strong>Observed service</strong>: single-node etcd v3.7, built with <code>go build -gcflags="all=-dwarflocationlists=true -N -l"</code>, fresh data dir, client on <code>http://127.0.0.1:2379</code>; SDK <code>github.com/0xbu11/codebull v0.0.28</code>.</li>
+                        <li><strong>Window</strong>: 2026-07-27 16:15:08.635Z → 16:24:11.029Z (9 min 02 s), five phases:
+                            <ul>
+                                <li>A idle 120 s: 0 writes / tick 1,200 (10.0/s) / the other 19 points all 0</li>
+                                <li>B one per second 120 s: 114 writes / 23 footprints each / fsync 114 / flush 114 (pending always 3)</li>
+                                <li>C one client flat out 120 s: 4,038 writes (33.8/s) / fsync 4,038 / flush 780 (5.18 : 1)</li>
+                                <li>D four clients flat out 120 s: 4,238 writes (35.0/s) / fsync 4,227 / flush 436 (9.72 : 1, max pending 16)</li>
+                                <li>E reads only 62 s: 5,276 Range calls / only Range, applyAll and applyEntries move</li>
+                                <li>Total: 8,390 writes / 5,276 reads</li>
+                            </ul>
+                        </li>
+                        <li><strong>Cross-check</strong> (same window endpoints, all seven matched): <code>etcd_mvcc_put_total</code> 8,390, <code>etcd_server_proposals_committed_total</code> 8,390, <code>etcd_server_proposals_applied_total</code> 8,390, <code>grpc_server_handled_total{Put,OK}</code> 8,390, <code>etcd_disk_wal_fsync_duration_seconds_count</code> 8,379, <code>etcd_disk_backend_commit_duration_seconds_count</code> 1,331, <code>grpc_server_handled_total{Range,OK}</code> 5,276</li>
+                        <li><strong>Revision check</strong>: within the window <code>rev</code> runs 2 → 8,391, 8,390 values, consistent with the client tally and the panel's log row count</li>
+                        <li><strong>Latency</strong>: <code>wal_fsync_latency</code> 8,380 samples (phase B p50 5.901 ms / C 0.405 ms / D 0.415 ms, window max 71.491 ms); <code>bolt_commit_latency</code> 1,332 samples (B p50 0.991 ms / C 0.929 ms / D 1.230 ms, window max 55.739 ms)</li>
+                        <li><strong>What this round did not do</strong>:
+                            <ul>
+                                <li><code>backend.(*backend).run</code>'s 100 ms batch timer <strong>attached but never fired</strong> (<code>:452</code> and <code>:455</code> both tried, hitCount 0 for nine minutes), so that timer's rhythm has no number anywhere here</li>
+                                <li>Phase four failed to produce the WAL batching it was designed to catch — four clients only reached 35/s, no queue formed, and only 11 fsyncs were saved across the window</li>
+                                <li>Templates like <code>{len(ents)}</code> don't render (they come back <code>&lt;missing&gt;</code>), so entries-per-Save had to be derived from the ratio of two counting points</li>
+                                <li>The dropped heartbeats (10.0/s → 5.54/s) can't be separated from the cost of the observation itself</li>
+                                <li>The live dashboard covers only the first 7 min 1 s of the window (126,515 entries); the full window exceeds the upload ceiling</li>
+                            </ul>
+                        </li>
+                    </ul>
+
+                    <div class="article-callout">
+                        <p>📊 <strong>Remote dashboard for this article</strong> (real measured data, viewable online): <a href="https://codebull-dashboard-service.web.app/etcd-write-path-20260728/" target="_blank" rel="noopener noreferrer">etcd-write-path-20260728</a></p>
+                        <p>The <strong>Metrics</strong> tab holds sixteen panels: fourteen cumulative hit curves (seven 1 : 1 lines with identical shapes, four 2 : 1 lines at exactly double the height) plus the two latency scatters — the point where <code>wal_fsync_latency</code> drops at 00:19:08 is the moment I removed the throttle. The <strong>Logs</strong> tab holds the interleaved <code>k=… rev=…</code> and <code>pending=…</code> rows, which is where batching stacks up one line at a time. (The panel's time axis is local time, UTC+8, against the UTC times quoted in the text.)</p>
+                    </div>
+
+                    <div class="article-footnote">
+                        <p>The "no code changes, attach observation points to a running process, then watch" part of this piece was done with <strong>CodeBull</strong> — a VS Code extension that dynamically injects Metric / Log / Latency observation points into running Go services: no source edits, no recompile, no restart. That fsync curve — 5.9 ms when quiet, 0.4 ms when busy — is exactly how I caught it live.</p>
+                        <p><em>Every count, every millisecond and every revision number here comes from CodeBull's measurements against a running etcd, and can be reconciled online via the dashboard link above.</em></p>
+                        <p><a class="btn" href="https://marketplace.visualstudio.com/items?itemName=0xbu11.codebull" target="_blank" rel="noopener noreferrer">Install CodeBull</a></p>
+                    </div>
+                </article>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2026 CodeBull. All rights reserved.</p>
+            <div class="links">
+                <a href="https://github.com/0xbu11/codebull">GitHub</a>
+                <a href="mailto:codebull.0xbu11@gmail.com">codebull.0xbu11@gmail.com</a>
+                <a href="#">Privacy</a>
+                <a href="#">Terms</a>
+            </div>
+        </div>
+    </footer>
+</body>
+
+</html>
