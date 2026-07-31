@@ -72,6 +72,12 @@
                     <p>對執行中的 Go 服務實際掛觀測點的紀錄。文中每一條 SQL、每一個數字都出自實測數據，並附上遠端面板可線上對帳。</p>
                 </div>
                 <div class="article-grid">
+                    <a class="article-card" href="article-ristretto-admission_zh_TW.html">
+                        <span class="article-card-source">Ristretto · 實測筆記</span>
+                        <h3>我盯著一個跑著的快取看了十八分鐘，然後看到它把我 86% 的寫入丟掉，而且每一次都回我 true</h3>
+                        <p>八個觀測點看穿一個 admission policy：我傳的 cost=1 到了政策手上變成 57、容量 1,000 只塞得下 17 個、110,814 次 true 裡有 95,879 次當場被丟掉——而 85% 的拒收是輸給一個已經頂到上限的 4-bit 計數器。</p>
+                        <span class="article-card-link">閱讀文章 →</span>
+                    </a>
                     <a class="article-card" href="article-gin-middleware_zh_TW.html">
                         <span class="article-card-source">gin · 實測筆記</span>
                         <h3>我對一個跑著的 gin 數了十分鐘，然後看到有兩分鐘我的中介層一次都沒被叫到</h3>

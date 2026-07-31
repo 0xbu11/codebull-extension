@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeBull - 我盯著一個跑著的快取看了十八分鐘</title>
+    <meta name="description" content="不改一行 code，在跑著的 Ristretto 上掛八個觀測點：同一行 Set 回了 110,814 次 true，其中 95,879 次在另一個 goroutine 裡被當場丟掉，而拒收的理由是一個頂到天花板的 4-bit 計數器。">
+    <meta property="og:type" content="article">
+    <meta property="og:site_name" content="CodeBull">
+    <meta property="og:locale" content="zh_TW">
+    <meta property="og:title" content="我盯著一個跑著的快取看了十八分鐘，然後看到它把我 86% 的寫入丟掉，而且每一次都回我 true">
+    <meta property="og:description" content="八個觀測點看穿一個 admission policy：cost=1 到了政策手上變成 57、容量 1,000 只塞得下 17 個、85% 的拒收輸給一個已經頂到上限的 4-bit 計數器。">
+    <meta property="og:url" content="https://0xbu11.github.io/codebull-extension/article-ristretto-admission_zh_TW.html">
+    <meta property="og:image" content="https://0xbu11.github.io/codebull-extension/asset/og-site.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="627">
+    <meta property="og:image:alt" content="我盯著一個跑著的快取看了十八分鐘，然後看到它把我 86% 的寫入丟掉，而且每一次都回我 true">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="我盯著一個跑著的快取看了十八分鐘，然後看到它把我 86% 的寫入丟掉，而且每一次都回我 true">
+    <meta name="twitter:description" content="八個觀測點看穿一個 admission policy：cost=1 到了政策手上變成 57、容量 1,000 只塞得下 17 個、85% 的拒收輸給一個已經頂到上限的 4-bit 計數器。">
+    <meta name="twitter:image" content="https://0xbu11.github.io/codebull-extension/asset/og-site.png">
+    <link rel="stylesheet" href="style.css?v=17">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&display=swap" rel="stylesheet">
+    <script src="theme.js"></script>
+</head>
+
+<body>
+    <div class="announcement-banner">
+        目前支援的 Go 版本：V1.22.0 與 V1.26.0。
+    </div>
+    <header>
+        <div class="container">
+            <div class="logo">
+                <a href="index_zh_TW.html">Code<span>Bull</span></a>
+            </div>
+            <div class="header-logo-center">
+                <a href="https://marketplace.visualstudio.com/items?itemName=0xbu11.codebull" target="_blank" rel="noopener noreferrer" aria-label="Open CodeBull on VS Code Marketplace">
+                    <img src="asset/codebull-logo.png" alt="CodeBull Logo">
+                </a>
+            </div>
+            <nav>
+                <ul>
+                    <li><a href="index_zh_TW.html#features">功能</a></li>
+                    <li><a href="index_zh_TW.html#articles">實測筆記</a></li>
+                    <li><a href="tutorial_zh_TW.html">教學</a></li>
+                    <li><a href="docs_zh_TW.html">文件</a></li>
+                    <li><a href="platform_zh_TW.html">支援平台</a></li>
+                    <li><a href="https://github.com/0xbu11/codebull" target="_blank">GitHub</a></li>
+                    <li><a href="article-ristretto-admission.html" class="lang-switch">English</a></li>
+                    <li><button id="theme-toggle" class="theme-toggle" aria-label="切換主題">☀️</button></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <section class="article-header">
+            <div class="container">
+                <a class="article-back" href="index_zh_TW.html#articles">← 回文章列表</a>
+                <span class="article-card-source">Ristretto · 實測筆記</span>
+                <h1>我盯著一個跑著的快取看了十八分鐘，然後看到它把我 86% 的寫入丟掉，而且每一次都回我 true</h1>
+                <div class="article-meta">
+                    <span>2026-08-01</span>
+                    <span>18 分鐘窗口 / 110,814 次 Set / 8 個觀測點</span>
+                    <span>dgraph-io/ristretto v2.4.2</span>
+                </div>
+                <p class="article-lede">前幾天我做了一件平常不太會做的事：不改任何一行 code，直接對一個<strong>正在跑的</strong> Go process，在快取內部掛了幾個觀測點，然後就坐著看十八分鐘。</p>
+            </div>
+        </section>
+
+        <section class="article-section">
+            <div class="container">
+                <article class="article-body">
+                    <p>十八分鐘，那支程式對快取寫了 110,572 次，每一次都拿到 <code>true</code>。面板上的數字是：其中 <strong>95,879 次在另一個 goroutine 裡被當場丟掉</strong>，連寫都沒寫進去。</p>
+                    <p>這篇聊的不是工具，是<strong>「盯著執行中的東西看」這件事本身</strong>——因為這個現象在原始碼裡是讀得出來的，我讀過，我甚至知道它叫 admission policy。但我沒有真的看過那個比例，也沒看過它做決定時到底在比什麼。</p>
+
+                    <h2>先決定要站在哪裡看</h2>
+                    <p>Ristretto 的黑盒性質跟 ORM 不太一樣。ORM 是「你寫的一行變成什麼 SQL」，你至少知道最後有東西送出去。快取是<strong>「你寫的一行到底有沒有算數」</strong>——而它的 API 從一開始就沒打算告訴你。</p>
+                    <p><code>Cache.Set</code> 的簽章是 <code>func (c *Cache[K, V]) Set(key K, value V, cost int64) bool</code>。回一個 bool。文件寫得很誠實：這個 bool 的意思是「有沒有被<strong>放進緩衝區</strong>」，不是「有沒有被存起來」。真正的收留與否，發生在另一個 goroutine 從緩衝區撈出來之後。</p>
+                    <p>所以觀測的第一個決定是：<strong>站在哪一層看</strong>。</p>
+                    <p>站在 <code>Set</code> 裡面，你只看得到 <code>true</code>——那是門口的收件章，跟後面發生什麼事無關。站在真正做決定的那一層（<code>defaultPolicy.Add</code>），你看得到收或不收，但看不到是誰、什麼時候、為什麼要寫這一筆。</p>
+                    <p>我最後決定<strong>兩層一起掛，然後讓兩邊的數字自己對帳</strong>：</p>
+                    <ul>
+                        <li><strong>入口</strong>：<code>cache.go:357</code>，<code>Set</code> 的 <code>return true</code> 那一行——「呼叫端被告知 true」的次數。</li>
+                        <li><strong>入口的另外兩個出口</strong>：<code>cache.go:352</code>（這個 key 已經在 store 裡，改判成 update）與 <code>cache.go:365</code>（緩衝區滿了，回 <code>false</code>）。這兩條路我也各放一個點，因為<strong>我需要知道它們沒有發生，才敢說入口只有一種形狀</strong>。</li>
+                        <li><strong>決定層的四個出口</strong>：<code>policy.go:116</code>（有空位，直接收）、<code>policy.go:166</code>（踢掉別人之後收）、<code>policy.go:107</code>（政策裡已經有這個 key）、<code>policy.go:148</code>（<strong>拒收</strong>）。</li>
+                        <li>拒收那一個點不只放計數，還把當下的三個變數抓出來：<code>cost={cost} incHits={incHits} minHits={minHits}</code>。</li>
+                    </ul>
+                    <p><code>minHits</code> 這個欄位，等一下會變成整篇的主角。</p>
+                    <p>掛的時候踩到一個坑值得先講：這幾個函式的接收者是 <code>*Cache[K, V]</code> 和 <code>*defaultPolicy[V]</code>，<strong>泛型型別的方法在編譯出來的 binary 裡根本不叫這個名字</strong>。Go 做 GC shape stenciling，binary 裡是 <code>(*Cache[go.shape.string,go.shape.string]).SetWithTTL</code>，而 <code>/v2</code> 這個主版本路徑元素還會卡在套件名跟接收者中間。從原始碼推出來的名字和 binary 裡的名字，中間隔了兩層翻譯——<strong>我在真的看到第一個數字之前，先花了一小時在跟名字打架</strong>。這件事跟 Ristretto 完全無關，但它是這一輪最真實的一段。</p>
+                    <p>負載我刻意讓它分成兩段：前 180 輪，key 空間 2,000（容量的 2 倍）；第 181 輪起，key 空間換成 50,000（容量的 50 倍）。<strong>呼叫端完全不知道有這回事</strong>——同一支程式、同一行 <code>Set</code>、同一個 process，中間沒有重啟、沒有換設定。</p>
+
+                    <h2>前十三分鐘看到的：一次 Set 的素顏</h2>
+                    <p>觀測窗口是 2026-07-31 17:04:06.463Z 到 17:22:04.266Z，十七分五十八秒，245 輪、每輪 500 次操作。</p>
+                    <p>先看相位 A（前 180 輪，key 空間 2,000）。我寫的那行 Go 只有一句：</p>
+                    <pre class="code-block"><code>if cache.Set(key, "value-"+key, 1) {
+    t.setTrue++
+}</code></pre>
+                    <p>面板上真正跑的是這些：</p>
+                    <div class="article-table-wrap">
+                    <table>
+                        <thead><tr><th>我寫的 Go</th><th>面板上真正跑的</th><th>收斂點</th><th>相位 A 次數</th></tr></thead>
+                        <tbody>
+                            <tr><td><code>cache.Set(key, v, 1)</code></td><td><code>Set</code> 回 <code>true</code>（丟進 setBuf）</td><td><code>cache.go:357</code></td><td><strong>82,728</strong></td></tr>
+                            <tr><td>〃</td><td>key 已在 store 裡，改判成 update</td><td><code>cache.go:352</code></td><td><strong>0</strong></td></tr>
+                            <tr><td>〃</td><td>setBuf 滿了，回 <code>false</code></td><td><code>cache.go:365</code></td><td><strong>0</strong></td></tr>
+                            <tr><td>〃</td><td>政策裡已經有這個 key，回 <code>false</code></td><td><code>policy.go:107</code></td><td>21</td></tr>
+                            <tr><td>〃</td><td>有空位，直接收下</td><td><code>policy.go:116</code></td><td>17</td></tr>
+                            <tr><td>〃</td><td><strong>踢掉別人之後收下</strong></td><td><code>policy.go:166</code></td><td>14,765</td></tr>
+                            <tr><td>〃</td><td><strong>拒收</strong></td><td><code>policy.go:148</code></td><td><strong>67,926</strong></td></tr>
+                        </tbody>
+                    </table>
+                    </div>
+                    <p>這張表有三件我「知道，但沒真的看過」的事。</p>
+                    <p><strong>入口只有一種形狀。</strong> <code>cache.go:352</code> 和 <code>:365</code> 兩個點，十八分鐘一次都沒響。所以這一輪裡 <code>Set</code> 從來沒走過「其實是 update」那條路，緩衝區也從來沒滿過——<strong>入口的 82,728 個 <code>true</code> 全部是同一個意思</strong>：東西進了佇列。這是後面所有推論的地基，而它是靠兩個從頭到尾都是 0 的點撐起來的。</p>
+                    <p><strong>帳算得起來。</strong> 決定層四個出口加起來是 <code>21 + 17 + 14,765 + 67,926 = 82,729</code>，入口是 82,728。差一筆，那是我按下快照那一瞬間還在佇列裡飛的那一個。<strong>十八分鐘、八萬多次，只差一筆。</strong></p>
+                    <p><strong>我傳的 <code>cost</code> 不是政策秤的 <code>cost</code>。</strong> 我每次都傳 1。但拒收那個點抓出來的 <code>cost</code>，95,821 列裡<strong>每一列都是 57</strong>。Ristretto 在把 item 交給政策之前，會偷偷加上 <code>itemSize</code>——也就是內部 <code>storeItem</code> 結構本身的大小（在 amd64 上是 56 bytes）。所以我以為我在說「這東西值 1 個單位」，政策聽到的是「57」。</p>
+                    <p>而這個數字可以當場驗算：容量 1,000 除以 57 是 17.5，所以在踢人之前，這個快取只塞得下 <strong>17</strong> 個我的 item。「有空位，直接收下」那個點（<code>policy.go:116</code>）整整十八分鐘的命中數，剛好就是 <strong>17</strong>。<strong>一個我沒傳過的常數，和一個我沒預期的計數，在面板上對上了。</strong></p>
+
+                    <figure class="article-figure figure-wide">
+                        <a href="https://codebull-dashboard-service.web.app/ristretto-admission-20260801/" target="_blank" rel="noopener noreferrer">
+                            <img src="asset/ristretto-admission-cost-1-vs-57.webp" alt="面板 Metrics 分頁的兩格：上面 ristretto.(*Cache).SetWithTTL - cost 是一條平在 1 的線，下面 ristretto.(*defaultPolicy).Add - cost 是一條平在 57 的線" loading="lazy">
+                        </a>
+                        <figcaption>同一個變數名、同一次寫入，在兩層看到的值不一樣：門口那格 <code>cost</code> 平平地壓在 <strong>1</strong>（那是我傳進去的），政策那格平平地壓在 <strong>57</strong>（那是它真正秤的）。中間差的 56 bytes 是 <code>storeItem</code> 自己。 <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/ristretto-admission-20260801/" target="_blank" rel="noopener noreferrer">打開線上面板 →</a></span></figcaption>
+                    </figure>
+
+                    <p>到這裡都還算有趣但不驚訝。真正讓我坐直的是拒收那個點抓出來的<strong>內容</strong>。</p>
+
+                    <h2>incHits=3, minHits=16：一場它沒告訴你的比賽</h2>
+                    <p>拒收那一行的模板，逐字抄自面板：</p>
+                    <pre class="code-block"><code>cost=57 | incHits=3 | minHits=16
+cost=57 | incHits=2 | minHits=16
+cost=57 | incHits=0 | minHits=16</code></pre>
+                    <p><code>incHits</code> 是<strong>我這次要寫的這個 key</strong> 的估計熱度。<code>minHits</code> 是政策從現住戶裡隨機抽樣之後，<strong>抽到的最冷的那一個</strong>的熱度。程式碼是這樣的：</p>
+                    <pre class="code-block"><code>if incHits &lt; minHits {
+    p.metrics.add(rejectSets, key, 1)
+    return victims, false
+}</code></pre>
+                    <p>也就是說，<strong>每一次 <code>Set</code>，你的資料都在跟已經住在裡面的東西比一場</strong>。輸了就當場丟掉，而呼叫端拿到的是 <code>true</code>。</p>
+                    <p>95,821 列裡，<code>incHits &lt; minHits</code> 成立的比例是 <strong>100%</strong>——一列例外都沒有。這不意外（那是這一行的條件），但它證明了我抓到的變數就是那個判斷用的變數，不是別的東西。</p>
+                    <p>真正的發現在 <code>minHits</code> 的分布上。相位 A 的 67,911 次拒收裡，<strong>有 57,881 次（85.2%）的 <code>minHits</code> 剛好是 16</strong>。</p>
+                    <p>16 這個數字不是巧合。Ristretto 的頻率估計器是一個 <strong>4-bit</strong> counter 的 Count-Min sketch（<code>sketch.go</code> 裡每個 counter 都 <code>&amp; 0x0f</code>，上限 15），再加上一個 doorkeeper bloom filter 命中時 +1。<strong>16 就是這把尺能表示的最大值。</strong></p>
+                    <blockquote>
+                        <p>所以那 57,881 次拒收，真正的意思不是「你的資料不夠熱」，而是——<br>
+                        <strong>「被抽到的那個現住戶已經頂到計數器的天花板，而它到底是被摸過 16 次還是 16,000 次，這把尺量不出來。」</strong></p>
+                    </blockquote>
+                    <p>相位 A 的平均 <code>incHits</code> 是 3.699，平均 <code>minHits</code> 是 15.127。一個平均 3.7 分的挑戰者，對上一群平均 15.1 分、其中八成五已經滿分的現住戶。<strong>這場比賽不是難打，是尺不夠長。</strong></p>
+
+                    <figure class="article-figure figure-wide">
+                        <a href="https://codebull-dashboard-service.web.app/ristretto-admission-20260801/" target="_blank" rel="noopener noreferrer">
+                            <img src="asset/ristretto-admission-dashboard-logs.webp" alt="面板 Logs 分頁：20,196 列 ristretto.(*defaultPolicy).Add:148 的逐字紀錄，每一列都是 cost=57、incHits 在 0 到 6 之間、minHits 是 7 或 8" loading="lazy">
+                        </a>
+                        <figcaption><strong>Logs</strong> 分頁的 20,196 列，就是拒收那一行的逐字現場。每一列的 <code>cost</code> 都是 57；這一段截在相位 B（本地時間 01:19，即 17:19Z），所以 <code>minHits</code> 是 7 或 8——<strong>不是相位 A 那個頂到天花板的 16</strong>。同一個點、同一支程式，中間只換了 key 空間。 <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/ristretto-admission-20260801/" target="_blank" rel="noopener noreferrer">打開線上面板 →</a></span></figcaption>
+                    </figure>
+
+                    <h2>第 181 輪：我把 key 空間放大 25 倍，呼叫端一個字都沒察覺</h2>
+                    <p>第 181 輪，程式把 key 空間從 2,000 換成 50,000。沒有重啟、沒有改設定、<code>Set</code> 那一行一個字都沒動。</p>
+                    <p>呼叫端看到的：<strong>還是 100% 的 <code>true</code></strong>。相位 B 的 28,086 次 <code>Set</code>，28,086 次 <code>true</code>。</p>
+                    <p>面板上看到的：</p>
+                    <div class="article-table-wrap">
+                    <table>
+                        <thead><tr><th>收斂點</th><th>相位 A</th><th>相位 B</th></tr></thead>
+                        <tbody>
+                            <tr><td><code>Set</code> 回 <code>true</code></td><td>82,728</td><td>28,086</td></tr>
+                            <tr><td>有空位，直接收下</td><td>17</td><td><strong>0</strong></td></tr>
+                            <tr><td>踢掉別人之後收下</td><td>14,765</td><td><strong>133</strong></td></tr>
+                            <tr><td>拒收</td><td>67,926</td><td><strong>27,953</strong></td></tr>
+                            <tr><td><strong>收留率</strong></td><td><strong>17.87%</strong></td><td><strong>0.47%</strong></td></tr>
+                        </tbody>
+                    </table>
+                    </div>
+                    <p><strong>收留率從 17.87% 掉到 0.47%，中間唯一改變的是我要寫的 key 有幾種。</strong> 一個回傳值完全一樣的 API，底下的行為換了一個數量級，而呼叫端手上那個 bool 從頭到尾長得一模一樣。</p>
+                    <p><code>minHits</code> 的分布也整個翻過來了。相位 B 的 27,910 次拒收裡，<strong><code>minHits</code> 等於 16 的次數是 0</strong>：</p>
+                    <div class="article-table-wrap">
+                    <table>
+                        <thead><tr><th><code>minHits</code></th><th>5</th><th>6</th><th>7</th><th>8</th><th>9</th><th>10</th><th>11</th><th>12</th><th>13</th><th>14</th><th>16</th></tr></thead>
+                        <tbody>
+                            <tr><td>次數</td><td>731</td><td>3,280</td><td>3,137</td><td>4,209</td><td>4,047</td><td>4,592</td><td>3,952</td><td>2,399</td><td>1,512</td><td>51</td><td><strong>0</strong></td></tr>
+                        </tbody>
+                    </table>
+                    </div>
+                    <p>平均 <code>minHits</code> 從 15.127 掉到 9.098，平均 <code>incHits</code> 從 3.699 掉到 1.375。<strong>現住戶不再滿分了</strong>——key 空間放大 25 倍之後，同一份 sketch 要記的東西多了 25 倍，每個 key 分到的計數自然稀釋。</p>
+                    <p>但收留率反而更低。因為挑戰者掉得更兇：從平均 3.7 掉到 1.4。<strong>兩邊都變冷了，而挑戰者冷得比較快。</strong></p>
+
+                    <h2>誠實段：這一輪有三件事我沒做好</h2>
+                    <p><strong>第一，那個「86%」我不能說成災難。</strong> 這是快取，丟掉本來就是它的工作——一個容量 1,000 的東西面對 50,000 種 key，丟掉 99.5% 是<strong>正確行為</strong>，不是 bug。這篇要說的不是「Ristretto 有問題」，是<strong>「那個 <code>true</code> 沒有告訴你這件事」</strong>。真正會出事的是有人把 <code>if !cache.Set(...)</code> 當成錯誤處理、或是把 Set 之後的 Get 命中視為理所當然。</p>
+                    <p><strong>第二，我量到的延遲，量到的其實是我自己。</strong> 我在 <code>policy.go:122 → 168</code> 掛了一條延遲線，想看「踢人那條路要跑多久」。收到 14,901 個樣本，p50 4.537 毫秒、p95 7.893、p99 9.885。這個數字<strong>不能當成 Ristretto 的效能數據</strong>，理由有兩個：那段區間裡面<strong>還包著我自己的另一個觀測點</strong>（<code>policy.go:166</code>），而且整支程式在觀測之下慢了 4.75 倍。p50 的 4.5 毫秒，跟「一次觀測點命中的成本」幾乎一樣——<strong>我量到的是觀測者，不是被觀測者。</strong> 所以全篇除了這一段，不出現任何毫秒數。</p>
+                    <p><strong>第三，面板的 Metrics 分頁有一半是雜訊。</strong> metric 點沒有給模板的時候，它會把作用域裡的變數全部撈出來——所以面板上長出了 <code>conflictHash</code>、<code>keyHash</code>、<code>~r0</code>、<code>expiration</code> 這種沒人要看的序列。<strong>這是我掛的時候沒設變數過濾造成的，不是資料錯了</strong>；文章裡所有的次數都來自各點精確的命中計數，不是這些圖。我把這一頁原樣附在下面，因為它就是這輪長成的樣子。</p>
+
+                    <figure class="article-figure figure-wide">
+                        <a href="https://codebull-dashboard-service.web.app/ristretto-admission-20260801/" target="_blank" rel="noopener noreferrer">
+                            <img src="asset/ristretto-admission-dashboard-metrics.webp" alt="面板 Metrics 分頁全貌：十二格圖表，只有兩格 cost 有意義，其餘是 ttl、expiration、conflictHash、keyHash、ok、key 等被一併撈出來的變數" loading="lazy">
+                        </a>
+                        <figcaption>原樣附上的 <strong>Metrics</strong> 分頁。十二格裡真正有意義的只有兩格 <code>cost</code>；<code>ttl</code>、<code>expiration</code>、<code>ok</code>、<code>~r0</code> 平在 0，<code>conflictHash</code>、<code>keyHash</code>、<code>key</code> 是 64-bit 雜湊值畫成的柵欄。<strong>這是「metric 點沒設變數過濾」長出來的樣子</strong>，也是這篇不用這些圖當證據的原因。 <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/ristretto-admission-20260801/" target="_blank" rel="noopener noreferrer">打開線上面板 →</a></span></figcaption>
+                    </figure>
+
+                    <p>那對照組呢？我用同一支 binary、同樣的參數、<strong>完全不掛任何觀測點</strong>跑了一輪：</p>
+                    <div class="article-table-wrap">
+                    <table>
+                        <thead><tr><th></th><th>有觀測</th><th>無觀測（對照組）</th></tr></thead>
+                        <tbody>
+                            <tr><td>每輪耗時（500 次操作）</td><td>4.75 秒</td><td><strong>1.00 秒</strong></td></tr>
+                            <tr><td>第 143 輪 <code>sets</code></td><td>62,083</td><td>62,044</td></tr>
+                            <tr><td>第 143 輪 <code>set_true</code></td><td>62,083（100%）</td><td>62,044（100%）</td></tr>
+                            <tr><td>第 143 輪 <code>rejected</code></td><td>50,371</td><td>49,994</td></tr>
+                            <tr><td>第 143 輪 <code>added</code></td><td>11,693</td><td>7,522</td></tr>
+                        </tbody>
+                    </table>
+                    </div>
+                    <p><strong>觀測讓程式慢了 4.75 倍</strong>，這要老實講。但文章靠的兩個數字——「100% 的 <code>true</code>」和拒收次數——兩邊只差 0.8%。<code>added</code> 那一欄差比較多，原因也看得出來：對照組跑得快，政策那個 goroutine 追不上，<strong>取樣的那一瞬間還有約 4,500 筆卡在佇列裡沒被處理</strong>。有觀測的那一輪因為生產端被拖慢，帳反而剛好對得起來。</p>
+
+                    <h2>一個對照：Ristretto 自己的 Metrics 為什麼還不夠</h2>
+                    <p>公平講，Ristretto <strong>有</strong>內建 metrics，而且不瞎。<code>m.SetsRejected()</code> 就是拒收數，<code>m.KeysAdded()</code> 就是收留數。我全程拿它們對帳：</p>
+                    <ul>
+                        <li>觀測點數到的收留是 <code>17 + 14,898 = 14,915</code>，Ristretto 自己說 <strong>14,914</strong>。</li>
+                        <li>觀測點數到的拒收是 95,879，Ristretto 自己說 95,637（相隔十三秒的兩次取樣）。</li>
+                        <li><code>SetsDropped()</code> 全程 <strong>0</strong>，跟我那兩個從沒響過的點一致。</li>
+                    </ul>
+                    <p>三個彼此獨立的來源指向同一組數字。那觀測點多給了什麼？</p>
+                    <ol>
+                        <li><strong>它不告訴你 <code>Add</code> 有四個出口。</strong> <code>KeysAdded</code> 把「有空位直接收」（17 次）和「踢掉別人才收」（14,898 次）算在同一格；而 <code>policy.go:107</code> 那條「政策裡已經有這個 key」的路（21 次）<strong>兩個 counter 都不會加</strong>——它在 Ristretto 自己的帳本裡是隱形的。我是因為在那一行放了點，才知道它有 21 次。</li>
+                        <li><strong>它只給你結果，不給你理由。</strong> <code>SetsRejected = 95,637</code> 告訴你被拒了幾次，不告訴你<strong>輸給了誰、差多少</strong>。<code>incHits=3 / minHits=16</code> 這種東西不存在於任何 metric 裡，因為沒有人事先決定要 export 它——而那個 <code>16</code> 才是這篇真正的發現。</li>
+                        <li><strong>它不對帳。</strong> 入口 110,814 對上四個出口的 110,815，這個「差一筆」本身就是資訊。哪天這兩個數字<strong>大幅背離</strong>，就代表有一批 <code>Set</code> 在進政策之前就消失了。內建 metrics 給不了你這個，因為它根本沒有「入口」這個概念。</li>
+                    </ol>
+
+                    <h2>收尾</h2>
+                    <p>我沒有改一行 code、沒有重編譯 Ristretto、沒有重啟 process。就只是在一個跑著的 process 上挑了八個位置掛觀測點，把 key 空間在中途放大 25 倍，然後認真看了十八分鐘。</p>
+                    <p>換來的是：我看到 <code>Set</code> 那個 <code>true</code> 只代表「進了佇列」，而佇列後面有四個出口；看到我傳進去的 <code>cost=1</code> 到了政策手上變成 57，於是容量 1,000 的快取其實只放得下 17 個；看到 110,814 個 <code>true</code> 裡有 95,879 個當場被丟掉；看到丟掉的理由是一場 <code>incHits</code> 對 <code>minHits</code> 的比賽，而相位 A 有 85% 的對手<strong>分數已經頂到 4-bit 計數器的天花板</strong>；看到 key 空間一放大，收留率從 17.87% 掉到 0.47%，而呼叫端手上那個 bool 從頭到尾一個字都沒變。</p>
+                    <p>快取是黑盒子，但黑盒子只是「預設看不見」，不是「不能看」。那個 <code>true</code> 一直都在說謊，只是它說得很有禮貌——<strong>而它說謊的內容，本來就該看得見。</strong></p>
+
+                    <h3>附：這次的觀測設定（可重現）</h3>
+                    <ul>
+                        <li><strong>收斂點（8 個點，分佈在 2 個函式上）</strong>
+                            <ul>
+                                <li><code>ristretto.(*Cache[K,V]).SetWithTTL</code> — <code>cache.go:352</code>（metric）、<code>:357</code>（metric）、<code>:365</code>（metric）</li>
+                                <li><code>ristretto.(*defaultPolicy[V]).Add</code> — <code>policy.go:107</code>（metric）、<code>:116</code>（metric）、<code>:166</code>（metric）、<code>:148</code>（log，<code>cost={cost} incHits={incHits} minHits={minHits}</code>）、<code>:122 → :168</code>（latency）</li>
+                            </ul>
+                        </li>
+                        <li><strong>被觀測的程式</strong>：一支 500 行不到的 Go 工作負載，<code>github.com/dgraph-io/ristretto/v2 v2.4.2</code>，<code>NewCache(MaxCost=1000, NumCounters=10000, BufferItems=64, Metrics=true)</code>，每次 <code>Set</code> 傳 <code>cost=1</code>；30% 的讀取集中在最熱的 2% key。<code>go build -gcflags="all=-dwarflocationlists=true -N -l"</code>。</li>
+                        <li><strong>觀測窗口</strong>：2026-07-31 17:04:06.463Z → 17:22:04.266Z（17 分 58 秒），245 輪 × 500 次操作
+                            <ul>
+                                <li>相位 A（第 1–180 輪，key 空間 2,000 = 容量的 2 倍）：<code>Set</code> 回 true 82,728 / 收留 14,782 / 拒收 67,926 / 收留率 17.87%</li>
+                                <li>相位 B（第 181–245 輪，key 空間 50,000 = 容量的 50 倍）：<code>Set</code> 回 true 28,086 / 收留 133 / 拒收 27,953 / 收留率 0.47%</li>
+                                <li>合計：<code>Set</code> 回 true 110,814 / 收留 14,915 / 拒收 95,879 / 入口對出口 110,814 對 110,815</li>
+                            </ul>
+                        </li>
+                        <li><strong>log 逐字內容</strong>：窗口內 95,821 列，<code>cost</code> 每一列都是 57，<code>incHits &lt; minHits</code> 成立率 100%（0 例外，<code>incHits</code> 最大值 15）
+                            <ul>
+                                <li>相位 A：平均 <code>incHits</code> 3.699 / 平均 <code>minHits</code> 15.127 / <code>minHits = 16</code> 佔 57,881 列（85.2%）</li>
+                                <li>相位 B：平均 <code>incHits</code> 1.375 / 平均 <code>minHits</code> 9.098 / <code>minHits = 16</code> 佔 <strong>0</strong> 列</li>
+                            </ul>
+                        </li>
+                        <li><strong>交叉核對</strong>（三個獨立來源）：程式自己的計數器 <code>set_true = sets = 110,572</code>（100%）；Ristretto 內建 <code>KeysAdded 14,914</code> / <code>SetsRejected 95,637</code> / <code>SetsDropped 0</code>；觀測點 14,915 / 95,879 / 0</li>
+                        <li><strong>對照組</strong>（同一支 binary、同樣參數、零觀測點）：每輪 1.00 秒 vs 有觀測的 4.75 秒；第 143 輪 <code>set_true</code> 兩邊都是 100%，<code>rejected</code> 相差 0.8%</li>
+                        <li><strong>這一輪沒做到的事</strong>
+                            <ul>
+                                <li>延遲那條線（14,901 個樣本，p50 4.537ms / p95 7.893 / p99 9.885）<strong>量到的主要是觀測本身的成本</strong>——區間裡包著另一個觀測點，程式又慢了 4.75 倍。所以全篇除了誠實段不引用毫秒數。</li>
+                                <li>metric 點沒設變數過濾，面板 Metrics 分頁長出一堆無意義的序列。文中所有次數取自各點的精確命中計數，不取自那些圖。</li>
+                                <li>沒有量到 <code>Get</code> 那一側；命中率的數字全部來自程式自己的 tally 與 Ristretto 內建 metrics。</li>
+                            </ul>
+                        </li>
+                    </ul>
+
+                    <div class="article-callout">
+                        <p>📊 <strong>本文的遠端觀測面板</strong>（實測數據，可線上檢視）：<a href="https://codebull-dashboard-service.web.app/ristretto-admission-20260801/" target="_blank" rel="noopener noreferrer">ristretto-admission-20260801</a></p>
+                        <p>面板涵蓋窗口中央的 3 分 30 秒（17:16:00Z–17:19:30Z，292,393 筆樣本），<strong>剛好跨過第 181 輪那個相位切換</strong>。<strong>Logs</strong> 分頁的 20,196 列就是拒收那個點的逐字紀錄，可以逐行對帳 <code>cost=57 | incHits=… | minHits=…</code>；<strong>Metrics</strong> 分頁可以看到 <code>SetWithTTL - cost</code> 平在 1、<code>Add - cost</code> 平在 57 的那組對照。（面板時間軸是本地時間 UTC+8，對應內文的 UTC 時間。）</p>
+                    </div>
+
+                    <div class="article-footnote">
+                        <p>這篇裡「不改 code、對執行中的 process 掛觀測點、然後盯著看」用的是 <strong>CodeBull</strong> —— 一個 VS Code extension，能對正在跑的 Go 服務動態插入 Metric / Log / Latency 觀測點，不改原始碼、不重編譯、不重啟。上面那句 <code>incHits=3 | minHits=16</code>，就是這樣被我當場看到的。</p>
+                        <p><em>文中每一個次數、每一列逐字內容均出自 CodeBull 對執行中 Go process 的實測證據，並可在上方面板連結線上對帳。</em></p>
+                        <p><a class="btn" href="https://marketplace.visualstudio.com/items?itemName=0xbu11.codebull" target="_blank" rel="noopener noreferrer">安裝 CodeBull</a></p>
+                    </div>
+                </article>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2026 CodeBull. 版權所有。</p>
+            <div class="links">
+                <a href="https://github.com/0xbu11/codebull">GitHub</a>
+                <a href="mailto:codebull.0xbu11@gmail.com">codebull.0xbu11@gmail.com</a>
+                <a href="#">隱私權</a>
+                <a href="#">條款</a>
+            </div>
+        </div>
+    </footer>
+</body>
+
+</html>
