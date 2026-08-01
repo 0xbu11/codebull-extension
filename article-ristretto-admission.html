@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeBull - I Watched a Running Cache for Eighteen Minutes</title>
+    <meta name="description" content="No code changes: eight observation points inside a running Ristretto. The same line of Set returned true 110,814 times, 95,879 of which were thrown away on the spot in another goroutine — and the reason for the rejection was a 4-bit counter pinned at its ceiling.">
+    <meta property="og:type" content="article">
+    <meta property="og:site_name" content="CodeBull">
+    <meta property="og:locale" content="en_US">
+    <meta property="og:title" content="I watched a running cache for eighteen minutes and saw it throw away 86% of my writes, returning true every single time">
+    <meta property="og:description" content="Eight observation points through an admission policy: the cost=1 I passed became 57 by the time the policy weighed it, a capacity of 1,000 held only 17 of my items, and 85% of rejections lost to a 4-bit counter already pinned at its maximum.">
+    <meta property="og:url" content="https://0xbu11.github.io/codebull-extension/article-ristretto-admission.html">
+    <meta property="og:image" content="https://0xbu11.github.io/codebull-extension/asset/og-site.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="627">
+    <meta property="og:image:alt" content="I watched a running cache for eighteen minutes and saw it throw away 86% of my writes, returning true every single time">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="I watched a running cache for eighteen minutes and saw it throw away 86% of my writes, returning true every single time">
+    <meta name="twitter:description" content="Eight observation points through an admission policy: the cost=1 I passed became 57 by the time the policy weighed it, a capacity of 1,000 held only 17 of my items, and 85% of rejections lost to a 4-bit counter already pinned at its maximum.">
+    <meta name="twitter:image" content="https://0xbu11.github.io/codebull-extension/asset/og-site.png">
+    <link rel="stylesheet" href="style.css?v=17">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&display=swap" rel="stylesheet">
+    <script src="theme.js"></script>
+</head>
+
+<body>
+    <div class="announcement-banner">
+        Currently supported Go versions: V1.22.0 and V1.26.0.
+    </div>
+    <header>
+        <div class="container">
+            <div class="logo">
+                <a href="index.html">Code<span>Bull</span></a>
+            </div>
+            <div class="header-logo-center">
+                <a href="https://marketplace.visualstudio.com/items?itemName=0xbu11.codebull" target="_blank" rel="noopener noreferrer" aria-label="Open CodeBull on VS Code Marketplace">
+                    <img src="asset/codebull-logo.png" alt="CodeBull Logo">
+                </a>
+            </div>
+            <nav>
+                <ul>
+                    <li><a href="index.html#features">Features</a></li>
+                    <li><a href="index.html#articles">Field Notes</a></li>
+                    <li><a href="tutorial.html">Tutorial</a></li>
+                    <li><a href="docs.html">Docs</a></li>
+                    <li><a href="platform.html">Platform</a></li>
+                    <li><a href="https://github.com/0xbu11/codebull" target="_blank">GitHub</a></li>
+                    <li><a href="article-ristretto-admission_zh_TW.html" class="lang-switch">中文</a></li>
+                    <li><button id="theme-toggle" class="theme-toggle" aria-label="Switch Theme">☀️</button></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <section class="article-header">
+            <div class="container">
+                <a class="article-back" href="index.html#articles">← Back to articles</a>
+                <span class="article-card-source">Ristretto · Field Notes</span>
+                <h1>I watched a running cache for eighteen minutes and saw it throw away 86% of my writes, returning true every single time</h1>
+                <div class="article-meta">
+                    <span>2026-08-01</span>
+                    <span>18 min window / 110,814 Set calls / 8 observation points</span>
+                    <span>dgraph-io/ristretto v2.4.2</span>
+                </div>
+                <p class="article-lede">The other day I did something I don't normally do: without changing a single line of code, I attached a handful of observation points inside the cache of a <strong>running</strong> Go process, and then just sat there watching for eighteen minutes.</p>
+            </div>
+        </section>
+
+        <section class="article-section">
+            <div class="container">
+                <article class="article-body">
+                    <p>In those eighteen minutes the program wrote to the cache 110,572 times, and got <code>true</code> every single time. What the panel says is: <strong>95,879 of those were thrown away on the spot in another goroutine</strong>, never stored at all.</p>
+                    <p>This piece isn't about a tool. It's about <strong>the act of watching something while it runs</strong> — because this behaviour is readable in the source. I have read it. I even knew it was called an admission policy. But I had never actually seen the ratio, and I had never seen what it compares when it makes that decision.</p>
+
+                    <h2>First, decide where to stand</h2>
+                    <p>A cache is a different kind of black box than an ORM. With an ORM the question is "what SQL does my line of code turn into" — at least you know something goes out at the end. With a cache the question is <strong>"does the line I wrote count for anything at all"</strong> — and its API never intended to tell you.</p>
+                    <p><code>Cache.Set</code> is declared as <code>func (c *Cache[K, V]) Set(key K, value V, cost int64) bool</code>. It returns a bool. The docs are honest about it: that bool means "was it <strong>put into the buffer</strong>", not "was it stored". Whether it is actually admitted happens later, after another goroutine pulls it back out of that buffer.</p>
+                    <p>So the first decision when instrumenting is: <strong>which layer do you stand on</strong>.</p>
+                    <p>Stand inside <code>Set</code> and all you see is <code>true</code> — that's the stamp on the envelope at the front desk, and it has nothing to do with what happens afterwards. Stand at the layer that actually decides (<code>defaultPolicy.Add</code>) and you see admitted-or-not, but not who, not when, not why this particular write happened.</p>
+                    <p>What I settled on was <strong>instrumenting both layers and letting the two sets of numbers reconcile against each other</strong>:</p>
+                    <ul>
+                        <li><strong>The entrance</strong>: <code>cache.go:357</code>, the <code>return true</code> line of <code>Set</code> — the number of times a caller was told <code>true</code>.</li>
+                        <li><strong>The entrance's two other exits</strong>: <code>cache.go:352</code> (the key is already in the store, so it becomes an update) and <code>cache.go:365</code> (the buffer is full, return <code>false</code>). I put a point on each of those too, because <strong>I need to know they didn't happen before I can claim the entrance has only one shape</strong>.</li>
+                        <li><strong>The four exits of the deciding layer</strong>: <code>policy.go:116</code> (room available, admit directly), <code>policy.go:166</code> (admit after evicting someone), <code>policy.go:107</code> (the policy already has this key), <code>policy.go:148</code> (<strong>reject</strong>).</li>
+                        <li>The rejection point doesn't just count — it also pulls out three variables as they are at that moment: <code>cost={cost} incHits={incHits} minHits={minHits}</code>.</li>
+                    </ul>
+                    <p><code>minHits</code> is the field that turns out to be the lead character of this whole piece.</p>
+                    <p>One trap worth mentioning up front: the receivers of these functions are <code>*Cache[K, V]</code> and <code>*defaultPolicy[V]</code>, and <strong>methods on generic types are not called that in the compiled binary at all</strong>. Go does GC shape stenciling, so the binary holds <code>(*Cache[go.shape.string,go.shape.string]).SetWithTTL</code>, and the <code>/v2</code> major-version path element wedges itself between the package name and the receiver on top of that. Between the name you derive from source and the name in the binary sit two layers of translation — <strong>I spent an hour fighting names before I saw my first number</strong>. None of this has anything to do with Ristretto, but it was the most real part of this run.</p>
+                    <p>I deliberately split the load in two. For the first 180 rounds, a key space of 2,000 (twice the capacity); from round 181 on, a key space of 50,000 (fifty times the capacity). <strong>The calling side has no idea any of this happened</strong> — same program, same line of <code>Set</code>, same process, no restart, no config change in between.</p>
+
+                    <h2>What the first thirteen minutes showed: one Set with its makeup off</h2>
+                    <p>The observation window is 2026-07-31 17:04:06.463Z to 17:22:04.266Z — seventeen minutes fifty-eight seconds, 245 rounds of 500 operations each.</p>
+                    <p>Start with phase A (the first 180 rounds, key space 2,000). The line of Go I wrote is just this:</p>
+                    <pre class="code-block"><code>if cache.Set(key, "value-"+key, 1) {
+    t.setTrue++
+}</code></pre>
+                    <p>What the panel says is actually running is this:</p>
+                    <div class="article-table-wrap">
+                    <table>
+                        <thead><tr><th>The Go I wrote</th><th>What actually runs, per the panel</th><th>Point</th><th>Phase A count</th></tr></thead>
+                        <tbody>
+                            <tr><td><code>cache.Set(key, v, 1)</code></td><td><code>Set</code> returns <code>true</code> (pushed into setBuf)</td><td><code>cache.go:357</code></td><td><strong>82,728</strong></td></tr>
+                            <tr><td>〃</td><td>key already in the store, becomes an update</td><td><code>cache.go:352</code></td><td><strong>0</strong></td></tr>
+                            <tr><td>〃</td><td>setBuf full, returns <code>false</code></td><td><code>cache.go:365</code></td><td><strong>0</strong></td></tr>
+                            <tr><td>〃</td><td>policy already has this key, returns <code>false</code></td><td><code>policy.go:107</code></td><td>21</td></tr>
+                            <tr><td>〃</td><td>room available, admitted directly</td><td><code>policy.go:116</code></td><td>17</td></tr>
+                            <tr><td>〃</td><td><strong>admitted after evicting someone</strong></td><td><code>policy.go:166</code></td><td>14,765</td></tr>
+                            <tr><td>〃</td><td><strong>rejected</strong></td><td><code>policy.go:148</code></td><td><strong>67,926</strong></td></tr>
+                        </tbody>
+                    </table>
+                    </div>
+                    <p>There are three things in this table that I "knew" but had never actually seen.</p>
+                    <p><strong>The entrance has only one shape.</strong> The two points at <code>cache.go:352</code> and <code>:365</code> never fired once in eighteen minutes. So in this run <code>Set</code> never took the "actually an update" path, and the buffer was never full — <strong>all 82,728 <code>true</code>s at the entrance mean exactly the same thing</strong>: the thing made it into the queue. That is the foundation for everything that follows, and it rests on two points that read zero from beginning to end.</p>
+                    <p><strong>The books balance.</strong> The four exits of the deciding layer sum to <code>21 + 17 + 14,765 + 67,926 = 82,729</code>; the entrance is 82,728. Off by one — that's the one still in flight in the queue at the instant I took the snapshot. <strong>Eighteen minutes, eighty thousand-odd operations, off by one.</strong></p>
+                    <p><strong>The <code>cost</code> I passed is not the <code>cost</code> the policy weighs.</strong> I passed 1 every time. But the <code>cost</code> captured at the rejection point is <strong>57 on every single one</strong> of its 95,821 rows. Before handing an item to the policy, Ristretto quietly adds <code>itemSize</code> — the size of the internal <code>storeItem</code> struct itself (56 bytes on amd64). So I thought I was saying "this thing is worth 1 unit"; what the policy heard was "57".</p>
+                    <p>And that number can be checked on the spot: a capacity of 1,000 divided by 57 is 17.5, so before it starts evicting anyone, this cache holds exactly <strong>17</strong> of my items. The hit count of the "room available, admitted directly" point (<code>policy.go:116</code>) over the full eighteen minutes is precisely <strong>17</strong>. <strong>A constant I never passed and a count I never expected, meeting on the panel.</strong></p>
+
+                    <figure class="article-figure figure-wide">
+                        <a href="https://codebull-dashboard-service.web.app/ristretto-admission-20260801/" target="_blank" rel="noopener noreferrer">
+                            <img src="asset/ristretto-admission-cost-1-vs-57.webp" alt="Two panels on the dashboard's Metrics tab: ristretto.(*Cache).SetWithTTL - cost is a flat line at 1, ristretto.(*defaultPolicy).Add - cost is a flat line at 57" loading="lazy">
+                        </a>
+                        <figcaption>Same variable name, same write, two different values depending on the layer: the front-desk panel holds <code>cost</code> flat at <strong>1</strong> (what I passed in), the policy panel holds it flat at <strong>57</strong> (what it actually weighs). The 56 bytes in between are <code>storeItem</code> itself. <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/ristretto-admission-20260801/" target="_blank" rel="noopener noreferrer">Open the live dashboard →</a></span></figcaption>
+                    </figure>
+
+                    <p>All of that is interesting but not surprising. What made me sit up was the <strong>content</strong> captured at the rejection point.</p>
+
+                    <h2>incHits=3, minHits=16: a contest it never told you about</h2>
+                    <p>The template on the rejection line, copied verbatim from the panel:</p>
+                    <pre class="code-block"><code>cost=57 | incHits=3 | minHits=16
+cost=57 | incHits=2 | minHits=16
+cost=57 | incHits=0 | minHits=16</code></pre>
+                    <p><code>incHits</code> is the estimated heat of <strong>the key I am about to write</strong>. <code>minHits</code> is the heat of <strong>the coldest one it drew</strong> after randomly sampling the current residents. The code is this:</p>
+                    <pre class="code-block"><code>if incHits &lt; minHits {
+    p.metrics.add(rejectSets, key, 1)
+    return victims, false
+}</code></pre>
+                    <p>Which is to say: <strong>on every <code>Set</code>, your data has to win a contest against something already living inside</strong>. Lose and it is dropped on the spot — while the caller receives <code>true</code>.</p>
+                    <p>Across those 95,821 rows, <code>incHits &lt; minHits</code> holds <strong>100%</strong> of the time — not one exception. That isn't a surprise (it is the condition on that line), but it does prove the variables I captured are the ones the decision uses, not something else.</p>
+                    <p>The real finding is in the distribution of <code>minHits</code>. Of phase A's 67,911 rejections, <strong>57,881 (85.2%) have a <code>minHits</code> of exactly 16</strong>.</p>
+                    <p>16 is not a coincidence. Ristretto's frequency estimator is a Count-Min sketch of <strong>4-bit</strong> counters (every counter in <code>sketch.go</code> is masked with <code>&amp; 0x0f</code>, so it tops out at 15), plus 1 when the doorkeeper bloom filter hits. <strong>16 is the largest value this ruler can express.</strong></p>
+                    <blockquote>
+                        <p>So what those 57,881 rejections really mean is not "your data wasn't hot enough" — it's<br>
+                        <strong>"the resident it happened to draw is already pinned at the counter's ceiling, and whether it has been touched 16 times or 16,000 times is something this ruler cannot measure."</strong></p>
+                    </blockquote>
+                    <p>Phase A's mean <code>incHits</code> is 3.699; its mean <code>minHits</code> is 15.127. A challenger averaging 3.7 points against a field averaging 15.1, 85% of whom are already at a perfect score. <strong>The contest isn't hard to win — the ruler is too short.</strong></p>
+
+                    <figure class="article-figure figure-wide">
+                        <a href="https://codebull-dashboard-service.web.app/ristretto-admission-20260801/" target="_blank" rel="noopener noreferrer">
+                            <img src="asset/ristretto-admission-dashboard-logs.webp" alt="The dashboard's Logs tab: 20,196 verbatim rows from ristretto.(*defaultPolicy).Add:148, every row showing cost=57, incHits between 0 and 6, and minHits of 7 or 8" loading="lazy">
+                        </a>
+                        <figcaption>The 20,196 rows on the <strong>Logs</strong> tab are the verbatim scene at the rejection line. Every row's <code>cost</code> is 57; this capture sits in phase B (local time 01:19, i.e. 17:19Z), so <code>minHits</code> is 7 or 8 — <strong>not the ceiling-pinned 16 of phase A</strong>. Same point, same program; only the key space changed in between. <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/ristretto-admission-20260801/" target="_blank" rel="noopener noreferrer">Open the live dashboard →</a></span></figcaption>
+                    </figure>
+
+                    <h2>Round 181: I widened the key space 25×, and the caller never noticed a thing</h2>
+                    <p>At round 181 the program switched the key space from 2,000 to 50,000. No restart, no config change, not one character of that <code>Set</code> line touched.</p>
+                    <p>What the caller saw: <strong>still 100% <code>true</code></strong>. Phase B's 28,086 <code>Set</code> calls, 28,086 <code>true</code>s.</p>
+                    <p>What the panel saw:</p>
+                    <div class="article-table-wrap">
+                    <table>
+                        <thead><tr><th>Point</th><th>Phase A</th><th>Phase B</th></tr></thead>
+                        <tbody>
+                            <tr><td><code>Set</code> returns <code>true</code></td><td>82,728</td><td>28,086</td></tr>
+                            <tr><td>room available, admitted directly</td><td>17</td><td><strong>0</strong></td></tr>
+                            <tr><td>admitted after evicting someone</td><td>14,765</td><td><strong>133</strong></td></tr>
+                            <tr><td>rejected</td><td>67,926</td><td><strong>27,953</strong></td></tr>
+                            <tr><td><strong>admission rate</strong></td><td><strong>17.87%</strong></td><td><strong>0.47%</strong></td></tr>
+                        </tbody>
+                    </table>
+                    </div>
+                    <p><strong>The admission rate fell from 17.87% to 0.47%, and the only thing that changed was how many distinct keys I was writing.</strong> An API whose return value is identical throughout, with behaviour underneath shifting by an order of magnitude, while the bool in the caller's hand looks exactly the same from start to finish.</p>
+                    <p>The <code>minHits</code> distribution flipped over completely too. Of phase B's 27,910 rejections, <strong>the number with <code>minHits</code> equal to 16 is zero</strong>:</p>
+                    <div class="article-table-wrap">
+                    <table>
+                        <thead><tr><th><code>minHits</code></th><th>5</th><th>6</th><th>7</th><th>8</th><th>9</th><th>10</th><th>11</th><th>12</th><th>13</th><th>14</th><th>16</th></tr></thead>
+                        <tbody>
+                            <tr><td>count</td><td>731</td><td>3,280</td><td>3,137</td><td>4,209</td><td>4,047</td><td>4,592</td><td>3,952</td><td>2,399</td><td>1,512</td><td>51</td><td><strong>0</strong></td></tr>
+                        </tbody>
+                    </table>
+                    </div>
+                    <p>Mean <code>minHits</code> dropped from 15.127 to 9.098; mean <code>incHits</code> from 3.699 to 1.375. <strong>The residents are no longer at a perfect score</strong> — widen the key space 25× and the same sketch has 25× as much to remember, so every key's share of the counters is diluted.</p>
+                    <p>Yet the admission rate got <em>worse</em>, because the challengers fell harder: from an average of 3.7 down to 1.4. <strong>Both sides got colder, and the challenger cooled faster.</strong></p>
+
+                    <h2>The honest part: three things I got wrong in this run</h2>
+                    <p><strong>First, I can't call that "86%" a disaster.</strong> This is a cache; throwing things away is its job. Something with a capacity of 1,000 facing 50,000 distinct keys and discarding 99.5% is <strong>correct behaviour</strong>, not a bug. The point of this piece is not "Ristretto has a problem", it's <strong>"that <code>true</code> didn't tell you any of this"</strong>. What actually bites is someone treating <code>if !cache.Set(...)</code> as error handling, or assuming a Get after a Set will hit.</p>
+                    <p><strong>Second, the latency I measured was mostly me.</strong> I put a latency interval on <code>policy.go:122 → 168</code> to see how long the eviction path takes. It collected 14,901 samples: p50 4.537 ms, p95 7.893, p99 9.885. Those numbers <strong>cannot be used as Ristretto performance data</strong>, for two reasons: that interval <strong>contains another one of my own observation points</strong> (<code>policy.go:166</code>), and the whole program ran 4.75× slower under observation. A p50 of 4.5 ms is roughly the cost of one observation-point hit — <strong>what I measured was the observer, not the observed.</strong> So apart from this paragraph, no millisecond figures appear anywhere in this piece.</p>
+                    <p><strong>Third, half the panel's Metrics tab is noise.</strong> When a metric point is given no template, it pulls out every variable in scope — which is why the panel grew series nobody wants to look at, such as <code>conflictHash</code>, <code>keyHash</code>, <code>~r0</code> and <code>expiration</code>. <strong>That is a consequence of my not setting a variable filter when I attached the points, not of the data being wrong</strong>; every count in this article comes from each point's exact hit count, not from those charts. I'm attaching that tab as-is below, because it is what this run actually looked like.</p>
+
+                    <figure class="article-figure figure-wide">
+                        <a href="https://codebull-dashboard-service.web.app/ristretto-admission-20260801/" target="_blank" rel="noopener noreferrer">
+                            <img src="asset/ristretto-admission-dashboard-metrics.webp" alt="The dashboard's full Metrics tab: twelve charts, of which only the two cost charts are meaningful; the rest are ttl, expiration, conflictHash, keyHash, ok and key, all pulled in alongside" loading="lazy">
+                        </a>
+                        <figcaption>The <strong>Metrics</strong> tab, attached as-is. Only two of the twelve panels — the <code>cost</code> pair — mean anything; <code>ttl</code>, <code>expiration</code>, <code>ok</code> and <code>~r0</code> sit flat at 0, while <code>conflictHash</code>, <code>keyHash</code> and <code>key</code> are pickets drawn from 64-bit hash values. <strong>This is what "a metric point with no variable filter" grows into</strong>, and the reason this piece uses none of these charts as evidence. <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/ristretto-admission-20260801/" target="_blank" rel="noopener noreferrer">Open the live dashboard →</a></span></figcaption>
+                    </figure>
+
+                    <p>So what about a control? I ran one round with the same binary and the same parameters, <strong>with no observation points attached at all</strong>:</p>
+                    <div class="article-table-wrap">
+                    <table>
+                        <thead><tr><th></th><th>Observed</th><th>Unobserved (control)</th></tr></thead>
+                        <tbody>
+                            <tr><td>Time per round (500 operations)</td><td>4.75 s</td><td><strong>1.00 s</strong></td></tr>
+                            <tr><td>Round 143 <code>sets</code></td><td>62,083</td><td>62,044</td></tr>
+                            <tr><td>Round 143 <code>set_true</code></td><td>62,083 (100%)</td><td>62,044 (100%)</td></tr>
+                            <tr><td>Round 143 <code>rejected</code></td><td>50,371</td><td>49,994</td></tr>
+                            <tr><td>Round 143 <code>added</code></td><td>11,693</td><td>7,522</td></tr>
+                        </tbody>
+                    </table>
+                    </div>
+                    <p><strong>Observation made the program 4.75× slower</strong>, and that has to be said plainly. But the two numbers this article rests on — "100% <code>true</code>" and the rejection count — differ by only 0.8% between the two. The <code>added</code> column differs more, and you can see why: the control runs faster, the policy goroutine can't keep up, and <strong>roughly 4,500 items were still stuck in the queue unprocessed at the instant of sampling</strong>. In the observed round the producer was slowed down, so the books happen to balance better.</p>
+
+                    <h2>A comparison: why Ristretto's own metrics still aren't enough</h2>
+                    <p>To be fair, Ristretto <strong>does</strong> have built-in metrics, and they are not blind. <code>m.SetsRejected()</code> is the rejection count; <code>m.KeysAdded()</code> is the admission count. I reconciled against them throughout:</p>
+                    <ul>
+                        <li>The observation points counted <code>17 + 14,898 = 14,915</code> admissions; Ristretto itself says <strong>14,914</strong>.</li>
+                        <li>The observation points counted 95,879 rejections; Ristretto itself says 95,637 (two samples thirteen seconds apart).</li>
+                        <li><code>SetsDropped()</code> is <strong>0</strong> throughout, consistent with my two points that never fired.</li>
+                    </ul>
+                    <p>Three mutually independent sources pointing at the same set of numbers. So what did the observation points add?</p>
+                    <ol>
+                        <li><strong>They don't tell you <code>Add</code> has four exits.</strong> <code>KeysAdded</code> lumps "room available, admitted directly" (17) and "admitted after evicting someone" (14,898) into the same bucket; and the <code>policy.go:107</code> path, "the policy already has this key" (21), <strong>increments neither counter</strong> — it is invisible in Ristretto's own ledger. I only know it happened 21 times because I put a point on that line.</li>
+                        <li><strong>They give you the outcome, not the reason.</strong> <code>SetsRejected = 95,637</code> tells you how many were rejected, not <strong>who they lost to or by how much</strong>. Something like <code>incHits=3 / minHits=16</code> exists in no metric anywhere, because nobody decided in advance to export it — and that <code>16</code> is the actual finding of this piece.</li>
+                        <li><strong>They don't reconcile.</strong> An entrance of 110,814 against four exits summing to 110,815: that "off by one" is itself information. The day those two numbers <strong>diverge sharply</strong>, a batch of <code>Set</code> calls is disappearing before it ever reaches the policy. Built-in metrics can't give you that, because they have no concept of an "entrance" at all.</li>
+                    </ol>
+
+                    <h2>Wrapping up</h2>
+                    <p>I changed no code, recompiled no Ristretto, restarted no process. I just picked eight positions in a running process, attached observation points, widened the key space 25× partway through, and watched properly for eighteen minutes.</p>
+                    <p>What that bought: I saw that the <code>true</code> from <code>Set</code> only means "it made it into the queue", and that the queue has four exits behind it; saw the <code>cost=1</code> I passed become 57 in the policy's hands, so that a cache with capacity 1,000 really holds 17 of my items; saw 95,879 of 110,814 <code>true</code>s thrown away on the spot; saw that the reason for the discard is a contest between <code>incHits</code> and <code>minHits</code>, and that in phase A 85% of the opponents <strong>were already pinned at the ceiling of a 4-bit counter</strong>; saw the admission rate fall from 17.87% to 0.47% the moment the key space widened, while the bool in the caller's hand never changed by a single character.</p>
+                    <p>A cache is a black box, but a black box is only "invisible by default", not "impossible to see". That <code>true</code> was lying the whole time — it was just very polite about it. <strong>And what it was lying about should have been visible all along.</strong></p>
+
+                    <h3>Appendix: the setup for this run (reproducible)</h3>
+                    <ul>
+                        <li><strong>Observation points (8 points across 2 functions)</strong>
+                            <ul>
+                                <li><code>ristretto.(*Cache[K,V]).SetWithTTL</code> — <code>cache.go:352</code> (metric), <code>:357</code> (metric), <code>:365</code> (metric)</li>
+                                <li><code>ristretto.(*defaultPolicy[V]).Add</code> — <code>policy.go:107</code> (metric), <code>:116</code> (metric), <code>:166</code> (metric), <code>:148</code> (log, <code>cost={cost} incHits={incHits} minHits={minHits}</code>), <code>:122 → :168</code> (latency)</li>
+                            </ul>
+                        </li>
+                        <li><strong>The observed program</strong>: a Go workload under 500 lines, <code>github.com/dgraph-io/ristretto/v2 v2.4.2</code>, <code>NewCache(MaxCost=1000, NumCounters=10000, BufferItems=64, Metrics=true)</code>, passing <code>cost=1</code> on every <code>Set</code>; 30% of reads concentrated on the hottest 2% of keys. Built with <code>go build -gcflags="all=-dwarflocationlists=true -N -l"</code>.</li>
+                        <li><strong>Observation window</strong>: 2026-07-31 17:04:06.463Z → 17:22:04.266Z (17 min 58 s), 245 rounds × 500 operations
+                            <ul>
+                                <li>Phase A (rounds 1–180, key space 2,000 = 2× capacity): <code>Set</code> returned true 82,728 / admitted 14,782 / rejected 67,926 / admission rate 17.87%</li>
+                                <li>Phase B (rounds 181–245, key space 50,000 = 50× capacity): <code>Set</code> returned true 28,086 / admitted 133 / rejected 27,953 / admission rate 0.47%</li>
+                                <li>Total: <code>Set</code> returned true 110,814 / admitted 14,915 / rejected 95,879 / entrance vs exits 110,814 against 110,815</li>
+                            </ul>
+                        </li>
+                        <li><strong>Verbatim log content</strong>: 95,821 rows inside the window, <code>cost</code> is 57 on every row, <code>incHits &lt; minHits</code> holds 100% of the time (0 exceptions, maximum <code>incHits</code> 15)
+                            <ul>
+                                <li>Phase A: mean <code>incHits</code> 3.699 / mean <code>minHits</code> 15.127 / <code>minHits = 16</code> on 57,881 rows (85.2%)</li>
+                                <li>Phase B: mean <code>incHits</code> 1.375 / mean <code>minHits</code> 9.098 / <code>minHits = 16</code> on <strong>0</strong> rows</li>
+                            </ul>
+                        </li>
+                        <li><strong>Cross-checks</strong> (three independent sources): the program's own counters <code>set_true = sets = 110,572</code> (100%); Ristretto's built-ins <code>KeysAdded 14,914</code> / <code>SetsRejected 95,637</code> / <code>SetsDropped 0</code>; the observation points 14,915 / 95,879 / 0</li>
+                        <li><strong>Control</strong> (same binary, same parameters, zero observation points): 1.00 s per round vs 4.75 s observed; round 143 <code>set_true</code> is 100% on both sides, <code>rejected</code> differs by 0.8%</li>
+                        <li><strong>What this run did not achieve</strong>
+                            <ul>
+                                <li>The latency interval (14,901 samples, p50 4.537 ms / p95 7.893 / p99 9.885) <strong>measured mainly the cost of observation itself</strong> — the interval contains another observation point, and the program was 4.75× slower. So no millisecond figures are quoted anywhere outside the honest section.</li>
+                                <li>The metric points had no variable filter set, so the panel's Metrics tab grew a pile of meaningless series. Every count in the text comes from each point's exact hit count, not from those charts.</li>
+                                <li>The <code>Get</code> side was never measured; all hit-rate figures come from the program's own tally and Ristretto's built-in metrics.</li>
+                            </ul>
+                        </li>
+                    </ul>
+
+                    <div class="article-callout">
+                        <p>📊 <strong>Remote dashboard for this article</strong> (real measured data, viewable online): <a href="https://codebull-dashboard-service.web.app/ristretto-admission-20260801/" target="_blank" rel="noopener noreferrer">ristretto-admission-20260801</a></p>
+                        <p>The dashboard covers the 3 minutes 30 seconds at the centre of the window (17:16:00Z–17:19:30Z, 292,393 samples), <strong>straddling the phase switch at round 181</strong>. The 20,196 rows on the <strong>Logs</strong> tab are the verbatim record from the rejection point, so you can reconcile <code>cost=57 | incHits=… | minHits=…</code> row by row; the <strong>Metrics</strong> tab shows the pair where <code>SetWithTTL - cost</code> is flat at 1 and <code>Add - cost</code> is flat at 57. (The panel's time axis is local time, UTC+8, corresponding to the UTC times in the text.)</p>
+                    </div>
+
+                    <div class="article-footnote">
+                        <p>The "no code changes, attach observation points to a running process, then watch" part of this piece was done with <strong>CodeBull</strong> — a VS Code extension that dynamically injects Metric / Log / Latency observation points into running Go services: no source edits, no recompile, no restart. That <code>incHits=3 | minHits=16</code> line above is exactly how I saw it, live.</p>
+                        <p><em>Every count and every verbatim row here comes from CodeBull's measurements against a running Go process, and can be reconciled online via the dashboard link above.</em></p>
+                        <p><a class="btn" href="https://marketplace.visualstudio.com/items?itemName=0xbu11.codebull" target="_blank" rel="noopener noreferrer">Install CodeBull</a></p>
+                    </div>
+                </article>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2026 CodeBull. All rights reserved.</p>
+            <div class="links">
+                <a href="https://github.com/0xbu11/codebull">GitHub</a>
+                <a href="mailto:codebull.0xbu11@gmail.com">codebull.0xbu11@gmail.com</a>
+                <a href="#">Privacy</a>
+                <a href="#">Terms</a>
+            </div>
+        </div>
+    </footer>
+</body>
+
+</html>

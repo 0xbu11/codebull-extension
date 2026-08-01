@@ -75,6 +75,12 @@
                     <p>Write-ups from real instrumentation runs against live Go services — every SQL statement, token, and percentile comes from measured data, with the remote dashboard linked for reconciliation.</p>
                 </div>
                 <div class="article-grid">
+                    <a class="article-card" href="article-ristretto-admission.html">
+                        <span class="article-card-source">Ristretto · Field Notes</span>
+                        <h3>I watched a running cache for eighteen minutes and saw it throw away 86% of my writes, returning true every single time</h3>
+                        <p>Eight observation points through an admission policy: the cost=1 I passed became 57 by the time the policy weighed it, a capacity of 1,000 held only 17 of my items, and 95,879 of 110,814 true responses were discarded on the spot — 85% of those rejections lost to a 4-bit counter already pinned at its ceiling.</p>
+                        <span class="article-card-link">Read article →</span>
+                    </a>
                     <a class="article-card" href="article-gin-middleware.html">
                         <span class="article-card-source">gin · Field Notes</span>
                         <h3>I counted a running gin for ten minutes, and for two of them my middleware was never called</h3>
