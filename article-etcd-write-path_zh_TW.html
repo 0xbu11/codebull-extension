@@ -110,7 +110,11 @@
                     </div>
                     <p>有三個點我要先講清楚，因為它們是這篇的骨架。</p>
                     <p><strong>落盤那個點，我沒有只放一個計數器。</strong> 「這段時間落盤幾次」這個數字本身其實不太說明問題——真正想問的是<strong>每一次落盤到底攤了多少工作</strong>。<code>commit()</code> 裡剛好有一個決定要不要落盤的計數器 <code>t.pending</code>，所以我把它直接抓出來當 log 模板。<strong>每一次落盤攤了幾筆，逐次寫在面板上。</strong></p>
-                    <p><strong>兩條 latency 線，一開始一個樣本都收不到。</strong> 註冊回報成功、狀態顯示已插樁，<code>hitCount</code> 也在跳，但延遲那張表整個是空的。後來我試著在註冊時多給一個 template 別名（<code>wal_fsync_latency</code>），同一行、同一個 process，樣本就出來了——最後收到 8,380 個。同一件事、換個掛法，從「量不到」變成「量得到」，這種踩坑我覺得比結論本身還值得寫。</p>
+                    <p><strong>兩條 latency 線，一開始一個樣本都收不到。</strong> 註冊回報成功、狀態顯示已插樁，<code>hitCount</code> 也在跳，但延遲那張表整個是空的。後來我試著在註冊時多給一個 template 別名（<code>wal_fsync_latency</code>），同一行、同一個 process，樣本就出來了——最後收到 8,380 個。</p>
+                    <p>當時我寫的是「同一件事、換個掛法，從量不到變成量得到」。<strong>後來查清楚才知道我從頭到尾都量得到——是我不知道要問什麼。</strong></p>
+                    <p><code>hitCount</code> 在跳，就代表區間有在關閉，也就代表<strong>樣本一直都在產生</strong>。它們只是被記在預設的 series 名字 <code>latency_ms</code> 底下，而我當時查的是別的名字，拿到一句「找不到樣本」。我加上 <code>wal_fsync_latency</code> 之後樣本「出現」，是因為那一次我終於用<strong>自己取的、記得住的名字</strong>去問。<strong>別名沒有讓樣本出現，它只是把它們改名成我問得出來的東西。</strong></p>
+                    <p>真正的缺陷不在 latency，在那句回覆：「這個名字從來沒被記錄過」和「這個時間範圍內沒有資料」，當時是<strong>同一句話</strong>。兩件事的解法完全相反，而畫面上分不出來。這一條後來修掉了——現在註冊會直接告訴你樣本會落在哪個 series，查一個不存在的名字也會明講，並把實際有的名字列給你。</p>
+                    <p>留著這一段，是因為我當初的推論每一步看起來都成立：換了一個參數、數字出現了、所以是那個參數。<strong>中間少的是一個對照組。</strong></p>
                     <p><strong>還有一個點，我掛上去了，但它從頭到尾一次都沒響。</strong> 就是那個 100ms 的 backend 批次計時器。留到誠實段講。</p>
                     <p>負載我刻意讓九分鐘長得不一樣，五個相位：<strong>兩分鐘完全不碰它</strong> → <strong>兩分鐘每秒寫一筆</strong> → <strong>兩分鐘一個 client 全速灌</strong> → <strong>兩分鐘四個 client 一起灌</strong> → <strong>一分鐘只讀不寫</strong>。</p>
 

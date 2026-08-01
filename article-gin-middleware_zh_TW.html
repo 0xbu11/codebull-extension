@@ -96,7 +96,10 @@
                     <p><code>Next</code> 那個計數，等一下會變成整篇的主角。最後那個 latency，等一下會反過來咬我一口。</p>
                     <p><strong>這裡有兩個踩過的坑值得先講。</strong></p>
                     <p>第一個是掛 log 的時候要明確限定抓哪幾個變數——這是我上一輪掛同一個點時踩出來的。<code>gin.go:708</code> 那一行的作用域裡，後面才會被賦值的那些 local（<code>i</code>、<code>root</code>、<code>allowed</code>）此刻都還不是值，是還沒進入生存區間的堆疊記憶體；不限定就會把它們一起渲染出來，那一輪還為此重跑了好幾次。所以這次我從一開始就只抓 <code>httpMethod</code> 和 <code>rPath</code>。<strong>掛點的位置不只決定你看得到什麼，也決定你會不小心讀到什麼。</strong></p>
-                    <p>第二個是 latency。同樣是 <code>ServeHTTP</code> 的 <code>667 → 674</code> 這個區間，我兩天前掛過三種寫法，每一種都回報註冊成功、狀態顯示已插樁，但延遲表整個是空的、命中數恆為 0。這次我只多做了一件事：註冊時給它一個名字（<code>gin_serve_latency</code>）。<strong>同一行、同一個區間，樣本立刻出來，602 個，跟 router 那個點的 602 次一比一。</strong> 一個看起來像是選填的參數，實際上決定了這個維度存不存在——這種踩坑我覺得比結論本身還值得寫。</p>
+                    <p>第二個是 latency。同樣是 <code>ServeHTTP</code> 的 <code>667 → 674</code> 這個區間，我兩天前掛過三種寫法，每一種都回報註冊成功、狀態顯示已插樁，但延遲表整個是空的、命中數恆為 0。這次我只多做了一件事：註冊時給它一個名字（<code>gin_serve_latency</code>）。<strong>同一行、同一個區間，樣本立刻出來，602 個，跟 router 那個點的 602 次一比一。</strong></p>
+                    <p>當下我的結論是「那個看起來選填的參數，其實決定了這個維度存不存在」。<strong>這個結論是錯的，我後來把它查清楚了</strong>，寫在這裡因為它比原本那個結論有用得多。</p>
+                    <p>latency 點的命中數，數的不是「進入這個區間幾次」，是<strong>「這個區間關閉了幾次」</strong>。所以「命中數恆為 0」根本不是「沒被觸發」，是<strong>區間從頭到尾沒有關起來過</strong>。而它關不起來的原因跟名字無關：前一次註冊在被觀測的 process 裡留下了一組沒被釋放的 duration pair，<strong>而移除的時候它回報成功</strong>。於是同一個位置再也註冊不回去，我卻以為它已經乾淨了。我換寫法重掛的那一次，剛好走到一條沒撞上殘留的註冊路徑——<strong>是那個，不是那個名字</strong>。</p>
+                    <p>留著這一段，是因為我當時的推論每一步看起來都成立：換了一個參數、數字出現了、所以是那個參數。<strong>一個對照組都沒有，只有一次前後對比。</strong> 這篇後半段還會再犯一次同樣形狀的錯，那次我有抓到。</p>
                     <p>被觀測的是一支很平凡的 gin：<code>gin.New()</code>、三層全域中介層（<code>requestID</code> → <code>accessLog</code> → <code>auth</code>）、四條路由、一個 <code>NoRoute</code>。</p>
 
                     <h2>這次不亂餵流量：一條路徑，五種結局</h2>
@@ -262,7 +265,7 @@
                                 <li><code>gin.(*Context).Next</code> <code>context.go:189</code> — metric（鏈重入計數）</li>
                                 <li><code>gin.serveError</code> <code>gin.go:765</code> — log，<code>status={code}</code></li>
                                 <li><code>gin.redirectTrailingSlash</code> <code>gin.go:782</code> — metric</li>
-                                <li><code>gin.(*Engine).ServeHTTP</code> <code>gin.go:667 → 674</code> — latency，<strong>模板別名 <code>gin_serve_latency</code>；不給別名這一維就是 0 樣本</strong></li>
+                                <li><code>gin.(*Engine).ServeHTTP</code> <code>gin.go:667 → 674</code> — latency，模板別名 <code>gin_serve_latency</code>。<strong>當初以為「不給別名就是 0 樣本」，那是錯的</strong>：latency 的命中數數的是關閉的區間，恆為 0 是因為前一次註冊留下的 duration pair 沒被釋放（移除還回報成功），跟別名無關。見內文</li>
                             </ul>
                         </li>
                         <li><strong>被觀測的服務</strong>：gin v1.12.0（vendored 到 <code>./gin_pkg</code> 走 replace），<code>gin.New()</code> + 三層全域中介層 + 四條路由 + <code>NoRoute</code>，<code>:8080</code>；<code>HandleMethodNotAllowed</code> 顯式打開（gin 預設 false），<code>RedirectTrailingSlash</code> 維持預設 true</li>
