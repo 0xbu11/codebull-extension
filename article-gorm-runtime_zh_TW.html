@@ -4,21 +4,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CodeBull - 我盯著一個跑著的 GORM 看了八分鐘</title>
-    <meta name="description" content="不改一行 code，對執行中的 Go 服務在 GORM 內部掛兩個觀測點，八分鐘看到一條把主鍵弄丟的 UPDATE。">
+    <title>一行 Preload，讓讀取路徑多送一次 SQL | CodeBull</title>
+    <meta name="description" content="不改一行 code，對一個正在跑的 GORM 從四個 API 呼叫端一路掛到送出語句的那一行，看六分四十秒。">
     <meta property="og:type" content="article">
     <meta property="og:site_name" content="CodeBull">
     <meta property="og:locale" content="zh_TW">
-    <meta property="og:title" content="我盯著一個跑著的 GORM 看了八分鐘，然後看到它把主鍵弄丟了">
-    <meta property="og:description" content="不改一行 code，在 GORM 內部掛兩個觀測點：soft delete 把 DELETE 改寫成 UPDATE、一個 Preload 變成兩條 SELECT，還有一條 UPDATE 退化成全表形狀——全部當場看到。">
+    <meta property="og:title" content="一行 Preload，讓讀取路徑多送一次 SQL">
+    <meta property="og:description" content="不改一行 code，對一個正在跑的 GORM 從四個 API 呼叫端一路掛到送出語句的那一行，看六分四十秒。">
     <meta property="og:url" content="https://0xbu11.github.io/codebull-extension/article-gorm-runtime_zh_TW.html">
     <meta property="og:image" content="https://0xbu11.github.io/codebull-extension/asset/og-gorm-runtime-zh.png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="627">
     <meta property="og:image:alt" content="我盯著一個跑著的 GORM 看了八分鐘，然後看到它把主鍵弄丟了">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="我盯著一個跑著的 GORM 看了八分鐘，然後看到它把主鍵弄丟了">
-    <meta name="twitter:description" content="不改一行 code，在 GORM 內部掛兩個觀測點：soft delete 把 DELETE 改寫成 UPDATE、一個 Preload 變成兩條 SELECT，還有一條 UPDATE 退化成全表形狀——全部當場看到。">
+    <meta name="twitter:title" content="一行 Preload，讓讀取路徑多送一次 SQL">
+    <meta name="twitter:description" content="不改一行 code，對一個正在跑的 GORM 從四個 API 呼叫端一路掛到送出語句的那一行，看六分四十秒。">
     <meta name="twitter:image" content="https://0xbu11.github.io/codebull-extension/asset/og-gorm-runtime-zh.png">
     <link rel="stylesheet" href="style.css?v=16">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -61,176 +61,334 @@
             <div class="container">
                 <a class="article-back" href="index_zh_TW.html#articles">← 回到文章列表</a>
                 <span class="article-card-source">GORM · 實測筆記</span>
-                <h1>我盯著一個跑著的 GORM 看了八分鐘，然後看到它把主鍵弄丟了</h1>
-                <div class="article-meta">
-                    <span>2026-07-24</span>
-                    <span>觀測窗口約 8 分鐘 / 163 輪 CRUD</span>
-                    <span>gorm-demo + PostgreSQL 16</span>
-                </div>
-                <p class="article-lede">前幾天我做了一件平常不太會做的事：不改任何一行 code，直接對一個<strong>正在跑的</strong> Go 服務，在 GORM 內部掛了兩個觀測點，然後就坐在面板前面看。</p>
+                <h1>一行 Preload，讓讀取路徑多送一次 SQL</h1>
+                <div class="article-meta"><span>2026-08-28</span><span>6 分 40 秒窗口 / 137 輪 CRUD / 7 個觀測點</span><span>GORM + PostgreSQL 16</span></div>
+                <p class="article-lede">不改一行 code，對一個正在跑的 GORM 從四個 API 呼叫端一路掛到送出語句的那一行，看六分四十秒。</p>
             </div>
         </section>
 
         <section class="article-section">
             <div class="container">
                 <article class="article-body">
-                    <p>八分鐘，我看到一條本來不該長成那樣的 <code>UPDATE</code>——它把主鍵弄丟了，退化成一條「更新全表」的形狀。這篇想聊的不是什麼工具，而是<strong>「盯著執行中的 ORM 看」這件事本身，能讓你看到多少平常看不到的東西</strong>。</p>
+                    <div class="article-graph-embed"><!-- interactive behaviour graph -->
+<style>.cbg-root{
+  --cbg-bg:#EEF0F2; --cbg-panel:#FFFFFF; --cbg-sunk:#F5F6F8; --cbg-ink:#151B21; --cbg-dim:#5D6B77; --cbg-faint:#8A97A2;
+  --cbg-line:#D8DDE2; --cbg-line-soft:#E7EAEE; --cbg-accent:#2D5C7F; --cbg-accent-soft:#DCE7EF;
+  --cbg-entry:#54646F; --cbg-good:#2F8570; --cbg-money:#A9752A; --cbg-bad:#AE4630;
+  --cbg-shadow:0 1px 2px rgba(21,27,33,.05), 0 10px 26px -16px rgba(21,27,33,.35);
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --cbg-bg:#0E1317; --cbg-panel:#171E24; --cbg-sunk:#121920; --cbg-ink:#E2E8ED; --cbg-dim:#93A2AE; --cbg-faint:#6E7E8A;
+  --cbg-line:#28323A; --cbg-line-soft:#1F272E; --cbg-accent:#6FA5CE; --cbg-accent-soft:#16303F;
+  --cbg-entry:#8898A4; --cbg-good:#4FB79B; --cbg-money:#D7A44F; --cbg-bad:#DC7657;
+  --cbg-shadow:0 1px 2px rgba(0,0,0,.5), 0 12px 30px -18px rgba(0,0,0,.9);
+}}.cbg-root[data-theme="dark"]{
+  --cbg-bg:#0E1317; --cbg-panel:#171E24; --cbg-sunk:#121920; --cbg-ink:#E2E8ED; --cbg-dim:#93A2AE; --cbg-faint:#6E7E8A;
+  --cbg-line:#28323A; --cbg-line-soft:#1F272E; --cbg-accent:#6FA5CE; --cbg-accent-soft:#16303F;
+  --cbg-entry:#8898A4; --cbg-good:#4FB79B; --cbg-money:#D7A44F; --cbg-bad:#DC7657;
+  --cbg-shadow:0 1px 2px rgba(0,0,0,.5), 0 12px 30px -18px rgba(0,0,0,.9);
+}.cbg-root *{box-sizing:border-box}.cbg-root{margin:0;background:var(--cbg-bg);color:var(--cbg-ink);font-family:Archivo,system-ui,"Noto Sans TC",sans-serif;font-size:15px;line-height:1.6}.cbg-root .mono{font-family:"JetBrains Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}.cbg-root .shell{max-width:1300px;margin:0 auto;padding:34px 22px 70px;display:flex;flex-direction:column;gap:20px}.cbg-root header.top{display:flex;flex-direction:column;gap:9px}.cbg-root .tagline{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.cbg-root .badge{font-family:"JetBrains Mono",monospace;font-size:.66rem;letter-spacing:.14em;text-transform:uppercase;padding:3px 8px;border-radius:2px;background:var(--cbg-good);color:#fff}.cbg-root .src{font-family:"JetBrains Mono",monospace;font-size:.72rem;color:var(--cbg-faint)}.cbg-root .eyebrow{font-family:"JetBrains Mono",monospace;font-size:.68rem;letter-spacing:.15em;text-transform:uppercase;color:var(--cbg-faint)}.cbg-root h1{margin:0;font-size:clamp(1.6rem,3.4vw,2.3rem);line-height:1.15;letter-spacing:-.02em;font-weight:700;text-wrap:balance}.cbg-root .sub{color:var(--cbg-dim);max-width:64ch;margin:0}.cbg-root .panel{background:var(--cbg-panel);border:1px solid var(--cbg-line);border-radius:4px;box-shadow:var(--cbg-shadow)}.cbg-root .panel-head{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:11px 16px;border-bottom:1px solid var(--cbg-line-soft)}.cbg-root .panel-title{font-family:"JetBrains Mono",monospace;font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cbg-faint)}.cbg-root .presets{display:flex;gap:6px;flex-wrap:wrap}.cbg-root button{font:inherit;font-size:.8rem;color:var(--cbg-dim);background:var(--cbg-sunk);border:1px solid var(--cbg-line);border-radius:3px;padding:4px 11px;cursor:pointer;transition:background .15s,color .15s,border-color .15s}.cbg-root button:hover{color:var(--cbg-ink);border-color:var(--cbg-accent)}.cbg-root button[aria-pressed="true"]{background:var(--cbg-accent);border-color:var(--cbg-accent);color:#fff}.cbg-root :focus-visible{outline:2px solid var(--cbg-accent);outline-offset:2px}.cbg-root #cbg-timeline{padding:14px 16px 10px}.cbg-root #cbg-tl{display:block;width:100%;height:104px;cursor:crosshair;touch-action:none;user-select:none}.cbg-root .tl-legend{display:flex;gap:18px;flex-wrap:wrap;margin-top:8px;font-size:.78rem;color:var(--cbg-dim)}.cbg-root .tl-legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}.cbg-root .readout{display:flex;gap:22px;flex-wrap:wrap;align-items:baseline;padding:10px 16px;border-top:1px solid var(--cbg-line-soft);font-size:.85rem;color:var(--cbg-dim)}.cbg-root .readout b{color:var(--cbg-ink);font-family:"JetBrains Mono",monospace;font-weight:500}.cbg-root #cbg-graph{position:relative;padding:22px 16px 18px;overflow-x:auto}.cbg-root #cbg-stage{position:relative}.cbg-root #cbg-wires{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none}.cbg-root .node{position:absolute;width:300px;background:var(--cbg-panel);border:1px solid var(--cbg-line);border-radius:4px;box-shadow:var(--cbg-shadow);overflow:hidden}.cbg-root .node.entry{border-top:3px solid var(--cbg-entry)}.cbg-root .node.good{border-top:3px solid var(--cbg-good)}.cbg-root .node.money{border-top:3px solid var(--cbg-money)}.cbg-root .node.bad{border-top:3px solid var(--cbg-bad)}.cbg-root .nhead{padding:10px 13px 8px;border-bottom:1px solid var(--cbg-line-soft)}.cbg-root .nhead h3{margin:0;font-size:1.02rem;font-weight:600;letter-spacing:-.01em}.cbg-root .why{font-size:.78rem;color:var(--cbg-dim);line-height:1.4}.cbg-root .probes{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}.cbg-root .probe{font-family:"JetBrains Mono",monospace;font-size:.6rem;letter-spacing:.06em;text-transform:uppercase;padding:2px 6px;border-radius:2px;border:1px solid var(--cbg-line);color:var(--cbg-dim);background:var(--cbg-sunk)}.cbg-root .probe.log{color:var(--cbg-accent);border-color:var(--cbg-accent-soft);background:var(--cbg-accent-soft)}.cbg-root .probe.latency{color:var(--cbg-money)}.cbg-root .slot{padding:9px 13px;border-top:1px solid var(--cbg-line-soft)}.cbg-root .slot-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-family:"JetBrains Mono",monospace;font-size:.6rem;letter-spacing:.13em;text-transform:uppercase;color:var(--cbg-faint)}.cbg-root .big{font-family:"JetBrains Mono",monospace;font-size:1.5rem;font-weight:500;line-height:1.1;font-variant-numeric:tabular-nums}.cbg-root .unit{font-size:.72rem;color:var(--cbg-dim);font-family:Archivo,sans-serif;margin-left:4px}.cbg-root .spark{display:block;width:100%;height:34px;margin-top:5px}.cbg-root .lat{display:flex;gap:16px;align-items:baseline;margin-top:3px}.cbg-root .lat div{display:flex;gap:5px;align-items:baseline}.cbg-root .lat .k{font-family:"JetBrains Mono",monospace;font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:var(--cbg-faint)}.cbg-root .lat .v{font-family:"JetBrains Mono",monospace;font-size:1.02rem;font-variant-numeric:tabular-nums}.cbg-root .shape{margin-top:7px}.cbg-root .shape-row{display:flex;justify-content:space-between;gap:8px;font-size:.74rem;margin-bottom:2px}.cbg-root .shape-row .t{font-family:"JetBrains Mono",monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.cbg-root .shape-row .n{font-family:"JetBrains Mono",monospace;color:var(--cbg-dim);white-space:nowrap}.cbg-root .shape-row.new .t{color:var(--cbg-bad);font-weight:500}.cbg-root .bar{height:5px;border-radius:2px;background:var(--cbg-line-soft);overflow:hidden;margin-bottom:8px}.cbg-root .bar i{display:block;height:100%;border-radius:2px}.cbg-root .flame{display:flex;flex-direction:column;gap:5px;margin-top:7px}.cbg-root .chain{display:flex;height:17px;border-radius:2px;overflow:hidden;background:var(--cbg-line-soft)}.cbg-root .chain span{display:flex;align-items:center;padding:0 5px;font-family:"JetBrains Mono",monospace;font-size:.58rem;color:#fff;white-space:nowrap;overflow:hidden;border-right:1px solid rgba(255,255,255,.28)}.cbg-root .chain span:last-child{border-right:0}.cbg-root .chain-meta{display:flex;justify-content:space-between;font-size:.68rem;color:var(--cbg-dim);font-family:"JetBrains Mono",monospace}.cbg-root .wire{fill:none;stroke:var(--cbg-dim);stroke-width:2}.cbg-root .wire.alert{stroke:var(--cbg-bad);stroke-width:2.8}.cbg-root .wire.calm{stroke:var(--cbg-good);stroke-width:2.4}.cbg-root .wlabel{font-family:"JetBrains Mono",monospace;font-size:11.5px;fill:var(--cbg-ink)}.cbg-root .wsub{font-family:"JetBrains Mono",monospace;font-size:9.5px;fill:var(--cbg-faint)}.cbg-root .wbox{fill:var(--cbg-panel);stroke:var(--cbg-line)}.cbg-root #cbg-edge-list{display:none;flex-direction:column;gap:8px;padding:0 16px 16px}.cbg-root .echip{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;padding:9px 12px;border:1px solid var(--cbg-line);border-left:3px solid var(--cbg-dim);border-radius:3px;background:var(--cbg-sunk);font-size:.82rem}.cbg-root .echip.calm{border-left-color:var(--cbg-good)}.cbg-root .echip.alert{border-left-color:var(--cbg-bad)}.cbg-root .echip b{font-family:"JetBrains Mono",monospace;font-weight:500}.cbg-root .echip .sub{color:var(--cbg-dim);font-size:.76rem;font-family:"JetBrains Mono",monospace}.cbg-root .prose{max-width:40rem;margin:0 auto;padding:6px 22px 26px;font-size:16px;line-height:1.8}.cbg-root .prose h2{font-family:Archivo,sans-serif;font-size:1.35rem;font-weight:700;letter-spacing:-.01em;margin:0 0 14px}.cbg-root .prose h3{font-size:1.02rem;font-weight:600;margin:26px 0 6px}.cbg-root .prose p{margin:0 0 14px;color:var(--cbg-ink)}.cbg-root .prose code{font-family:"JetBrains Mono",monospace;font-size:.86em;background:var(--cbg-sunk);
+  border:1px solid var(--cbg-line);padding:.08em .3em;border-radius:2px}.cbg-root .notes{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));padding:16px}.cbg-root .note h4{margin:0 0 4px;font-size:.9rem}.cbg-root .note p{margin:0;font-size:.84rem;color:var(--cbg-dim)}.cbg-root footer{color:var(--cbg-faint);font-size:.78rem;border-top:1px solid var(--cbg-line);padding-top:14px}
+@media (max-width:900px){ #cbg-stage{min-width:0!important;height:auto!important;display:flex;flex-direction:column;gap:14px}
+.cbg-root .node{position:static!important;width:100%} #cbg-wires{display:none} #cbg-edge-list{display:flex} }.cbg-root{max-width:100%;overflow:hidden}.cbg-root #cbg-graph{max-width:100%;overflow-x:auto}.cbg-root #cbg-timeline,.cbg-root #cbg-readout{max-width:100%}</style>
 
-                    <h2>先決定要站在哪裡看</h2>
-                    <p>ORM 最麻煩的地方，是它把「你寫的一行 Go」和「真正送到資料庫的 SQL」之間隔了一層。你呼叫 <code>db.Update()</code>，它幫你拼 SQL、加條件、選最佳化——這些你在原始碼裡是看不到的，得等它跑起來才知道。</p>
-                    <p>所以觀測的第一個決定是：<strong>站在哪一層看</strong>。站太上層（你的業務程式）看不到 SQL；站太下層（資料庫）又跟不回是哪段程式送的。</p>
-                    <p>我挑了 GORM 內部的收斂點——<code>gorm.(*processor).Execute</code>。GORM 所有的 Create / Preload / Update / Count / Delete，最後都會匯流到這個函式。一進一出，剛好把整個 ORM 攔腰看穿。於是我掛了兩個點：</p>
-                    <ul>
-                        <li><strong>入口（<code>callbacks.go:82</code>）</strong> 放一個純計數，回答「這個收斂點多常被打到」。</li>
-                        <li><strong>出口（<code>callbacks.go:140</code>）</strong> 放一個把變數抓出來的點，模板是 <code>SQL={string(stmt.SQL.buf)} | rows={db.RowsAffected}</code>——把 GORM 內部那串還沒印出來的 SQL buffer 直接渲染成人看得懂的語句，順手把「影響了幾列」一起帶出來。</li>
-                    </ul>
-                    <p><code>rows</code> 這個欄位，等一下會變成整篇的主角。掛好，讓服務照常每三秒跑一輪 CRUD，我就開始看。</p>
 
-                    <h2>前八分鐘看到的：一輪 CRUD 的素顏</h2>
-                    <p>觀測窗口大約八分鐘（03:43:12Z 起、最後一筆 03:51:18Z，涵蓋 163 輪），出口那個點記到 <strong>1045 筆 SQL</strong>，入口 <strong>2090 次命中</strong>，去重之後是 <strong>12 種</strong>不同的語句形狀。</p>
-                    <figure class="article-chart">
-                        <p class="chart-title">入口 vs 出口：同一個收斂點的兩個點位</p>
-                        <p class="chart-subtitle">觀測窗口 2026-07-24 03:43:12Z → 03:51:18Z（約 8 分鐘 / 163 輪）</p>
-                        <div class="chart-rows">
-                            <div class="chart-row">
-                                <div class="chart-row-label">入口命中<br><code>callbacks.go:82</code></div>
-                                <div class="chart-bars">
-                                    <div class="chart-bar-line" title="入口命中 2090 次">
-                                        <div class="chart-bar" style="width: 100%"></div>
-                                        <span class="chart-value">2090 次</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="chart-row">
-                                <div class="chart-row-label">出口 SQL<br><code>callbacks.go:140</code></div>
-                                <div class="chart-bars">
-                                    <div class="chart-bar-line" title="出口記到 1045 筆 SQL">
-                                        <div class="chart-bar" style="width: 50%"></div>
-                                        <span class="chart-value">1045 筆</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <p class="chart-note">進去的次數剛好是吐出 SQL 的兩倍——GORM 把單筆寫入包了一層隱式交易，那些交易控制的進出不會在出口生出一條被記錄的 SQL。這個比例本身就是一條可以長期盯的健康線。</p>
-                    </figure>
-                    <p>先看健康的那半邊——穩態下，一輪 CRUD 的完整素顏（逐字抄自面板）：</p>
-                    <div class="article-table-wrap">
-                        <table>
-                            <thead>
-                                <tr><th>我寫的</th><th>面板上真正跑的 SQL</th><th>rows</th><th>次數</th></tr>
-                            </thead>
-                            <tbody>
-                                <tr><td><code>db.Create(&amp;user)</code></td><td><code>INSERT INTO "users" (...) VALUES ($1..$6) RETURNING "id"</code></td><td>1</td><td>80</td></tr>
-                                <tr><td><code>db.Create(&amp;order)</code></td><td><code>INSERT INTO "orders" (...) VALUES ($1..$6) RETURNING "id"</code></td><td>1</td><td>80</td></tr>
-                                <tr><td><code>db.Preload("User").First(...)</code></td><td><code>SELECT * FROM "users" WHERE "users"."id" = $1 AND "users"."deleted_at" IS NULL</code></td><td>1</td><td>80</td></tr>
-                                <tr><td>（同上那行）</td><td><code>SELECT * FROM "orders" WHERE "orders"."id" = $1 AND ... ORDER BY "orders"."id" LIMIT $2</code></td><td>1</td><td>80</td></tr>
-                                <tr><td><code>db.Model(&amp;u).Update("Age", …)</code></td><td><code>UPDATE "users" SET "age"=$1,"updated_at"=$2 WHERE "users"."deleted_at" IS NULL AND "id" = $3</code></td><td>1</td><td>80</td></tr>
-                                <tr><td><code>db.Count(&amp;n)</code></td><td><code>SELECT count(*) FROM "users" WHERE "users"."deleted_at" IS NULL</code></td><td>1</td><td>163</td></tr>
-                                <tr><td><code>db.Delete(&amp;oldest)</code></td><td><code>UPDATE "users" SET "deleted_at"=$1 WHERE "users"."id" = $2 AND "users"."deleted_at" IS NULL</code></td><td>1</td><td>75</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    <p>光是這張表，就有兩件我平常「知道，但沒真的看過」的事：</p>
-                    <p><strong><code>db.Delete()</code> 底下跑的其實是 <code>UPDATE</code>。</strong> 因為 model 內嵌了 <code>gorm.Model</code>（帶 <code>DeletedAt</code>），刪除被默默改寫成蓋一個時間戳的軟刪除。資料還在表裡，只是被標記了。</p>
-                    <p><strong>每一條讀寫都被偷偷加上 <code>deleted_at IS NULL</code>。</strong> 這是軟刪除的另一半——所有查詢都自動幫你把已刪的列擋掉。你沒寫這個條件，但它每一條都在。還有那句 <code>db.Preload("User").First()</code>，我以為是一次查詢，面板上卻是<strong>兩條</strong> SELECT：一條查 orders、一條再補查 users。belongs-to 的 preload 不是 JOIN，是再跑一趟。放大到列表頁，這就是 N+1 的起點。</p>
-                    <p>到這裡都還算「有趣但不驚訝」。真正讓我坐直的是另外半邊。</p>
+<div class="cbg-root">
 
-                    <h2>然後 <code>rows</code> 掉到 0</h2>
-                    <p>面板上同時還有另一組語句，長得跟上面幾乎一樣，只有一個差別——<strong><code>rows=0</code></strong>，而且各出現了 <strong>83 次</strong>：</p>
-                    <div class="article-table-wrap">
-                        <table>
-                            <thead>
-                                <tr><th>操作</th><th>SQL</th><th>rows</th><th>次數</th></tr>
-                            </thead>
-                            <tbody>
-                                <tr><td>Create user</td><td><code>INSERT INTO "users" (...) RETURNING "id"</code></td><td><strong>0</strong></td><td>83</td></tr>
-                                <tr><td>Create order</td><td><code>INSERT INTO "orders" (...) RETURNING "id"</code></td><td><strong>0</strong></td><td>83</td></tr>
-                                <tr><td>First(&amp;order)</td><td><code>SELECT * FROM "orders" WHERE "orders"."id" = $1 AND ...</code></td><td><strong>0</strong></td><td>83</td></tr>
-                                <tr><td>Update</td><td><code>UPDATE "users" SET "age"=$1,"updated_at"=$2 WHERE "users"."deleted_at" IS NULL</code></td><td><strong>0</strong></td><td>83</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    <p>四條語句，同一個 <code>rows=0</code>，各 83 次，整整齊齊。但<strong>它們掉到 0 的原因其實各不相同</strong>——而這正是 <code>rows</code> 這一欄的價值：它用同一個訊號，把四種不同的失敗一次照出來。</p>
-                    <ul>
-                        <li><strong>Create user</strong>：SQL 有送到 PostgreSQL，被 unique index 打回（email 撞號，<code>SQLSTATE 23505</code>）。</li>
-                        <li><strong>Create order</strong>：也送到 DB，被外鍵擋下（<code>fk_orders_user</code>，<code>SQLSTATE 23503</code>）——因為上一步 user 沒建成，<code>user.ID</code> 還是 0，order 帶著 <code>user_id=0</code> 自然過不了。</li>
-                        <li><strong>First(&amp;order)</strong>：這條真的跑了，只是拿 <code>id=0</code> 去查、什麼都沒找到。</li>
-                        <li><strong>Update</strong>：這條最特別——它<strong>根本沒送到 DB</strong>。等一下講。</li>
-                    </ul>
-                    <p><code>rows=0</code> 從一個含糊的「沒成功」，在面板上變成一組可以逐條追因的線索。這種失敗最陰險的地方在於——程式沒有 crash，它記一行 log、然後繼續往下跑。但在面板上，<code>rows=0</code> 是刺眼的，而且<strong>四條並排，因果自己就浮出來</strong>。</p>
 
-                    <h2>最讓我在意的：那條 UPDATE 把主鍵弄丟了</h2>
-                    <p>把兩組的 <code>UPDATE</code> 並排看，就是這篇標題的來源：</p>
-                    <pre class="code-block"><code>-- 健康時
-UPDATE "users" SET "age"=$1,"updated_at"=$2 WHERE "users"."deleted_at" IS NULL AND "id" = $3
--- 失敗時
-UPDATE "users" SET "age"=$1,"updated_at"=$2 WHERE "users"."deleted_at" IS NULL</code></pre>
-                    <p><strong>同一行 <code>db.Model(&amp;user).Update(...)</code>，生出了兩種 SQL。</strong> 差別是後者的 <code>AND "id" = $3</code> 不見了——它不再是更新「那一個 user」，而是「所有還沒被軟刪除的 user」。這就是 ORM 最經典的 footgun：<strong>主鍵沒填好，更新退化成全表更新的形狀</strong>。</p>
-                    <p>為什麼會這樣？把面板上四條 <code>rows=0</code> 的次數排在一起看——全是 <strong>83</strong>——因果鏈自己就浮出來了：</p>
-                    <ol class="causal-chain">
-                        <li><span>Create user 失敗，<code>user.ID</code> 還是 0</span><span class="count">rows=0 · 83 次</span></li>
-                        <li><span>Create order 帶著 <code>user_id=0</code>，被外鍵擋下</span><span class="count">rows=0 · 83 次</span></li>
-                        <li><span><code>First</code> 拿 <code>id=0</code> 去查，什麼都沒找到</span><span class="count">rows=0 · 83 次</span></li>
-                        <li><span><code>Update</code> 因為 <code>user.ID</code> 是 0、GORM 拼不出 <code>id = $3</code>，退化成只剩軟刪除範圍的 WHERE</span><span class="count">rows=0 · 83 次</span></li>
-                    </ol>
-                    <p><strong>但這條退化的 UPDATE，最後並沒有真的跑到全表。</strong> 我去對了一下服務自己的 log：它 <code>rows=0</code>，是因為 <strong>GORM 內建的防護把它攔下了</strong>——<code>WHERE conditions required</code>（<code>ErrMissingWhereClause</code>），耗時 <strong>0.18 毫秒、沒有任何一次 DB round trip</strong>。也就是說，觀測點讓我同時看到了兩件事：<strong>GORM 正在拼一條把主鍵弄丟的全表 UPDATE，以及 GORM 自己的安全網當場接住了它。</strong> 危險和保命，一行之內都攤在面板上。</p>
-                    <p>這很重要——如果哪天有人關掉了這層防護（<code>db.Session(&amp;gorm.Session{AllowGlobalUpdate: true})</code>），這條 <code>rows=0</code> 就會變成 <code>rows=幾千</code>。而你在面板上，會<strong>立刻</strong>看到那個數字跳起來。</p>
+<section class="panel">
+  <div class="panel-head"><span class="panel-title" id="cbg-tl-title"></span><div class="presets" id="cbg-presets"></div></div>
+  <div id="cbg-timeline">
+    <canvas id="cbg-tl"></canvas>
+    <div class="tl-legend" id="cbg-legend"></div>
+  </div>
+  <div class="readout" id="cbg-readout"></div>
+</section>
 
-                    <figure class="article-figure figure-wide">
-                        <a href="https://codebull-dashboard-service.web.app/gorm-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">
-                            <img src="asset/gorm-runtime-dashboard-logs.webp" alt="CodeBull 遠端面板 Logs 分頁：1,045 條逐字 GORM SQL 與各自的 rows 值" loading="lazy">
-                        </a>
-                        <figcaption>這一輪遠端面板的 <strong>Logs</strong> 分頁：1,045 筆出口事件，每一筆都是逐字的 SQL 加上它自己的 <code>rows</code> 值，附時間戳與 <code>callbacks.go:140</code>。文中引用的每一條語句都能在這裡對帳。 <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/gorm-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">打開線上面板 →</a></span></figcaption>
-                    </figure>
+<section class="panel" id="cbg-graph">
+  <div id="cbg-stage"><svg id="cbg-wires"></svg></div>
+  <div id="cbg-edge-list"></div>
+</section>
 
-                    <h2>一個對照：內建的 log 為什麼還不夠</h2>
-                    <p>我順手比對了服務自己的 GORM logger（預設 Warn level）印了什麼。公平講，它其實<strong>沒有瞎</strong>——失敗那段，四種錯誤它一種都沒漏：duplicate key、foreign key、record not found、還有那條 <code>WHERE conditions required</code>，全喊了。</p>
-                    <p>那觀測點多給了什麼？三件事：</p>
-                    <ol>
-                        <li><strong>成功的那 600 多筆，它一句都沒說。</strong> 內建 logger 的設計就是「平常安靜，出事才叫」——所以你永遠看不到「健康長什麼樣」，也就沒有基準去比對。</li>
-                        <li><strong>它只給你錯誤訊息，不給你逐字 SQL。</strong>「WHERE conditions required」告訴你出事了，但沒把那條退化成什麼形狀的 UPDATE 攤給你看。面板有——一個字都不少。</li>
-                        <li><strong>它不對帳。</strong> 入口 2090、出口 1045，這個差距本身就是資訊（收斂點被進入的次數，約是真正吐出 SQL 的兩倍——GORM 把單筆寫入包了一層隱式交易，那些交易控制的進出不會在出口生出一條被記錄的 SQL）。哪天這兩個數字<strong>大幅背離</strong>，就是一批操作在生成 SQL 前就出事了。內建 logger 給不了你這個。</li>
-                    </ol>
-                    <p>那個入口計數，我沒有看它的「值」——因為它是個命中標記，每打到一次就記一個 1，值永遠是 1、畫出來是條沒資訊的平線。真正好看的是把它<strong>累加</strong>起來：一條從 0 爬到 <strong>2090</strong> 的線，終點就是總命中數，而<strong>斜率就是頻率</strong>。有意思的是這條線在中途有個轉折——每 30 秒從 100 次變成 160 次——那正是服務從失敗相位恢復、每輪 DB 操作變多的那一刻。一個裸計數，只要換成累積來看，連「服務什麼時候恢復的」都自己標出來了。</p>
-                    <p>觀測的價值就在這裡：它給你的不是「哪裡報錯了」，而是<strong>一份完整、對稱、可對帳的現場記錄</strong>。成功和失敗一視同仁。有了這個，很多 bug 不是被你「除錯」除出來的，是它<strong>自己在面板上現形</strong>的。</p>
 
-                    <h2>收尾：把「看不見」變成「看得見」</h2>
-                    <p>我沒有改一行 code、沒有重啟服務、沒有先埋一套 trace backend。就只是在一個跑著的 process 上，挑對收斂點掛了兩個觀測點，然後認真看了八分鐘。</p>
-                    <p>換來的是：我親眼看到 <code>Delete</code> 其實在 <code>UPDATE</code>、看到每條查詢都偷帶 <code>deleted_at IS NULL</code>、看到一次 Preload 是兩趟查詢、看到 <code>rows</code> 掉到 0 的四種不同原因、最後看到一條 UPDATE 在我眼前把主鍵弄丟、又被 GORM 的防護當場接住。</p>
-                    <p>ORM 是黑盒子，但黑盒子只是「預設看不見」，不是「不能看」。挑對地方站、把變數抓出來——它跑了什麼，本來就該看得見。</p>
 
-                    <h3>附：這次的觀測設定（可重現）</h3>
-                    <ul>
-                        <li>收斂點：<code>gorm.(*processor).Execute</code>
-                            <ul>
-                                <li><code>:82</code> 入口命中計數（metric，變數過濾只留 <code>trace_hits</code>，面板才乾淨）</li>
-                                <li><code>:140</code> 出口，抓 <code>SQL={string(stmt.SQL.buf)} | rows={db.RowsAffected}</code></li>
-                            </ul>
-                        </li>
-                        <li>被觀測的服務：每 3 秒一輪 CRUD 的 gorm-demo + PostgreSQL 16（持久化 volume，前 100 個 email 已被佔用，所以開頭是失敗相位、之後恢復——剛好照出兩種路徑）</li>
-                        <li>觀測窗口：2026-07-24 03:43:12Z → 03:51:18Z（約 8 分鐘 / 163 輪），出口 1045 筆、入口 2090 次、去重 12 種語句（失敗相位每條 <code>rows=0</code> 各 83 次，穩態每條 <code>rows=1</code> 各 80 次）</li>
-                        <li>交叉核對：服務內建 GORM logger 同期記了四類錯誤（duplicate key / foreign key / record not found / WHERE conditions required），但對成功查詢近乎全盲、不給逐字 SQL、不對帳</li>
-                        <li>那條退化 UPDATE 的 <code>rows=0</code> 來自 GORM 的 <code>ErrMissingWhereClause</code> 防護（0.18ms、無 DB round trip），不是打到 0 列</li>
-                        <li>這一輪只掛 Metric + Log、沒有量延遲，所以全篇不寫任何毫秒數——沒量到的就不寫</li>
-                    </ul>
+</div>
+<script id="cbg-data" type="application/json">{"mock": false, "title": "GORM 的讀取路徑", "lede": "137 輪 CRUD、六分四十秒。", "source": "article/gorm-demo/graph.json · 03:16–03:22 UTC", "window": {"startMs": 1787886960000, "stepMs": 10000, "buckets": 40}, "phases": [], "readout": {"ratios": [{"label": "SQL / 執行", "num": "送出 SQL", "den": "GORM 執行一次", "tone": "good"}], "check": "×1.5 在「查第一筆 → 執行」那條邊上"}, "nodes": [{"id": "n0", "name": "GORM 執行一次", "tone": "entry", "purpose": "上面那幾行呼叫展開成幾次 ORM 執行？一次多久？", "probes": [{"traceKey": "gorm.(*processor).Execute:82", "kind": "metric"}, {"traceKey": "gorm.(*processor).Execute:135", "kind": "latency"}], "series": {"hits": [24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24], "latencyP50": [0.894, 0.929, 0.94, 1.051, 1.003, 0.953, 0.862, 0.881, 1.098, 0.785, 0.904, 1.047, 0.972, 1.037, 0.894, 1.06, 1.024, 0.81, 0.835, 1.036, 0.995, 1.013, 1.07, 0.999, 1.127, 0.992, 1.009, 0.991, 0.921, 0.906, 0.947, 0.899, 0.797, 0.853, 0.915, 0.826, 0.874, 1.061, 1.094, 1.036], "latencyP95": [9.201, 9.616, 9.468, 58.19, 40.089, 57.877, 9.624, 41.184, 9.856, 9.485, 41.146, 9.718, 9.12, 9.942, 9.228, 57.941, 8.927, 9.025, 8.834, 39.899, 10.625, 58.364, 41.516, 9.398, 9.581, 40.964, 8.971, 9.011, 41.375, 56.665, 8.892, 9.826, 56.835, 34.969, 9.397, 57.896, 9.103, 41.158, 10.053, 9.912]}, "hitsFull": 1096, "latencyFull": {"count": 959, "p50": 0.931, "p95": 56.665, "p99": 58.642, "max": 59.762}, "samples": [], "stacks": [{"frames": ["runtime.goexit", "runtime.main", "main.main", "shadow-gorm.io/gorm.(*DB).Create", "gorm.io/gorm.(*processor).Execute"], "perBucket": [6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6]}], "x": 520, "y": 0, "root": true}, {"id": "n1", "name": "送出 SQL", "tone": "good", "purpose": "展開後真正離開行程的語句長什麼樣？", "probes": [{"traceKey": "gorm.(*processor).Execute:150", "kind": "log"}], "series": {"hits": [24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24]}, "hitsFull": 1096, "latencyFull": null, "samples": [{"text": "INSERT INTO \"users\" (\"created_at\",\"updated_at\",\"deleted_at\",\"name\",\"email\",\"age\") VALUES ($1,$2,$3,$4,$5,$6) RETURNING \"id\"", "perBucket": [3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3]}, {"text": "INSERT INTO \"orders\" (\"created_at\",\"updated_at\",\"deleted_at\",\"user_id\",\"item\",\"amount\") VALUES ($1,$2,$3,$4,$5,$6) RETURNING \"id\"", "perBucket": [3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3]}, {"text": "SELECT * FROM \"users\" WHERE \"users\".\"id\" = $1 AND \"users\".\"deleted_at\" IS NULL", "perBucket": [3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3]}, {"text": "SELECT * FROM \"orders\" WHERE \"orders\".\"id\" = $1 AND \"orders\".\"deleted_at\" IS NULL ORDER BY \"orders\".\"id\" LIMIT $2", "perBucket": [3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3]}, {"text": "UPDATE \"users\" SET \"age\"=$1,\"updated_at\"=$2 WHERE \"users\".\"deleted_at\" IS NULL AND \"id\" = $3", "perBucket": [3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3]}, {"text": "SELECT count(*) FROM \"users\" WHERE \"users\".\"deleted_at\" IS NULL", "perBucket": [3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3]}, {"text": "SELECT * FROM \"users\" WHERE \"users\".\"deleted_at\" IS NULL ORDER BY created_at asc,\"users\".\"id\" LIMIT $1", "perBucket": [3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3]}, {"text": "UPDATE \"users\" SET \"deleted_at\"=$1 WHERE \"users\".\"id\" = $2 AND \"users\".\"deleted_at\" IS NULL", "perBucket": [3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3]}], "stacks": [{"frames": ["runtime.goexit", "runtime.main", "main.main", "shadow-gorm.io/gorm.(*DB).Create", "gorm.io/gorm.(*processor).Execute"], "perBucket": [6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6]}], "x": 1040, "y": 0, "root": false}, {"id": "n2", "name": "新增一筆", "tone": "money", "purpose": "一輪真的送出幾次新增？", "probes": [{"traceKey": "gorm.(*DB).Create:24", "kind": "metric"}], "series": {"hits": [6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6]}, "hitsFull": 274, "latencyFull": null, "samples": [], "stacks": [{"frames": ["runtime.goexit", "runtime.main", "main.main", "gorm.io/gorm.(*DB).Create"], "perBucket": [6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6]}], "x": 0, "y": 0, "root": true}, {"id": "n3", "name": "查第一筆", "tone": "bad", "purpose": "讀取路徑一輪走幾次？", "probes": [{"traceKey": "gorm.(*DB).First:121", "kind": "metric"}], "series": {"hits": [6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6]}, "hitsFull": 274, "latencyFull": null, "samples": [], "stacks": [{"frames": ["runtime.goexit", "runtime.main", "main.main", "gorm.io/gorm.(*DB).First"], "perBucket": [6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6]}], "x": 0, "y": 470, "root": true}, {"id": "n4", "name": "數使用者", "tone": "entry", "purpose": "計數走幾次？", "probes": [{"traceKey": "gorm.(*DB).Count:445", "kind": "metric"}], "series": {"hits": [3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3]}, "hitsFull": 137, "latencyFull": null, "samples": [], "stacks": [], "x": 0, "y": 940, "root": true}, {"id": "n5", "name": "更新一個欄位", "tone": "good", "purpose": "更新走幾次？", "probes": [{"traceKey": "gorm.(*DB).Update:404", "kind": "metric"}], "series": {"hits": [3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3]}, "hitsFull": 137, "latencyFull": null, "samples": [], "stacks": [], "x": 0, "y": 1410, "root": true}], "edges": [{"from": "n0", "to": "n1", "countPerBucket": [24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24], "countFull": 1096, "fanoutFull": 1, "gap": 0, "gapLabel": "0", "gapIn": [], "alert": null}, {"from": "n3", "to": "n0", "countPerBucket": [9, 12, 9, 9, 12, 9, 9, 12, 9, 9, 12, 9, 9, 12, 9, 9, 12, 9, 9, 12, 9, 9, 12, 9, 9, 12, 9, 9, 12, 9, 9, 12, 9, 9, 12, 9, 9, 12, 9, 9], "countFull": 411, "fanoutFull": 1.5, "gap": 4, "gapLabel": "0–4", "gapIn": ["gorm.(*DB).Find", "callbacks.preload", "callbacks.preloadEntryPoint", "callbacks.Preload"], "alert": null}, {"from": "n2", "to": "n0", "countPerBucket": [6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6], "countFull": 274, "fanoutFull": 1, "gap": 0, "gapLabel": "0", "gapIn": [], "alert": null}, {"from": "n4", "to": "n0", "countPerBucket": [3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3], "countFull": 137, "fanoutFull": 1, "gap": 0, "gapLabel": "0", "gapIn": [], "alert": null}, {"from": "n5", "to": "n0", "countPerBucket": [3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3], "countFull": 137, "fanoutFull": 1, "gap": 0, "gapLabel": "0", "gapIn": [], "alert": null}], "notes": []}</script>
+<script>(function(){
 
-                    <figure class="article-figure figure-wide">
-                        <a href="https://codebull-dashboard-service.web.app/gorm-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">
-                            <img src="asset/gorm-runtime-dashboard-metrics.webp" alt="CodeBull 遠端面板 Metrics 分頁：gorm.(*processor).Execute 的入口命中數爬到 2,090" loading="lazy">
-                        </a>
-                        <figcaption><strong>Metrics</strong> 分頁：<code>callbacks.go:82</code> 的入口計數在八分鐘窗口裡一路爬到 2,090 次——就是拿來跟 1,045 筆出口事件對帳的那個數字。 <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/gorm-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">打開線上面板 →</a></span></figcaption>
-                    </figure>
+const D = JSON.parse(document.getElementById("cbg-data").textContent);
+const NB = D.window.buckets, STEP = D.window.stepMs, T0 = D.window.startMs;
+const N = Object.fromEntries(D.nodes.map(n => [n.id, n]));
+const TONE = { entry:"--cbg-entry", good:"--cbg-good", money:"--cbg-money", bad:"--cbg-bad" };
+const css = v => getComputedStyle(document.querySelector(".cbg-root")).getPropertyValue(v).trim();
+const sum = (a,f,t) => a.slice(f,t).reduce((x,y)=>x+y,0);
+const fmt = n => Math.round(n).toLocaleString("en-US");
+const ms = (v) => (v >= 10 ? v.toFixed(0) : v >= 1 ? v.toFixed(1) : v.toFixed(2));
+const clock = b => new Date(T0 + b*STEP).toISOString().slice(11,16);
+// github.com/gin-gonic/gin.(*Engine).ServeHTTP → ServeHTTP. Taking the last
+// dot-segment alone leaves "func1" for every closure, and taking the last path
+// segment alone leaves the whole package prefix.
+const shortFn = (s) => {
+  // Generic type arguments carry dots of their own — NewCache[...].gowrap1 —
+  // so they come off before anything splits on ".".
+  const noGeneric = s.replace(/\[[^\]]*\]/g, "");
+  const noRecv = noGeneric.split("/").pop().replace(/\(\*?[^)]*\)\./g, "");
+  const parts = noRecv.split(".").filter(Boolean);
+  // A closure carries the name of the function it was written in, and can carry
+  // several suffixes at once: serveStreams.func2.1, NewFIFOScheduler.gowrap1.
+  while (parts.length > 1 && /^(func\d+|gowrap\d+|\d+)$/.test(parts[parts.length - 1])) parts.pop();
+  return parts[parts.length - 1];
+};
+let sel = { from:0, to:NB };
 
-                    <div class="article-callout">
-                        <p>📊 <strong>本文的遠端觀測面板</strong>（實測數據，可線上檢視）：<a href="https://codebull-dashboard-service.web.app/gorm-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">gorm-observing-runtime-20260724</a></p>
-                        <p>上面每一條 SQL、每一個 <code>rows</code>、每一個次數，都能在這個面板的 <strong>Logs</strong> 分頁逐字對帳；<strong>Metrics</strong> 分頁則是那條 <code>Execute</code> 入口命中的計數。</p>
-                    </div>
+/* children of an edge target = what the timeline stacks */
+const hasOut = new Set(D.edges.map(e => e.from));
+/* The ends of the graph: nodes nothing leads away from. Stacking those counts
+   each piece of work once, and an island — a step reached on its own goroutine,
+   with no edge at all — is an end like any other, so it stays on the timeline. */
+const leaves = D.nodes.filter(n => !hasOut.has(n.id)).map(n => n.id);
 
-                    <div class="article-footnote">
-                        <p>這篇裡「不改 code、對執行中的 process 掛觀測點、然後盯著看」用的是 <strong>CodeBull</strong> —— 一個 VS Code extension，能對正在跑的 Go 服務動態插入 Metric / Log / Latency 觀測點，不改原始碼、不重編譯、不重啟。上面那條把主鍵弄丟的 UPDATE，就是這樣被我當場看到的。</p>
-                        <p><em>文中每一條 SQL、每一個數字均出自 CodeBull 對 gorm-demo 執行中服務的實測證據，並可在上方面板連結線上對帳。</em></p>
-                        <p><a class="btn" href="https://marketplace.visualstudio.com/items?itemName=0xbu11.codebull" target="_blank" rel="noopener noreferrer">安裝 CodeBull</a></p>
-                    </div>
+{ const _e = document.getElementById("cbg-title"); if (_e) _e.textContent = D.title; }
+{ const _e = document.getElementById("cbg-lede"); if (_e) _e.textContent = D.lede; }
+{ const _e = document.getElementById("cbg-src"); if (_e) _e.textContent = D.source ?? ""; }
+{ const _e = document.getElementById("cbg-eyebrow"); if (_e) _e.textContent = "Behavior Graph · " + D.nodes.length + " 個節點 · " +
+  D.nodes.reduce((a,n)=>a+n.probes.length,0) + " 個觀測點"; }
+document.getElementById("cbg-tl-title").textContent =
+  `時間軸 · 每格 ${STEP/1000} 秒 · 共 ${Math.round(NB*STEP/60000)} 分鐘`;
+document.getElementById("cbg-legend").innerHTML =
+  leaves.map(id => `<span><i style="background:var(${TONE[N[id].tone]})"></i>${N[id].name}</span>`).join("") +
+  `<span><i style="background:var(--bad);opacity:.28"></i>選取範圍</span>
+   <span style="color:var(--faint)">在圖上拖曳可選任意一段</span>`;
+
+/* ── stage ─────────────────────────────────────────────── */
+const stage = document.getElementById("cbg-stage");
+D.nodes.forEach(n => {
+  const el = document.createElement("div");
+  el.className = "node " + n.tone; el.id = "cbg-node-" + n.id;
+  el.style.left = n.x + "px"; el.style.top = n.y + "px";
+  stage.appendChild(el);
+});
+stage.style.minWidth = (Math.max(...D.nodes.map(n=>n.x)) + 320) + "px";
+
+/* ── timeline ──────────────────────────────────────────── */
+const cv = document.getElementById("cbg-tl"), ctx = cv.getContext("2d");
+function drawTimeline(){
+  const dpr = devicePixelRatio||1, w = cv.clientWidth, h = cv.clientHeight;
+  cv.width = w*dpr; cv.height = h*dpr; ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,h);
+  const stacks = leaves.map(id => N[id].series.hits);
+  const peak = Math.max(...Array.from({length:NB}, (_,i) => stacks.reduce((a,s)=>a+s[i],0))) * 1.1;
+  const bw = w/NB;
+  D.phases.forEach((p,i) => { if (i%2) { ctx.fillStyle = css("--cbg-sunk");
+    ctx.fillRect(p.fromBucket*bw, 0, (p.toBucket-p.fromBucket)*bw, h); } });
+  for (let i=0;i<NB;i++){
+    let acc = 0;
+    stacks.forEach((s,si) => {
+      const hh = (s[i]/peak)*h;
+      ctx.fillStyle = css(TONE[N[leaves[si]].tone]); ctx.globalAlpha = .88;
+      ctx.fillRect(i*bw, h-acc-hh, Math.max(bw-.4,.6), hh); acc += hh;
+    });
+  }
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = css("--cbg-bad"); ctx.globalAlpha = .15;
+  ctx.fillRect(sel.from*bw, 0, (sel.to-sel.from)*bw, h); ctx.globalAlpha = 1;
+  ctx.strokeStyle = css("--cbg-bad"); ctx.lineWidth = 1.5; ctx.beginPath();
+  ctx.moveTo(sel.from*bw,0); ctx.lineTo(sel.from*bw,h);
+  ctx.moveTo(sel.to*bw,0); ctx.lineTo(sel.to*bw,h); ctx.stroke();
+  ctx.font = '500 10px "JetBrains Mono", monospace'; ctx.fillStyle = css("--cbg-faint");
+  D.phases.forEach(p => ctx.fillText(p.label, p.fromBucket*bw+5, 12));
+}
+let dragging = false, anchor = 0;
+const bucketAt = ev => { const r = cv.getBoundingClientRect();
+  return Math.max(0, Math.min(NB, Math.round(((ev.clientX-r.left)/r.width)*NB))); };
+cv.addEventListener("pointerdown", e => { dragging = true; anchor = bucketAt(e); cv.setPointerCapture(e.pointerId); });
+cv.addEventListener("pointermove", e => { if(!dragging) return;
+  const b = bucketAt(e); sel = { from:Math.min(anchor,b), to:Math.max(anchor,b) };
+  if (sel.to - sel.from < 2) sel.to = Math.min(NB, sel.from+2); render(); });
+addEventListener("pointerup", () => { if(dragging){ dragging = false; syncPresets(); } });
+
+// A real window arrives without authored phases. Thirds are not a claim about
+// the run — they are a fast way to ask "did this move", which is the only
+// reason the timeline is here.
+const PRESETS = D.phases.length
+  ? [{label:"全部",from:0,to:NB}, ...D.phases.map(p=>({label:p.label,from:p.fromBucket,to:p.toBucket}))]
+  : [{label:"全部",from:0,to:NB},
+     {label:"前三分之一",from:0,to:Math.round(NB/3)},
+     {label:"中段",from:Math.round(NB/3),to:Math.round(2*NB/3)},
+     {label:"後三分之一",from:Math.round(2*NB/3),to:NB}];
+const pbox = document.getElementById("cbg-presets");
+PRESETS.forEach((p,i) => { const b = document.createElement("button"); b.textContent = p.label;
+  b.onclick = () => { sel = {from:p.from,to:p.to}; render(); syncPresets(); }; pbox.appendChild(b); });
+const syncPresets = () => [...pbox.children].forEach((b,i) =>
+  b.setAttribute("aria-pressed", String(PRESETS[i].from===sel.from && PRESETS[i].to===sel.to)));
+
+/* ── node cards ────────────────────────────────────────── */
+function spark(series, cvar, hi){
+  const w = 274, h = 34, max = Math.max(...series, 1);
+  const pts = series.map((v,i) => `${(i/(series.length-1))*w},${h-(v/max)*(h-3)-1.5}`).join(" ");
+  const x1 = (sel.from/series.length)*w, x2 = (sel.to/series.length)*w;
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
+    <rect x="${x1}" y="0" width="${Math.max(x2-x1,1)}" height="${h}" fill="var(${hi||cvar})" opacity=".14"/>
+    <polyline points="${pts}" fill="none" stroke="var(${cvar})" stroke-width="1.4" stroke-linejoin="round"/></svg>`;
+}
+function renderNode(n){
+  const cvar = TONE[n.tone];
+  const whole = sel.from === 0 && sel.to === NB;
+  const total = whole && n.hitsFull != null ? n.hitsFull : sum(n.series.hits, 0, NB);
+  const hits = whole && n.hitsFull != null ? n.hitsFull : sum(n.series.hits, sel.from, sel.to);
+  const mins = ((sel.to-sel.from)*STEP)/60000;
+  let lat = "";
+  if (n.series.latencyP50){
+    const win = a => a.slice(sel.from, sel.to);
+    const avg = a => { const v = a.filter(x => x > 0); return v.length ? v.reduce((x,y)=>x+y,0)/v.length : 0; };
+    // Over the whole window the reservoir's own percentiles are the honest
+    // answer. Over a sub-range there is no reservoir, so the per-bucket
+    // percentiles are averaged — which is not a percentile of the range, and
+    // the caption says so rather than letting the number pass as one.
+    const whole = sel.from === 0 && sel.to === NB && n.latencyFull;
+    const p50 = whole ? n.latencyFull.p50 : avg(win(n.series.latencyP50));
+    const p95 = whole ? n.latencyFull.p95 : avg(win(n.series.latencyP95));
+    const worst = Math.max(...n.series.latencyP95);
+    lat = `<div class="slot"><div class="slot-h"><span>延遲 · latency 點</span><span>${whole ? "全窗百分位" : "各桶百分位的平均"}</span></div>
+      <div class="lat"><div><span class="k">p50</span><span class="v">${ms(p50)}<span class="unit">ms</span></span></div>
+      <div><span class="k">p95</span><span class="v" style="color:${p95>worst*.6?"var(--bad)":"inherit"}">${ms(p95)}<span class="unit">ms</span></span></div></div>
+      ${spark(n.series.latencyP95, cvar, "--cbg-bad")}</div>`;
+  }
+  const shapeAll = n.samples.reduce((a,s)=>a+sum(s.perBucket,sel.from,sel.to),0) || 1;
+  const shapes = n.samples.map(s => {
+    const v = sum(s.perBucket, sel.from, sel.to);
+    if (v === 0) return "";
+    const pct = v/shapeAll*100;
+    // a shape absent from the first tenth of the window is new behaviour, not background
+    const isNew = sum(s.perBucket, 0, Math.floor(NB/10)) === 0;
+    return `<div class="shape"><div class="shape-row ${isNew?"new":""}">
+        <span class="t" title="${s.text}">${isNew?"▲ ":""}${s.text}</span><span class="n">${pct.toFixed(0)}% · ${fmt(v)}</span></div>
+      <div class="bar"><i style="width:${pct}%;background:var(${isNew?"--cbg-bad":cvar})"></i></div></div>`;
+  }).join("") || `<p class="why" style="margin-top:6px">這一段沒有抓到內容</p>`;
+
+  const chainAll = n.stacks.reduce((a,s)=>a+sum(s.perBucket,sel.from,sel.to),0) || 1;
+  const flame = n.stacks.map(s => {
+    const v = sum(s.perBucket, sel.from, sel.to); if (!v) return "";
+    const share = v/chainAll*100;
+    const MAX_FRAMES = 5;
+    // The outermost frames are where the goroutine started, and that is what
+    // tells two islands apart — so the head stays visible and the middle folds.
+    const head = s.frames.length > MAX_FRAMES ? s.frames.slice(0, 2) : [];
+    const tail = s.frames.slice(head.length ? head.length - MAX_FRAMES : 0);
+    const hidden = s.frames.length - head.length - tail.length;
+    const chip = (f, i) =>
+      `<span style="flex:1;background:color-mix(in srgb, var(${cvar}) ${90-i*12}%, #000 10%)" title="${f}">${shortFn(f)}</span>`;
+    const cells =
+      head.map(chip).join("") +
+      (hidden > 0
+        ? `<span style="flex:0 0 auto;background:var(--line);color:var(--dim)" title="${s.frames.slice(head.length, head.length + hidden).join(" < ")}">+${hidden}</span>`
+        : "") +
+      tail.map((f, i) => chip(f, i + head.length)).join("");
+    return `<div><div class="chain" style="width:${Math.max(share,55)}%">${cells}</div>
+      <div class="chain-meta"><span>${share.toFixed(0)}% 走這條</span><span>${fmt(v)}</span></div></div>`;
+  }).join("");
+
+  document.getElementById("cbg-node-"+n.id).innerHTML = `
+    <div class="nhead"><h3>${n.name}</h3><div class="why">${n.purpose}</div>
+      <div class="probes">${n.probes.map(p=>`<span class="probe ${p.kind}">${p.kind}</span>`).join("")}
+        <span class="probe">${n.probes.length} probe</span>
+        ${n.root ? '<span class="probe" title="堆疊上沒有任何有掛點的呼叫者">root</span>' : ""}</div></div>
+    <div class="slot"><div class="slot-h"><span>命中次數 · metric</span><span>${(hits/total*100).toFixed(0)}% of ${fmt(total)}</span></div>
+      <div class="big">${fmt(hits)}<span class="unit">次 · ${(hits/mins).toFixed(0)}/分鐘</span></div>${spark(n.series.hits, cvar)}</div>
+    ${lat}
+    <div class="slot"><div class="slot-h"><span>抓到的內容 · log</span><span>${n.samples.length} 種形狀</span></div>${shapes}</div>
+    <div class="slot"><div class="slot-h"><span>走到這裡的路徑 · stacks</span><span>${n.stacks.length} 條</span></div>
+      <div class="flame">${flame}</div></div>`;
+}
+
+/* ── edges ─────────────────────────────────────────────── */
+function edgeFacts(e){
+  const whole = sel.from === 0 && sel.to === NB;
+  const parent = sum(N[e.from].series.hits, sel.from, sel.to);
+  const series = sum(e.countPerBucket, sel.from, sel.to);
+  const n = whole && e.countFull != null ? e.countFull : series;
+  const f = whole && e.fanoutFull != null ? e.fanoutFull : (parent ? series/parent : 0);
+  const approx = !whole;
+  return { n, f, parent, approx, alert: e.alert != null && f > e.alert,
+    sub: e.gap > 0
+      ? `${e.gapLabel ?? e.gap} 層未觀測 · ${e.gapIn.map(shortFn).join(" · ") || "（未記錄名稱）"}`
+      : "直接呼叫，沒有漏看" };
+}
+function renderEdges(){
+  document.getElementById("cbg-edge-list").innerHTML = D.edges.map(e => { const f = edgeFacts(e);
+    return `<div class="echip ${f.alert?"alert":(e.gap===0?"calm":"")}"><b>${N[e.from].name} → ${N[e.to].name}</b>
+      <b style="color:${f.alert?"var(--bad)":"var(--ink)"}">${f.approx?"≈":""}×${f.f.toFixed(2)}</b>
+      <span class="sub">${fmt(f.n)} ÷ ${fmt(f.parent)}</span><span class="sub">${f.sub}</span></div>`; }).join("");
+
+  const svg = document.getElementById("cbg-wires");
+  if (getComputedStyle(svg).display === "none") return;
+  const s = stage.getBoundingClientRect();
+  const box = id => { const r = document.getElementById("cbg-node-"+id).getBoundingClientRect();
+    return { x:r.left-s.left, y:r.top-s.top, w:r.width, h:r.height }; };
+  let out = ["","alert","calm"].map(k => `<marker id="ah${k}" viewBox="0 0 10 10" refX="9" refY="5"
+      markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"
+      fill="var(${k==="alert"?"--cbg-bad":k==="calm"?"--cbg-good":"--cbg-dim"})"/></marker>`).join("");
+  out = `<defs>${out}</defs>`;
+  D.edges.forEach(e => {
+    const a = box(e.from), b = box(e.to);
+    const x1 = a.x+a.w, y1 = a.y+70, x2 = b.x-9, y2 = b.y+70, mx = (x1+x2)/2, ty = (y1+y2)/2;
+    const f = edgeFacts(e);
+    const kind = f.alert ? "alert" : (e.gap === 0 ? "calm" : "");
+    out += `<path class="wire ${kind}" marker-end="url(#ah${kind})"
+      d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}" ${e.gap>0?'stroke-dasharray="6 5"':""}/>`;
+    const w = Math.min(Math.max(f.sub.length*6.2+20, 160), x2-x1-10);
+    out += `<rect class="wbox" x="${mx-w/2}" y="${ty-20}" width="${w}" height="40" rx="3"/>
+      <text class="wlabel" x="${mx}" y="${ty-3}" text-anchor="middle" fill="${f.alert?"var(--bad)":"var(--ink)"}">${f.approx?"≈":""}×${f.f.toFixed(2)} · ${fmt(f.n)} 次</text>
+      <text class="wsub" x="${mx}" y="${ty+12}" text-anchor="middle">${f.sub}</text>`;
+  });
+  svg.innerHTML = out;
+  stage.style.height = (Math.max(...D.nodes.map(n => box(n.id).y + box(n.id).h)) + 8) + "px";
+}
+
+/* ── readout ───────────────────────────────────────────── */
+function renderReadout(){
+  const val = (name) => {
+    const n = D.nodes.find((x) => x.name === name);
+    if (!n) return 0;
+    return sel.from === 0 && sel.to === NB && n.hitsFull != null
+      ? n.hitsFull
+      : sum(n.series.hits, sel.from, sel.to);
+  };
+  const a = D.nodes[0];
+  const parts = [`<span>選取 <b>${clock(sel.from)}–${clock(sel.to)}</b>（${((sel.to-sel.from)*STEP/60000).toFixed(1)} 分鐘）</span>`,
+    `<span>${a.name} <b>${fmt(val(a.name))}</b></span>`];
+  D.readout.ratios.forEach(r => {
+    const v = val(r.den) ? val(r.num)/val(r.den)*100 : 0;
+    parts.push(`<span>${r.label} <b style="color:var(${r.tone==="good"?"--cbg-good":"--cbg-money"})">${v.toFixed(0)}%</b></span>`);
+  });
+  const lnode = D.nodes.find(n => n.series.latencyP95);
+  if (lnode){ const whole = sel.from === 0 && sel.to === NB;
+    const w = lnode.series.latencyP95.slice(sel.from, sel.to).filter(v => v > 0);
+    const p95 = whole && lnode.latencyFull ? lnode.latencyFull.p95 : w.reduce((x,y)=>x+y,0)/(w.length||1);
+    const worst = Math.max(...lnode.series.latencyP95);
+    parts.push(`<span>${lnode.name} p95 <b style="color:${p95>worst*.6?"var(--bad)":"inherit"}">${ms(p95)} ms</b></span>`); }
+  parts.push(`<span style="color:var(--faint)">${D.readout.check}</span>`);
+  document.getElementById("cbg-readout").innerHTML = parts.join("");
+}
+
+const notesEl = document.getElementById("cbg-notes");
+if (notesEl) notesEl.innerHTML = (D.notes||[]).map(n =>
+  `<div class="note"><h4>${n.h}</h4><p>${n.p}</p></div>`).join("");
+
+function render(){ drawTimeline(); D.nodes.forEach(renderNode); renderReadout();
+  requestAnimationFrame(renderEdges); }
+addEventListener("resize", render);
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
+render(); syncPresets();
+
+})();</script>
+</div>
+                    <h2>×1.5：呼叫兩次，執行三次</h2>
+                    <p>窗口內 <code>First()</code> 被呼叫 <strong>274</strong> 次，底下的 ORM 執行卻是 <strong>411</strong> 次。多出來的 137 次來自 <code>Preload(&quot;User&quot;)</code>：一行鏈式呼叫，在執行期展開成第二次查詢。這個比例不寫在任何一行程式碼裡，只有數過才知道。</p>
+                    <h2>虛線把多出來的那一段指名道姓</h2>
+                    <p>那條邊標著 <strong>0–4 層未觀測</strong>，而且列出名字：<code>Find</code>、<code>preload</code>、<code>preloadEntryPoint</code>、<code>Preload</code>。多出來的查詢就是從那四層裡送出去的——圖不會假裝它看得見，但會告訴你它在哪裡。</p>
+                    <h2>沒掛觀測點的呼叫端，會變成另一座島</h2>
+                    <p>1,096 次執行裡有 137 次在圖上沒有上游。那是這一輪唯一沒掛點的 <code>Delete()</code>。呼叫端不在圖上，它的執行就以第二個起點出現，而不是被硬接到別人身上。</p>
+                    <p>「送出 SQL」節點列出這一輪真正離開行程的 8 種語句，每種各 133 次。整段 p50 0.93ms、p95 57ms。</p>
                 </article>
             </div>
         </section>

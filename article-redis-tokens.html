@@ -4,21 +4,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CodeBull - I Watched Every Token My Redis Client Put on the Wire</title>
-    <meta name="description" content="No code changes: two observation points inside a running go-redis client show that one HSet is six ordered tokens on the wire — and that a Go monotonic clock reading got stored in Redis.">
+    <title>Five lines of Go in a loop, 3,400 tokens on the wire | CodeBull</title>
+    <meta name="description" content="Probes from the command entry all the way down to the line that writes a token, on a running go-redis — no code change, six minutes forty.">
     <meta property="og:type" content="article">
     <meta property="og:site_name" content="CodeBull">
     <meta property="og:locale" content="en_US">
-    <meta property="og:title" content="I watched every token my Redis client put on the wire">
-    <meta property="og:description" content="One line of HSet turns out to be six ordered tokens on the wire — and a plain time.Time stored via SET carried Go's monotonic clock reading straight into Redis.">
+    <meta property="og:title" content="Five lines of Go in a loop, 3,400 tokens on the wire">
+    <meta property="og:description" content="Probes from the command entry all the way down to the line that writes a token, on a running go-redis — no code change, six minutes forty.">
     <meta property="og:url" content="https://0xbu11.github.io/codebull-extension/article-redis-tokens.html">
     <meta property="og:image" content="https://0xbu11.github.io/codebull-extension/asset/og-redis-tokens.png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="627">
     <meta property="og:image:alt" content="I watched every token my Redis client put on the wire">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="I watched every token my Redis client put on the wire">
-    <meta name="twitter:description" content="One line of HSet turns out to be six ordered tokens on the wire — and a plain time.Time stored via SET carried Go's monotonic clock reading straight into Redis.">
+    <meta name="twitter:title" content="Five lines of Go in a loop, 3,400 tokens on the wire">
+    <meta name="twitter:description" content="Probes from the command entry all the way down to the line that writes a token, on a running go-redis — no code change, six minutes forty.">
     <meta name="twitter:image" content="https://0xbu11.github.io/codebull-extension/asset/og-redis-tokens.png">
     <link rel="stylesheet" href="style.css?v=16">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -61,179 +61,333 @@
             <div class="container">
                 <a class="article-back" href="index.html#articles">← Back to articles</a>
                 <span class="article-card-source">Redis · Field Notes</span>
-                <h1>I watched every token my Redis client put on the wire, and found something I shouldn't have stored</h1>
-                <div class="article-meta">
-                    <span>2026-07-24</span>
-                    <span>~5.5 min window / 166 rounds</span>
-                    <span>redis-demo + Redis 7 + go-redis v9</span>
-                </div>
-                <p class="article-lede">A while back I did the same thing I'd done with GORM: without changing a line of code, I picked two spots inside the Redis client of a <strong>running</strong> Go service, attached observation points, and sat down to watch for five minutes.</p>
+                <h1>Five lines of Go in a loop, 3,400 tokens on the wire</h1>
+                <div class="article-meta"><span>2026-08-28</span><span>6m40s window / 1,000 commands / 4 probes</span><span>go-redis v9 + Redis 7</span></div>
+                <p class="article-lede">Probes from the command entry all the way down to the line that writes a token, on a running go-redis — no code change, six minutes forty.</p>
             </div>
         </section>
 
         <section class="article-section">
             <div class="container">
                 <article class="article-body">
-                    <p>You think <code>rdb.HSet(ctx, "user:demo", "name", "CodeBull", "status", "active")</code> sends exactly that one line. But <strong>what actually climbs onto the TCP connection</strong> is a series of tokens, split apart and written out in order. This piece is about the same thing as before — <strong>stand in the right place, pull the values out, and what the client puts on the wire should have been visible all along.</strong></p>
+                    <div class="article-graph-embed"><!-- interactive behaviour graph -->
+<style>.cbg-root{
+  --cbg-bg:#EEF0F2; --cbg-panel:#FFFFFF; --cbg-sunk:#F5F6F8; --cbg-ink:#151B21; --cbg-dim:#5D6B77; --cbg-faint:#8A97A2;
+  --cbg-line:#D8DDE2; --cbg-line-soft:#E7EAEE; --cbg-accent:#2D5C7F; --cbg-accent-soft:#DCE7EF;
+  --cbg-entry:#54646F; --cbg-good:#2F8570; --cbg-money:#A9752A; --cbg-bad:#AE4630;
+  --cbg-shadow:0 1px 2px rgba(21,27,33,.05), 0 10px 26px -16px rgba(21,27,33,.35);
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --cbg-bg:#0E1317; --cbg-panel:#171E24; --cbg-sunk:#121920; --cbg-ink:#E2E8ED; --cbg-dim:#93A2AE; --cbg-faint:#6E7E8A;
+  --cbg-line:#28323A; --cbg-line-soft:#1F272E; --cbg-accent:#6FA5CE; --cbg-accent-soft:#16303F;
+  --cbg-entry:#8898A4; --cbg-good:#4FB79B; --cbg-money:#D7A44F; --cbg-bad:#DC7657;
+  --cbg-shadow:0 1px 2px rgba(0,0,0,.5), 0 12px 30px -18px rgba(0,0,0,.9);
+}}.cbg-root[data-theme="dark"]{
+  --cbg-bg:#0E1317; --cbg-panel:#171E24; --cbg-sunk:#121920; --cbg-ink:#E2E8ED; --cbg-dim:#93A2AE; --cbg-faint:#6E7E8A;
+  --cbg-line:#28323A; --cbg-line-soft:#1F272E; --cbg-accent:#6FA5CE; --cbg-accent-soft:#16303F;
+  --cbg-entry:#8898A4; --cbg-good:#4FB79B; --cbg-money:#D7A44F; --cbg-bad:#DC7657;
+  --cbg-shadow:0 1px 2px rgba(0,0,0,.5), 0 12px 30px -18px rgba(0,0,0,.9);
+}.cbg-root *{box-sizing:border-box}.cbg-root{margin:0;background:var(--cbg-bg);color:var(--cbg-ink);font-family:Archivo,system-ui,"Noto Sans TC",sans-serif;font-size:15px;line-height:1.6}.cbg-root .mono{font-family:"JetBrains Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}.cbg-root .shell{max-width:1300px;margin:0 auto;padding:34px 22px 70px;display:flex;flex-direction:column;gap:20px}.cbg-root header.top{display:flex;flex-direction:column;gap:9px}.cbg-root .tagline{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.cbg-root .badge{font-family:"JetBrains Mono",monospace;font-size:.66rem;letter-spacing:.14em;text-transform:uppercase;padding:3px 8px;border-radius:2px;background:var(--cbg-good);color:#fff}.cbg-root .src{font-family:"JetBrains Mono",monospace;font-size:.72rem;color:var(--cbg-faint)}.cbg-root .eyebrow{font-family:"JetBrains Mono",monospace;font-size:.68rem;letter-spacing:.15em;text-transform:uppercase;color:var(--cbg-faint)}.cbg-root h1{margin:0;font-size:clamp(1.6rem,3.4vw,2.3rem);line-height:1.15;letter-spacing:-.02em;font-weight:700;text-wrap:balance}.cbg-root .sub{color:var(--cbg-dim);max-width:64ch;margin:0}.cbg-root .panel{background:var(--cbg-panel);border:1px solid var(--cbg-line);border-radius:4px;box-shadow:var(--cbg-shadow)}.cbg-root .panel-head{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:11px 16px;border-bottom:1px solid var(--cbg-line-soft)}.cbg-root .panel-title{font-family:"JetBrains Mono",monospace;font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cbg-faint)}.cbg-root .presets{display:flex;gap:6px;flex-wrap:wrap}.cbg-root button{font:inherit;font-size:.8rem;color:var(--cbg-dim);background:var(--cbg-sunk);border:1px solid var(--cbg-line);border-radius:3px;padding:4px 11px;cursor:pointer;transition:background .15s,color .15s,border-color .15s}.cbg-root button:hover{color:var(--cbg-ink);border-color:var(--cbg-accent)}.cbg-root button[aria-pressed="true"]{background:var(--cbg-accent);border-color:var(--cbg-accent);color:#fff}.cbg-root :focus-visible{outline:2px solid var(--cbg-accent);outline-offset:2px}.cbg-root #cbg-timeline{padding:14px 16px 10px}.cbg-root #cbg-tl{display:block;width:100%;height:104px;cursor:crosshair;touch-action:none;user-select:none}.cbg-root .tl-legend{display:flex;gap:18px;flex-wrap:wrap;margin-top:8px;font-size:.78rem;color:var(--cbg-dim)}.cbg-root .tl-legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}.cbg-root .readout{display:flex;gap:22px;flex-wrap:wrap;align-items:baseline;padding:10px 16px;border-top:1px solid var(--cbg-line-soft);font-size:.85rem;color:var(--cbg-dim)}.cbg-root .readout b{color:var(--cbg-ink);font-family:"JetBrains Mono",monospace;font-weight:500}.cbg-root #cbg-graph{position:relative;padding:22px 16px 18px;overflow-x:auto}.cbg-root #cbg-stage{position:relative}.cbg-root #cbg-wires{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none}.cbg-root .node{position:absolute;width:300px;background:var(--cbg-panel);border:1px solid var(--cbg-line);border-radius:4px;box-shadow:var(--cbg-shadow);overflow:hidden}.cbg-root .node.entry{border-top:3px solid var(--cbg-entry)}.cbg-root .node.good{border-top:3px solid var(--cbg-good)}.cbg-root .node.money{border-top:3px solid var(--cbg-money)}.cbg-root .node.bad{border-top:3px solid var(--cbg-bad)}.cbg-root .nhead{padding:10px 13px 8px;border-bottom:1px solid var(--cbg-line-soft)}.cbg-root .nhead h3{margin:0;font-size:1.02rem;font-weight:600;letter-spacing:-.01em}.cbg-root .why{font-size:.78rem;color:var(--cbg-dim);line-height:1.4}.cbg-root .probes{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}.cbg-root .probe{font-family:"JetBrains Mono",monospace;font-size:.6rem;letter-spacing:.06em;text-transform:uppercase;padding:2px 6px;border-radius:2px;border:1px solid var(--cbg-line);color:var(--cbg-dim);background:var(--cbg-sunk)}.cbg-root .probe.log{color:var(--cbg-accent);border-color:var(--cbg-accent-soft);background:var(--cbg-accent-soft)}.cbg-root .probe.latency{color:var(--cbg-money)}.cbg-root .slot{padding:9px 13px;border-top:1px solid var(--cbg-line-soft)}.cbg-root .slot-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-family:"JetBrains Mono",monospace;font-size:.6rem;letter-spacing:.13em;text-transform:uppercase;color:var(--cbg-faint)}.cbg-root .big{font-family:"JetBrains Mono",monospace;font-size:1.5rem;font-weight:500;line-height:1.1;font-variant-numeric:tabular-nums}.cbg-root .unit{font-size:.72rem;color:var(--cbg-dim);font-family:Archivo,sans-serif;margin-left:4px}.cbg-root .spark{display:block;width:100%;height:34px;margin-top:5px}.cbg-root .lat{display:flex;gap:16px;align-items:baseline;margin-top:3px}.cbg-root .lat div{display:flex;gap:5px;align-items:baseline}.cbg-root .lat .k{font-family:"JetBrains Mono",monospace;font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:var(--cbg-faint)}.cbg-root .lat .v{font-family:"JetBrains Mono",monospace;font-size:1.02rem;font-variant-numeric:tabular-nums}.cbg-root .shape{margin-top:7px}.cbg-root .shape-row{display:flex;justify-content:space-between;gap:8px;font-size:.74rem;margin-bottom:2px}.cbg-root .shape-row .t{font-family:"JetBrains Mono",monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.cbg-root .shape-row .n{font-family:"JetBrains Mono",monospace;color:var(--cbg-dim);white-space:nowrap}.cbg-root .shape-row.new .t{color:var(--cbg-bad);font-weight:500}.cbg-root .bar{height:5px;border-radius:2px;background:var(--cbg-line-soft);overflow:hidden;margin-bottom:8px}.cbg-root .bar i{display:block;height:100%;border-radius:2px}.cbg-root .flame{display:flex;flex-direction:column;gap:5px;margin-top:7px}.cbg-root .chain{display:flex;height:17px;border-radius:2px;overflow:hidden;background:var(--cbg-line-soft)}.cbg-root .chain span{display:flex;align-items:center;padding:0 5px;font-family:"JetBrains Mono",monospace;font-size:.58rem;color:#fff;white-space:nowrap;overflow:hidden;border-right:1px solid rgba(255,255,255,.28)}.cbg-root .chain span:last-child{border-right:0}.cbg-root .chain-meta{display:flex;justify-content:space-between;font-size:.68rem;color:var(--cbg-dim);font-family:"JetBrains Mono",monospace}.cbg-root .wire{fill:none;stroke:var(--cbg-dim);stroke-width:2}.cbg-root .wire.alert{stroke:var(--cbg-bad);stroke-width:2.8}.cbg-root .wire.calm{stroke:var(--cbg-good);stroke-width:2.4}.cbg-root .wlabel{font-family:"JetBrains Mono",monospace;font-size:11.5px;fill:var(--cbg-ink)}.cbg-root .wsub{font-family:"JetBrains Mono",monospace;font-size:9.5px;fill:var(--cbg-faint)}.cbg-root .wbox{fill:var(--cbg-panel);stroke:var(--cbg-line)}.cbg-root #cbg-edge-list{display:none;flex-direction:column;gap:8px;padding:0 16px 16px}.cbg-root .echip{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;padding:9px 12px;border:1px solid var(--cbg-line);border-left:3px solid var(--cbg-dim);border-radius:3px;background:var(--cbg-sunk);font-size:.82rem}.cbg-root .echip.calm{border-left-color:var(--cbg-good)}.cbg-root .echip.alert{border-left-color:var(--cbg-bad)}.cbg-root .echip b{font-family:"JetBrains Mono",monospace;font-weight:500}.cbg-root .echip .sub{color:var(--cbg-dim);font-size:.76rem;font-family:"JetBrains Mono",monospace}.cbg-root .prose{max-width:40rem;margin:0 auto;padding:6px 22px 26px;font-size:16px;line-height:1.8}.cbg-root .prose h2{font-family:Archivo,sans-serif;font-size:1.35rem;font-weight:700;letter-spacing:-.01em;margin:0 0 14px}.cbg-root .prose h3{font-size:1.02rem;font-weight:600;margin:26px 0 6px}.cbg-root .prose p{margin:0 0 14px;color:var(--cbg-ink)}.cbg-root .prose code{font-family:"JetBrains Mono",monospace;font-size:.86em;background:var(--cbg-sunk);
+  border:1px solid var(--cbg-line);padding:.08em .3em;border-radius:2px}.cbg-root .notes{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));padding:16px}.cbg-root .note h4{margin:0 0 4px;font-size:.9rem}.cbg-root .note p{margin:0;font-size:.84rem;color:var(--cbg-dim)}.cbg-root footer{color:var(--cbg-faint);font-size:.78rem;border-top:1px solid var(--cbg-line);padding-top:14px}
+@media (max-width:900px){ #cbg-stage{min-width:0!important;height:auto!important;display:flex;flex-direction:column;gap:14px}
+.cbg-root .node{position:static!important;width:100%} #cbg-wires{display:none} #cbg-edge-list{display:flex} }.cbg-root{max-width:100%;overflow:hidden}.cbg-root #cbg-graph{max-width:100%;overflow-x:auto}.cbg-root #cbg-timeline,.cbg-root #cbg-readout{max-width:100%}</style>
 
-                    <h2>First decide which layer to stand on</h2>
-                    <p>A Redis client is a layer of middleware: you call <code>rdb.Incr()</code>, and it goes through the public API → hook dispatch → retry loop → connection checkout → RESP encoding → socket write. What your command turns into, and how many layers it passes through, is normally invisible.</p>
-                    <p>So the first decision, again, is: <strong>which layer</strong>. I picked two convergence points, one high and one low:</p>
-                    <ul>
-                        <li><strong>Command layer (<code>redis.(*Client).Process</code>)</strong> — every single-command call in go-redis (<code>Incr</code>, <code>Set</code>, <code>HSet</code>, <code>SAdd</code>, <code>ZAdd</code>…) eventually flows through here. I attached a pure counter to answer "how many commands were sent in total."</li>
-                        <li><strong>Wire layer (<code>proto.(*Writer).string</code>)</strong> — before a command is written into the socket, every string argument (command name, key, field, value) passes through this function on its way out. Here I pulled that string out: <code>token={s}</code>.</li>
-                    </ul>
-                    <p>Picking the second point took some care. I first tried standing a bit higher (the layer that takes <code>interface{}</code> arguments), and the dashboard only showed <code>{type: 0x…, data: 0x…}</code> — the interface header, not the value. Going lower, down to where each string actually gets written out, what I captured was the clean string itself: <code>incr</code>, <code>user:demo</code>, <code>CodeBull</code> — <strong>one at a time, as-is, readable</strong>. I'll come back to this choice with an honest caveat later.</p>
-                    <p>Points attached, the service kept running one round every two seconds (five commands: INCR / SET / HSET / SADD / ZADD), and I started watching.</p>
 
-                    <h2>What the first five minutes showed: one line of Go = a series of ordered tokens on the wire</h2>
-                    <p>The observation window was about five and a half minutes (starting 09:49:58Z, 166 rounds). The command layer recorded <strong>830 commands</strong>; the wire layer recorded <strong>2,822 string tokens</strong>. Unfolded, one line of <code>rdb.HSet(...)</code> is really six tokens written out in order:</p>
-                    <div class="token-chain">
-                        <span class="tok verb">hset</span><span class="sep">→</span>
-                        <span class="tok">user:demo</span><span class="sep">→</span>
-                        <span class="tok">name</span><span class="sep">→</span>
-                        <span class="tok">CodeBull</span><span class="sep">→</span>
-                        <span class="tok">status</span><span class="sep">→</span>
-                        <span class="tok">active</span>
-                    </div>
-                    <p>Every field and value you pass goes on the wire untouched, in the order you gave them. Here's the string composition of all five commands in a round (transcribed verbatim from the dashboard):</p>
-                    <div class="article-table-wrap">
-                        <table>
-                            <thead>
-                                <tr><th>#</th><th>The Go I wrote</th><th>Tokens captured on the dashboard (verbatim, in order)</th><th>Tokens</th></tr>
-                            </thead>
-                            <tbody>
-                                <tr><td>1</td><td><code>rdb.Incr(ctx, "requests_total")</code></td><td><code>incr</code> · <code>requests_total</code></td><td>2</td></tr>
-                                <tr><td>2</td><td><code>rdb.Set(ctx, "last_run", t.String(), 0)</code></td><td><code>set</code> · <code>last_run</code> · <code>&lt;time string&gt;</code></td><td>3</td></tr>
-                                <tr><td>3</td><td><code>rdb.HSet(ctx, "user:demo", ...)</code></td><td><code>hset</code> · <code>user:demo</code> · <code>name</code> · <code>CodeBull</code> · <code>status</code> · <code>active</code></td><td>6</td></tr>
-                                <tr><td>4</td><td><code>rdb.SAdd(ctx, "active_users", "CodeBull")</code></td><td><code>sadd</code> · <code>active_users</code> · <code>CodeBull</code></td><td>3</td></tr>
-                                <tr><td>5</td><td><code>rdb.ZAdd(ctx, "leaderboard", ...)</code></td><td><code>zadd</code> · <code>leaderboard</code> · <code>CodeBull</code></td><td>3</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    <figure class="article-chart">
-                        <p class="chart-title">Five commands per round — but not the same weight on the wire</p>
-                        <p class="chart-subtitle">String tokens each command expands into (17 per round)</p>
-                        <div class="chart-rows">
-                            <div class="chart-row">
-                                <div class="chart-row-label"><code>Incr</code></div>
-                                <div class="chart-bars"><div class="chart-bar-line" title="INCR: 2 string tokens">
-                                    <div class="chart-bar" style="width: 33.3%"></div><span class="chart-value">2</span>
-                                </div></div>
-                            </div>
-                            <div class="chart-row">
-                                <div class="chart-row-label"><code>Set</code></div>
-                                <div class="chart-bars"><div class="chart-bar-line" title="SET: 3 string tokens">
-                                    <div class="chart-bar" style="width: 50%"></div><span class="chart-value">3</span>
-                                </div></div>
-                            </div>
-                            <div class="chart-row">
-                                <div class="chart-row-label"><code>HSet</code></div>
-                                <div class="chart-bars"><div class="chart-bar-line" title="HSET: 6 string tokens">
-                                    <div class="chart-bar" style="width: 100%"></div><span class="chart-value">6</span>
-                                </div></div>
-                            </div>
-                            <div class="chart-row">
-                                <div class="chart-row-label"><code>SAdd</code></div>
-                                <div class="chart-bars"><div class="chart-bar-line" title="SADD: 3 string tokens">
-                                    <div class="chart-bar" style="width: 50%"></div><span class="chart-value">3</span>
-                                </div></div>
-                            </div>
-                            <div class="chart-row">
-                                <div class="chart-row-label"><code>ZAdd</code></div>
-                                <div class="chart-bars"><div class="chart-bar-line" title="ZADD: 3 string tokens (excluding the score, which takes the numeric encoder)">
-                                    <div class="chart-bar" style="width: 50%"></div><span class="chart-value">3</span>
-                                </div></div>
-                            </div>
-                        </div>
-                        <p class="chart-note">Five Go calls that look equivalent differ threefold on the wire — a single <code>HSet</code> takes 6 of the round's 17 tokens. ZADD's count excludes the score: a <code>float64</code> goes through the numeric encoder and never reaches the string exit (more on that below).</p>
-                    </figure>
-                    <p>Every stable token appears <strong>166 times</strong> (matching the round count), and together 17 × 166 = 2,822 — exactly the dashboard total, to the digit. That feeling of "the numbers add up on their own" is what makes observability trustworthy. Up to here it's "interesting but not surprising." What made me sit up straight was that <code>&lt;time string&gt;</code>.</p>
+<div class="cbg-root">
 
-                    <h2>And then I saw what SET was storing</h2>
-                    <p>The demo writes <code>rdb.Set(ctx, "last_run", t.String(), 0)</code>. On the dashboard, that value token reads, verbatim:</p>
-                    <pre class="code-block"><code>2026-07-24 17:55:28.541657555 +0800 +08 m=+402.083349839</code></pre>
-                    <p><strong>Even Go's runtime monotonic clock reading, <code>m=+402.08…</code>, got stuffed into Redis.</strong></p>
-                    <p>What <code>t.String()</code> actually serializes into is something I never think about — it's just "storing a timestamp," right? But laid out verbatim on the dashboard, I could see that what I stored isn't a clean timestamp at all, but <strong>a whole string of Go's internal representation</strong>: wall clock + timezone + monotonic clock reading. Try to compare, sort, or parse that across machines later and all of it breaks (the monotonic reading only means anything inside this process).</p>
-                    <p>This isn't a bug, and nothing errored — it's just <strong>something you thought you knew but had never actually looked at</strong>. That's the value of observability: it doesn't wait for an incident, it lets you <strong>see it the moment it gets stored</strong>.</p>
 
-                    <figure class="article-figure figure-wide">
-                        <a href="https://codebull-dashboard-service.web.app/redis-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">
-                            <img src="asset/redis-tokens-dashboard-logs.webp" alt="CodeBull remote dashboard, Logs tab: Redis wire tokens including a time.Time carrying a monotonic reading" loading="lazy">
-                        </a>
-                        <figcaption>The <strong>Logs</strong> tab: 2,822 token events captured at <code>proto.(*Writer).string</code>, one row per string that actually went on the wire. Line 2776 is the finding — a <code>time.Time</code> written through <code>SET</code>, monotonic reading <code>m=+398.083350707</code> and all. <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/redis-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">Open the live dashboard →</a></span></figcaption>
-                    </figure>
+<section class="panel">
+  <div class="panel-head"><span class="panel-title" id="cbg-tl-title"></span><div class="presets" id="cbg-presets"></div></div>
+  <div id="cbg-timeline">
+    <canvas id="cbg-tl"></canvas>
+    <div class="tl-legend" id="cbg-legend"></div>
+  </div>
+  <div class="readout" id="cbg-readout"></div>
+</section>
 
-                    <h2>An honest caveat: the dashboard doesn't pretend about type boundaries</h2>
-                    <p>Look at the ZADD row. What the dashboard captured is:</p>
-                    <pre class="code-block"><code>zadd · leaderboard · CodeBull</code></pre>
-                    <p>One thing is missing — <strong>the score</strong>. The score in <code>redis.Z{Score: float64(val), ...}</code> is a <code>float64</code>, and numbers take <strong>a different encoder</strong> inside the client (the path that turns them into ASCII bytes), which doesn't pass through my "string" observation point. So in this round I can see <code>zadd</code>, <code>leaderboard</code>, and <code>CodeBull</code> — and I simply <strong>cannot see that score value</strong>.</p>
-                    <p>I could have moved the observation point lower and scooped up the numbers too — but then every line on the dashboard would drag a long byte array behind it and become hard to read. I chose <strong>clean, readable, strings-only</strong>, and I'll tell you honestly: there's a type boundary here — strings are visible, numbers go through another door. <strong>What's visible is visible; what isn't gets labeled as not visible, rather than handing you something that pretends to be complete</strong> — for observability that's arguably the most important quality of all.</p>
-                    <p>One more number that lines up nicely: the string <code>CodeBull</code> appears three times per round (HSET value + SADD member + ZADD member), and the dashboard measured <strong>498</strong> = 3 × 166. The same string put on the wire three times across three data structures — the kind of "you actually sent it three times" fact you'd never notice without laying it out.</p>
+<section class="panel" id="cbg-graph">
+  <div id="cbg-stage"><svg id="cbg-wires"></svg></div>
+  <div id="cbg-edge-list"></div>
+</section>
 
-                    <h2>While we're here, let's reconcile</h2>
-                    <p>Command layer <strong>830</strong>, wire layer <strong>2,822</strong> string tokens. Those two numbers side by side are a health check in themselves: 830 logical commands expanding into 2,822 string tokens, averaging 3.4 strings per command — exactly consistent with "five commands, 17 string tokens per round."</p>
-                    <figure class="article-chart">
-                        <p class="chart-title">Two convergence points, two kinds of "volume"</p>
-                        <p class="chart-subtitle">Observation window 2026-07-24 09:49:58Z → 09:55:28Z (~5.5 minutes / 166 rounds)</p>
-                        <div class="chart-legend">
-                            <span><i></i>Command layer <code>Client.Process</code></span>
-                            <span><i class="s2"></i>Wire layer <code>Writer.string</code></span>
-                        </div>
-                        <div class="chart-rows">
-                            <div class="chart-row">
-                                <div class="chart-row-label">Logical commands</div>
-                                <div class="chart-bars"><div class="chart-bar-line" title="830 commands at the command layer">
-                                    <div class="chart-bar" style="width: 29.4%"></div><span class="chart-value">830</span>
-                                </div></div>
-                            </div>
-                            <div class="chart-row">
-                                <div class="chart-row-label">String tokens</div>
-                                <div class="chart-bars"><div class="chart-bar-line" title="2,822 string tokens at the wire layer">
-                                    <div class="chart-bar s2" style="width: 100%"></div><span class="chart-value">2,822</span>
-                                </div></div>
-                            </div>
-                        </div>
-                        <p class="chart-note">3.4 string tokens per logical command — exactly consistent with "five commands, 17 tokens per round."</p>
-                    </figure>
-                    <p>The day that ratio skews (command count flat, token count exploding), someone has stuffed an unusual number of arguments into a command (a big batch, an oversized HSET field list). With both points running, you don't have to guess — the dashboard has already separated "the command" from "its weight on the wire."</p>
 
-                    <h2>Wrapping up</h2>
-                    <p>I didn't change a line of code, didn't enable the client's debug log, didn't capture tcpdump to decode RESP. I just picked two spots in a running process — the command convergence point and the string exit to the socket — pulled the values out, and watched for five and a half minutes.</p>
-                    <p>What I got: I saw one <code>HSet</code> become six ordered tokens on the wire, saw myself store a whole <code>time.Time</code> with a monotonic clock reading into Redis, saw the same string sent three times per round, and knew exactly which type my observation point could not see.</p>
-                    <p>A client is a black box, but a black box is only "invisible by default," not "impossible to see into." What it puts on the wire should have been visible all along.</p>
 
-                    <h3>Appendix: this round's setup (reproducible)</h3>
-                    <ul>
-                        <li>Convergence points:
-                            <ul>
-                                <li><code>redis.(*Client).Process:706</code> (metric, command count; variable filter keeps only <code>trace_hits</code> so the dashboard stays clean)</li>
-                                <li><code>proto.(*Writer).string:166</code> (log, capturing <code>token={s}</code> — the mandatory path for every string argument written into the socket, rendered as clean readable strings on the dashboard)</li>
-                            </ul>
-                        </li>
-                        <li>Observed service: redis-demo running one round of 5 commands (INCR/SET/HSET/SADD/ZADD) every 2 seconds + Redis 7 (docker, port 6380) + vendored go-redis v9 (<code>redis_pkg/</code>)</li>
-                        <li>Observation window: 2026-07-24 09:49:58Z → 09:55:28Z (~5.5 minutes / 166 rounds); 830 commands, 2,822 string tokens; stable tokens 166 each, <code>CodeBull</code> 498 (3×/round), SET time string 166 (unique each round)</li>
-                        <li>Type boundary: ZADD's float score goes through the numeric encoder (<code>w.int</code>/<code>w.float</code>), not the string exit, so it is <strong>outside the string observation point's field of view</strong> this round — disclosed honestly, not fabricated</li>
-                        <li>This round attached Metric + Log only, with no latency measurement (attaching latency to the client's per-call hot path breaks the observation bridge), so no millisecond figures appear anywhere in this piece</li>
-                    </ul>
+</div>
+<script id="cbg-data" type="application/json">{"mock": false, "title": "go-redis on the way out", "lede": "1,000 commands, six minutes forty.", "source": "article/redis-demo/graph.json · 03:05–03:12 UTC", "window": {"startMs": 1787886340000, "stepMs": 10000, "buckets": 40}, "phases": [], "readout": {"ratios": [{"label": "tokens / command", "num": "Write a token", "den": "Into the client", "tone": "warn"}, {"label": "connections / command", "num": "Borrow a connection", "den": "Into the client", "tone": "good"}], "check": "every command borrows its own connection"}, "nodes": [{"id": "n0", "name": "Write a token", "tone": "entry", "purpose": "What strings actually go onto the wire?", "probes": [{"traceKey": "proto.(*Writer).WriteArg:67", "kind": "log"}], "series": {"hits": [85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85]}, "hitsFull": 3400, "latencyFull": null, "samples": [{"text": "CodeBull", "perBucket": [15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15]}, {"text": "zadd", "perBucket": [5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5]}, {"text": "active", "perBucket": [5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5]}, {"text": "active_users", "perBucket": [5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5]}, {"text": "leaderboard", "perBucket": [5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5]}, {"text": "status", "perBucket": [5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5]}, {"text": "requests_total", "perBucket": [5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5]}, {"text": "sadd", "perBucket": [5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5]}, {"text": "incr", "perBucket": [5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5]}, {"text": "name", "perBucket": [5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5]}], "stacks": [{"frames": ["runtime.goexit", "runtime.main", "main.main", "github.com/redis/redis.cmdable.HSet", "github.com/redis/redis.(*Client).Process-fm", "github.com/redis/redis.(*Client).Process", "github.com/redis/redis.(*hooksMixin).processHook", "github.com/redis/redis.(*baseClient).process-fm", "shadow-github.com/redis/redis.(*baseClient).process", "github.com/redis/redis.(*baseClient)._process", "shadow-github.com/redis/redis.(*baseClient).withConn", "github.com/redis/redis.(*baseClient)._process.func1", "github.com/redis/redis/internal/pool.(*Conn).WithWriter", "github.com/redis/redis.(*baseClient)._process.func1.1", "shadow-github.com/redis/redis.writeCmd", "github.com/redis/redis/internal/proto.(*Writer).WriteArgs", "github.com/redis/redis/internal/proto.(*Writer).WriteArg"], "perBucket": [30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30]}, {"frames": ["runtime.goexit", "runtime.main", "main.main", "github.com/redis/redis.cmdable.Set", "github.com/redis/redis.(*Client).Process-fm", "github.com/redis/redis.(*Client).Process", "github.com/redis/redis.(*hooksMixin).processHook", "github.com/redis/redis.(*baseClient).process-fm", "shadow-github.com/redis/redis.(*baseClient).process", "github.com/redis/redis.(*baseClient)._process", "shadow-github.com/redis/redis.(*baseClient).withConn", "github.com/redis/redis.(*baseClient)._process.func1", "github.com/redis/redis/internal/pool.(*Conn).WithWriter", "github.com/redis/redis.(*baseClient)._process.func1.1", "shadow-github.com/redis/redis.writeCmd", "github.com/redis/redis/internal/proto.(*Writer).WriteArgs", "github.com/redis/redis/internal/proto.(*Writer).WriteArg"], "perBucket": [15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15]}, {"frames": ["runtime.goexit", "runtime.main", "main.main", "github.com/redis/redis.cmdable.ZAdd", "github.com/redis/redis.cmdable.ZAddArgs", "github.com/redis/redis.(*Client).Process-fm", "github.com/redis/redis.(*Client).Process", "github.com/redis/redis.(*hooksMixin).processHook", "github.com/redis/redis.(*baseClient).process-fm", "shadow-github.com/redis/redis.(*baseClient).process", "github.com/redis/redis.(*baseClient)._process", "shadow-github.com/redis/redis.(*baseClient).withConn", "github.com/redis/redis.(*baseClient)._process.func1", "github.com/redis/redis/internal/pool.(*Conn).WithWriter", "github.com/redis/redis.(*baseClient)._process.func1.1", "shadow-github.com/redis/redis.writeCmd", "github.com/redis/redis/internal/proto.(*Writer).WriteArgs", "github.com/redis/redis/internal/proto.(*Writer).WriteArg"], "perBucket": [15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15]}, {"frames": ["runtime.goexit", "runtime.main", "main.main", "github.com/redis/redis.cmdable.SAdd", "github.com/redis/redis.(*Client).Process-fm", "github.com/redis/redis.(*Client).Process", "github.com/redis/redis.(*hooksMixin).processHook", "github.com/redis/redis.(*baseClient).process-fm", "shadow-github.com/redis/redis.(*baseClient).process", "github.com/redis/redis.(*baseClient)._process", "shadow-github.com/redis/redis.(*baseClient).withConn", "github.com/redis/redis.(*baseClient)._process.func1", "github.com/redis/redis/internal/pool.(*Conn).WithWriter", "github.com/redis/redis.(*baseClient)._process.func1.1", "shadow-github.com/redis/redis.writeCmd", "github.com/redis/redis/internal/proto.(*Writer).WriteArgs", "github.com/redis/redis/internal/proto.(*Writer).WriteArg"], "perBucket": [15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15]}, {"frames": ["runtime.goexit", "runtime.main", "main.main", "github.com/redis/redis.cmdable.Incr", "github.com/redis/redis.(*Client).Process-fm", "github.com/redis/redis.(*Client).Process", "github.com/redis/redis.(*hooksMixin).processHook", "github.com/redis/redis.(*baseClient).process-fm", "shadow-github.com/redis/redis.(*baseClient).process", "github.com/redis/redis.(*baseClient)._process", "shadow-github.com/redis/redis.(*baseClient).withConn", "github.com/redis/redis.(*baseClient)._process.func1", "github.com/redis/redis/internal/pool.(*Conn).WithWriter", "github.com/redis/redis.(*baseClient)._process.func1.1", "shadow-github.com/redis/redis.writeCmd", "github.com/redis/redis/internal/proto.(*Writer).WriteArgs", "github.com/redis/redis/internal/proto.(*Writer).WriteArg"], "perBucket": [10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10]}], "x": 1560, "y": 0, "root": false}, {"id": "n1", "name": "Borrow a connection", "tone": "good", "purpose": "Does every command borrow its own connection?", "probes": [{"traceKey": "redis.(*baseClient).withConn:390", "kind": "metric"}], "series": {"hits": [25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25]}, "hitsFull": 1000, "latencyFull": null, "samples": [], "stacks": [{"frames": ["runtime.goexit", "runtime.main", "main.main", "github.com/redis/redis.cmdable.%s", "github.com/redis/redis.(*Client).Process-fm", "github.com/redis/redis.(*Client).Process", "github.com/redis/redis.(*hooksMixin).processHook", "github.com/redis/redis.(*baseClient).process-fm", "shadow-github.com/redis/redis.(*baseClient).process", "github.com/redis/redis.(*baseClient)._process", "github.com/redis/redis.(*baseClient).withConn"], "perBucket": [5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5]}], "x": 520, "y": 0, "root": false}, {"id": "n2", "name": "Encode the command", "tone": "money", "purpose": "How many times is a command encoded as RESP?", "probes": [{"traceKey": "redis.writeCmd:75", "kind": "metric"}], "series": {"hits": [25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25]}, "hitsFull": 1000, "latencyFull": null, "samples": [], "stacks": [], "x": 1040, "y": 0, "root": false}, {"id": "n3", "name": "Into the client", "tone": "bad", "purpose": "How many commands do those five lines become? How long is one round trip?", "probes": [{"traceKey": "redis.(*baseClient).process:410", "kind": "metric"}, {"traceKey": "redis.(*baseClient).process:411", "kind": "latency"}], "series": {"hits": [25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25], "latencyP50": [4.211, 4.054, 4.242, 4.254, 4.539, 4.012, 3.805, 3.953, 3.959, 5.357, 4.414, 6.616, 6.736, 5.953, 4.883, 6.29, 6.431, 5.802, 6.167, 6.51, 5.058, 4.491, 4.231, 4.108, 4.261, 4.041, 3.928, 4.002, 3.915, 3.801, 3.932, 3.923, 3.895, 3.877, 4.129, 3.963, 4.016, 3.963, 4.281, 4.015], "latencyP95": [12.735, 13.045, 12.298, 12.54, 13.311, 12.988, 13.612, 13.139, 13.275, 16.543, 12.226, 12.861, 17.999, 12.819, 13.159, 13.752, 12.679, 12.426, 12.693, 12.25, 12.597, 12.468, 12.259, 11.822, 12.607, 11.969, 12.591, 12.428, 13.103, 13.071, 12.41, 12.278, 12.717, 12.866, 12.383, 12.772, 13.266, 13.028, 12.731, 12.658]}, "hitsFull": 1000, "latencyFull": {"count": 1050, "p50": 4.293, "p95": 12.919, "p99": 14.046, "max": 22.684}, "samples": [], "stacks": [], "x": 0, "y": 0, "root": true}], "edges": [{"from": "n2", "to": "n0", "countPerBucket": [85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85, 85], "countFull": 3400, "fanoutFull": 3.4, "gap": 1, "gapLabel": "1", "gapIn": ["proto.(*Writer).WriteArgs"], "alert": null}, {"from": "n1", "to": "n2", "countPerBucket": [25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25], "countFull": 1000, "fanoutFull": 1, "gap": 3, "gapLabel": "3", "gapIn": ["redis.(*baseClient)._process", "pool.(*Conn).WithWriter", "redis.(*baseClient)._process"], "alert": null}, {"from": "n3", "to": "n1", "countPerBucket": [25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25], "countFull": 1000, "fanoutFull": 1, "gap": 1, "gapLabel": "1", "gapIn": ["redis.(*baseClient)._process"], "alert": null}], "notes": []}</script>
+<script>(function(){
 
-                    <figure class="article-figure figure-wide">
-                        <a href="https://codebull-dashboard-service.web.app/redis-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">
-                            <img src="asset/redis-tokens-dashboard-metrics.webp" alt="CodeBull remote dashboard, Metrics tab: entry hit counter for redis.(*Client).Process" loading="lazy">
-                        </a>
-                        <figcaption>The <strong>Metrics</strong> tab: the entry counter on <code>redis.(*Client).Process</code> over the same five minutes — the command-level number that the 2,822 wire tokens above are reconciled against. <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/redis-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">Open the live dashboard →</a></span></figcaption>
-                    </figure>
+const D = JSON.parse(document.getElementById("cbg-data").textContent);
+const NB = D.window.buckets, STEP = D.window.stepMs, T0 = D.window.startMs;
+const N = Object.fromEntries(D.nodes.map(n => [n.id, n]));
+const TONE = { entry:"--cbg-entry", good:"--cbg-good", money:"--cbg-money", bad:"--cbg-bad" };
+const css = v => getComputedStyle(document.querySelector(".cbg-root")).getPropertyValue(v).trim();
+const sum = (a,f,t) => a.slice(f,t).reduce((x,y)=>x+y,0);
+const fmt = n => Math.round(n).toLocaleString("en-US");
+const ms = (v) => (v >= 10 ? v.toFixed(0) : v >= 1 ? v.toFixed(1) : v.toFixed(2));
+const clock = b => new Date(T0 + b*STEP).toISOString().slice(11,16);
+// github.com/gin-gonic/gin.(*Engine).ServeHTTP → ServeHTTP. Taking the last
+// dot-segment alone leaves "func1" for every closure, and taking the last path
+// segment alone leaves the whole package prefix.
+const shortFn = (s) => {
+  // Generic type arguments carry dots of their own — NewCache[...].gowrap1 —
+  // so they come off before anything splits on ".".
+  const noGeneric = s.replace(/\[[^\]]*\]/g, "");
+  const noRecv = noGeneric.split("/").pop().replace(/\(\*?[^)]*\)\./g, "");
+  const parts = noRecv.split(".").filter(Boolean);
+  // A closure carries the name of the function it was written in, and can carry
+  // several suffixes at once: serveStreams.func2.1, NewFIFOScheduler.gowrap1.
+  while (parts.length > 1 && /^(func\d+|gowrap\d+|\d+)$/.test(parts[parts.length - 1])) parts.pop();
+  return parts[parts.length - 1];
+};
+let sel = { from:0, to:NB };
 
-                    <div class="article-callout">
-                        <p>📊 <strong>Remote dashboard for this article</strong> (real measured data, viewable online): <a href="https://codebull-dashboard-service.web.app/redis-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">redis-observing-runtime-20260724</a></p>
-                        <p>Every token and every count above can be reconciled verbatim on the <strong>Logs</strong> tab of that dashboard; the <strong>Metrics</strong> tab holds the hit counter for the command convergence point.</p>
-                    </div>
+/* children of an edge target = what the timeline stacks */
+const hasOut = new Set(D.edges.map(e => e.from));
+/* The ends of the graph: nodes nothing leads away from. Stacking those counts
+   each piece of work once, and an island — a step reached on its own goroutine,
+   with no edge at all — is an end like any other, so it stays on the timeline. */
+const leaves = D.nodes.filter(n => !hasOut.has(n.id)).map(n => n.id);
 
-                    <div class="article-footnote">
-                        <p>The "no code changes, attach observation points to a running process, then watch" part of this piece was done with <strong>CodeBull</strong> — a VS Code extension that dynamically injects Metric / Log / Latency observation points into running Go services: no source edits, no recompile, no restart. That SET storing a monotonic clock reading into Redis is exactly how I caught it live.</p>
-                        <p><em>Every token and every number here comes from CodeBull's measurements against the running redis-demo service, and can be reconciled online via the dashboard link above.</em></p>
-                        <p><a class="btn" href="https://marketplace.visualstudio.com/items?itemName=0xbu11.codebull" target="_blank" rel="noopener noreferrer">Install CodeBull</a></p>
-                    </div>
+{ const _e = document.getElementById("cbg-title"); if (_e) _e.textContent = D.title; }
+{ const _e = document.getElementById("cbg-lede"); if (_e) _e.textContent = D.lede; }
+{ const _e = document.getElementById("cbg-src"); if (_e) _e.textContent = D.source ?? ""; }
+{ const _e = document.getElementById("cbg-eyebrow"); if (_e) _e.textContent = "Behavior Graph · " + D.nodes.length + " nodes · " +
+  D.nodes.reduce((a,n)=>a+n.probes.length,0) + " probes"; }
+document.getElementById("cbg-tl-title").textContent =
+  `Timeline · ${STEP/1000}s per bucket · ${Math.round(NB*STEP/60000)} minutes`;
+document.getElementById("cbg-legend").innerHTML =
+  leaves.map(id => `<span><i style="background:var(${TONE[N[id].tone]})"></i>${N[id].name}</span>`).join("") +
+  `<span><i style="background:var(--bad);opacity:.28"></i>selection</span>
+   <span style="color:var(--faint)">drag on the chart to select any span</span>`;
+
+/* ── stage ─────────────────────────────────────────────── */
+const stage = document.getElementById("cbg-stage");
+D.nodes.forEach(n => {
+  const el = document.createElement("div");
+  el.className = "node " + n.tone; el.id = "cbg-node-" + n.id;
+  el.style.left = n.x + "px"; el.style.top = n.y + "px";
+  stage.appendChild(el);
+});
+stage.style.minWidth = (Math.max(...D.nodes.map(n=>n.x)) + 320) + "px";
+
+/* ── timeline ──────────────────────────────────────────── */
+const cv = document.getElementById("cbg-tl"), ctx = cv.getContext("2d");
+function drawTimeline(){
+  const dpr = devicePixelRatio||1, w = cv.clientWidth, h = cv.clientHeight;
+  cv.width = w*dpr; cv.height = h*dpr; ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,h);
+  const stacks = leaves.map(id => N[id].series.hits);
+  const peak = Math.max(...Array.from({length:NB}, (_,i) => stacks.reduce((a,s)=>a+s[i],0))) * 1.1;
+  const bw = w/NB;
+  D.phases.forEach((p,i) => { if (i%2) { ctx.fillStyle = css("--cbg-sunk");
+    ctx.fillRect(p.fromBucket*bw, 0, (p.toBucket-p.fromBucket)*bw, h); } });
+  for (let i=0;i<NB;i++){
+    let acc = 0;
+    stacks.forEach((s,si) => {
+      const hh = (s[i]/peak)*h;
+      ctx.fillStyle = css(TONE[N[leaves[si]].tone]); ctx.globalAlpha = .88;
+      ctx.fillRect(i*bw, h-acc-hh, Math.max(bw-.4,.6), hh); acc += hh;
+    });
+  }
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = css("--cbg-bad"); ctx.globalAlpha = .15;
+  ctx.fillRect(sel.from*bw, 0, (sel.to-sel.from)*bw, h); ctx.globalAlpha = 1;
+  ctx.strokeStyle = css("--cbg-bad"); ctx.lineWidth = 1.5; ctx.beginPath();
+  ctx.moveTo(sel.from*bw,0); ctx.lineTo(sel.from*bw,h);
+  ctx.moveTo(sel.to*bw,0); ctx.lineTo(sel.to*bw,h); ctx.stroke();
+  ctx.font = '500 10px "JetBrains Mono", monospace'; ctx.fillStyle = css("--cbg-faint");
+  D.phases.forEach(p => ctx.fillText(p.label, p.fromBucket*bw+5, 12));
+}
+let dragging = false, anchor = 0;
+const bucketAt = ev => { const r = cv.getBoundingClientRect();
+  return Math.max(0, Math.min(NB, Math.round(((ev.clientX-r.left)/r.width)*NB))); };
+cv.addEventListener("pointerdown", e => { dragging = true; anchor = bucketAt(e); cv.setPointerCapture(e.pointerId); });
+cv.addEventListener("pointermove", e => { if(!dragging) return;
+  const b = bucketAt(e); sel = { from:Math.min(anchor,b), to:Math.max(anchor,b) };
+  if (sel.to - sel.from < 2) sel.to = Math.min(NB, sel.from+2); render(); });
+addEventListener("pointerup", () => { if(dragging){ dragging = false; syncPresets(); } });
+
+// A real window arrives without authored phases. Thirds are not a claim about
+// the run — they are a fast way to ask "did this move", which is the only
+// reason the timeline is here.
+const PRESETS = D.phases.length
+  ? [{label:"All",from:0,to:NB}, ...D.phases.map(p=>({label:p.label,from:p.fromBucket,to:p.toBucket}))]
+  : [{label:"All",from:0,to:NB},
+     {label:"First third",from:0,to:Math.round(NB/3)},
+     {label:"Middle",from:Math.round(NB/3),to:Math.round(2*NB/3)},
+     {label:"Last third",from:Math.round(2*NB/3),to:NB}];
+const pbox = document.getElementById("cbg-presets");
+PRESETS.forEach((p,i) => { const b = document.createElement("button"); b.textContent = p.label;
+  b.onclick = () => { sel = {from:p.from,to:p.to}; render(); syncPresets(); }; pbox.appendChild(b); });
+const syncPresets = () => [...pbox.children].forEach((b,i) =>
+  b.setAttribute("aria-pressed", String(PRESETS[i].from===sel.from && PRESETS[i].to===sel.to)));
+
+/* ── node cards ────────────────────────────────────────── */
+function spark(series, cvar, hi){
+  const w = 274, h = 34, max = Math.max(...series, 1);
+  const pts = series.map((v,i) => `${(i/(series.length-1))*w},${h-(v/max)*(h-3)-1.5}`).join(" ");
+  const x1 = (sel.from/series.length)*w, x2 = (sel.to/series.length)*w;
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
+    <rect x="${x1}" y="0" width="${Math.max(x2-x1,1)}" height="${h}" fill="var(${hi||cvar})" opacity=".14"/>
+    <polyline points="${pts}" fill="none" stroke="var(${cvar})" stroke-width="1.4" stroke-linejoin="round"/></svg>`;
+}
+function renderNode(n){
+  const cvar = TONE[n.tone];
+  const whole = sel.from === 0 && sel.to === NB;
+  const total = whole && n.hitsFull != null ? n.hitsFull : sum(n.series.hits, 0, NB);
+  const hits = whole && n.hitsFull != null ? n.hitsFull : sum(n.series.hits, sel.from, sel.to);
+  const mins = ((sel.to-sel.from)*STEP)/60000;
+  let lat = "";
+  if (n.series.latencyP50){
+    const win = a => a.slice(sel.from, sel.to);
+    const avg = a => { const v = a.filter(x => x > 0); return v.length ? v.reduce((x,y)=>x+y,0)/v.length : 0; };
+    // Over the whole window the reservoir's own percentiles are the honest
+    // answer. Over a sub-range there is no reservoir, so the per-bucket
+    // percentiles are averaged — which is not a percentile of the range, and
+    // the caption says so rather than letting the number pass as one.
+    const whole = sel.from === 0 && sel.to === NB && n.latencyFull;
+    const p50 = whole ? n.latencyFull.p50 : avg(win(n.series.latencyP50));
+    const p95 = whole ? n.latencyFull.p95 : avg(win(n.series.latencyP95));
+    const worst = Math.max(...n.series.latencyP95);
+    lat = `<div class="slot"><div class="slot-h"><span>latency · latency probe</span><span>${whole ? "whole-window percentiles" : "mean of per-bucket percentiles"}</span></div>
+      <div class="lat"><div><span class="k">p50</span><span class="v">${ms(p50)}<span class="unit">ms</span></span></div>
+      <div><span class="k">p95</span><span class="v" style="color:${p95>worst*.6?"var(--bad)":"inherit"}">${ms(p95)}<span class="unit">ms</span></span></div></div>
+      ${spark(n.series.latencyP95, cvar, "--cbg-bad")}</div>`;
+  }
+  const shapeAll = n.samples.reduce((a,s)=>a+sum(s.perBucket,sel.from,sel.to),0) || 1;
+  const shapes = n.samples.map(s => {
+    const v = sum(s.perBucket, sel.from, sel.to);
+    if (v === 0) return "";
+    const pct = v/shapeAll*100;
+    // a shape absent from the first tenth of the window is new behaviour, not background
+    const isNew = sum(s.perBucket, 0, Math.floor(NB/10)) === 0;
+    return `<div class="shape"><div class="shape-row ${isNew?"new":""}">
+        <span class="t" title="${s.text}">${isNew?"▲ ":""}${s.text}</span><span class="n">${pct.toFixed(0)}% · ${fmt(v)}</span></div>
+      <div class="bar"><i style="width:${pct}%;background:var(${isNew?"--cbg-bad":cvar})"></i></div></div>`;
+  }).join("") || `<p class="why" style="margin-top:6px">nothing captured in this span</p>`;
+
+  const chainAll = n.stacks.reduce((a,s)=>a+sum(s.perBucket,sel.from,sel.to),0) || 1;
+  const flame = n.stacks.map(s => {
+    const v = sum(s.perBucket, sel.from, sel.to); if (!v) return "";
+    const share = v/chainAll*100;
+    const MAX_FRAMES = 5;
+    // The outermost frames are where the goroutine started, and that is what
+    // tells two islands apart — so the head stays visible and the middle folds.
+    const head = s.frames.length > MAX_FRAMES ? s.frames.slice(0, 2) : [];
+    const tail = s.frames.slice(head.length ? head.length - MAX_FRAMES : 0);
+    const hidden = s.frames.length - head.length - tail.length;
+    const chip = (f, i) =>
+      `<span style="flex:1;background:color-mix(in srgb, var(${cvar}) ${90-i*12}%, #000 10%)" title="${f}">${shortFn(f)}</span>`;
+    const cells =
+      head.map(chip).join("") +
+      (hidden > 0
+        ? `<span style="flex:0 0 auto;background:var(--line);color:var(--dim)" title="${s.frames.slice(head.length, head.length + hidden).join(" < ")}">+${hidden}</span>`
+        : "") +
+      tail.map((f, i) => chip(f, i + head.length)).join("");
+    return `<div><div class="chain" style="width:${Math.max(share,55)}%">${cells}</div>
+      <div class="chain-meta"><span>${share.toFixed(0)}% take this path</span><span>${fmt(v)}</span></div></div>`;
+  }).join("");
+
+  document.getElementById("cbg-node-"+n.id).innerHTML = `
+    <div class="nhead"><h3>${n.name}</h3><div class="why">${n.purpose}</div>
+      <div class="probes">${n.probes.map(p=>`<span class="probe ${p.kind}">${p.kind}</span>`).join("")}
+        <span class="probe">${n.probes.length} probe</span>
+        ${n.root ? '<span class="probe" title="no instrumented caller on the stack">root</span>' : ""}</div></div>
+    <div class="slot"><div class="slot-h"><span>hits · metric</span><span>${(hits/total*100).toFixed(0)}% of ${fmt(total)}</span></div>
+      <div class="big">${fmt(hits)}<span class="unit"> · ${(hits/mins).toFixed(0)}/min</span></div>${spark(n.series.hits, cvar)}</div>
+    ${lat}
+    <div class="slot"><div class="slot-h"><span>captured · log</span><span>${n.samples.length} shapes</span></div>${shapes}</div>
+    <div class="slot"><div class="slot-h"><span>paths here · stacks</span><span>${n.stacks.length} chains</span></div>
+      <div class="flame">${flame}</div></div>`;
+}
+
+/* ── edges ─────────────────────────────────────────────── */
+function edgeFacts(e){
+  const whole = sel.from === 0 && sel.to === NB;
+  const parent = sum(N[e.from].series.hits, sel.from, sel.to);
+  const series = sum(e.countPerBucket, sel.from, sel.to);
+  const n = whole && e.countFull != null ? e.countFull : series;
+  const f = whole && e.fanoutFull != null ? e.fanoutFull : (parent ? series/parent : 0);
+  const approx = !whole;
+  return { n, f, parent, approx, alert: e.alert != null && f > e.alert,
+    sub: e.gap > 0
+      ? `${e.gapLabel ?? e.gap} unobserved · ${e.gapIn.map(shortFn).join(" · ") || "(names not recorded)"}`
+      : "direct call, nothing skipped" };
+}
+function renderEdges(){
+  document.getElementById("cbg-edge-list").innerHTML = D.edges.map(e => { const f = edgeFacts(e);
+    return `<div class="echip ${f.alert?"alert":(e.gap===0?"calm":"")}"><b>${N[e.from].name} → ${N[e.to].name}</b>
+      <b style="color:${f.alert?"var(--bad)":"var(--ink)"}">${f.approx?"≈":""}×${f.f.toFixed(2)}</b>
+      <span class="sub">${fmt(f.n)} ÷ ${fmt(f.parent)}</span><span class="sub">${f.sub}</span></div>`; }).join("");
+
+  const svg = document.getElementById("cbg-wires");
+  if (getComputedStyle(svg).display === "none") return;
+  const s = stage.getBoundingClientRect();
+  const box = id => { const r = document.getElementById("cbg-node-"+id).getBoundingClientRect();
+    return { x:r.left-s.left, y:r.top-s.top, w:r.width, h:r.height }; };
+  let out = ["","alert","calm"].map(k => `<marker id="ah${k}" viewBox="0 0 10 10" refX="9" refY="5"
+      markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"
+      fill="var(${k==="alert"?"--cbg-bad":k==="calm"?"--cbg-good":"--cbg-dim"})"/></marker>`).join("");
+  out = `<defs>${out}</defs>`;
+  D.edges.forEach(e => {
+    const a = box(e.from), b = box(e.to);
+    const x1 = a.x+a.w, y1 = a.y+70, x2 = b.x-9, y2 = b.y+70, mx = (x1+x2)/2, ty = (y1+y2)/2;
+    const f = edgeFacts(e);
+    const kind = f.alert ? "alert" : (e.gap === 0 ? "calm" : "");
+    out += `<path class="wire ${kind}" marker-end="url(#ah${kind})"
+      d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}" ${e.gap>0?'stroke-dasharray="6 5"':""}/>`;
+    const w = Math.min(Math.max(f.sub.length*6.2+20, 160), x2-x1-10);
+    out += `<rect class="wbox" x="${mx-w/2}" y="${ty-20}" width="${w}" height="40" rx="3"/>
+      <text class="wlabel" x="${mx}" y="${ty-3}" text-anchor="middle" fill="${f.alert?"var(--bad)":"var(--ink)"}">${f.approx?"≈":""}×${f.f.toFixed(2)} · ${fmt(f.n)} calls</text>
+      <text class="wsub" x="${mx}" y="${ty+12}" text-anchor="middle">${f.sub}</text>`;
+  });
+  svg.innerHTML = out;
+  stage.style.height = (Math.max(...D.nodes.map(n => box(n.id).y + box(n.id).h)) + 8) + "px";
+}
+
+/* ── readout ───────────────────────────────────────────── */
+function renderReadout(){
+  const val = (name) => {
+    const n = D.nodes.find((x) => x.name === name);
+    if (!n) return 0;
+    return sel.from === 0 && sel.to === NB && n.hitsFull != null
+      ? n.hitsFull
+      : sum(n.series.hits, sel.from, sel.to);
+  };
+  const a = D.nodes[0];
+  const parts = [`<span>Selected <b>${clock(sel.from)}–${clock(sel.to)}</b> (${((sel.to-sel.from)*STEP/60000).toFixed(1)} min)</span>`,
+    `<span>${a.name} <b>${fmt(val(a.name))}</b></span>`];
+  D.readout.ratios.forEach(r => {
+    const v = val(r.den) ? val(r.num)/val(r.den)*100 : 0;
+    parts.push(`<span>${r.label} <b style="color:var(${r.tone==="good"?"--cbg-good":"--cbg-money"})">${v.toFixed(0)}%</b></span>`);
+  });
+  const lnode = D.nodes.find(n => n.series.latencyP95);
+  if (lnode){ const whole = sel.from === 0 && sel.to === NB;
+    const w = lnode.series.latencyP95.slice(sel.from, sel.to).filter(v => v > 0);
+    const p95 = whole && lnode.latencyFull ? lnode.latencyFull.p95 : w.reduce((x,y)=>x+y,0)/(w.length||1);
+    const worst = Math.max(...lnode.series.latencyP95);
+    parts.push(`<span>${lnode.name} p95 <b style="color:${p95>worst*.6?"var(--bad)":"inherit"}">${ms(p95)} ms</b></span>`); }
+  parts.push(`<span style="color:var(--faint)">${D.readout.check}</span>`);
+  document.getElementById("cbg-readout").innerHTML = parts.join("");
+}
+
+const notesEl = document.getElementById("cbg-notes");
+if (notesEl) notesEl.innerHTML = (D.notes||[]).map(n =>
+  `<div class="note"><h4>${n.h}</h4><p>${n.p}</p></div>`).join("");
+
+function render(){ drawTimeline(); D.nodes.forEach(renderNode); renderReadout();
+  requestAnimationFrame(renderEdges); }
+addEventListener("resize", render);
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
+render(); syncPresets();
+
+})();</script>
+</div>
+                    <h2>×3.4: commands and tokens are not the same unit</h2>
+                    <p>The loop runs five lines of Go every two seconds. Over the window that came to <strong>1,000 commands</strong> and <strong>3,400 tokens</strong> written onto the connection. <code>×3.4</code> appears in no line of code — it is the average number of arguments a command carries, and argument count is a property of the data, not of the program.</p>
+                    <h2>One value, written three times a round</h2>
+                    <p>The <strong>Write a token</strong> node ranks the captured strings by how often they appeared: <code>CodeBull</code> at 600, three times any other token. Three different commands — HSET, SADD, ZADD — each wrote it once per round. To see that, you have to stand on the line that does the writing, not on the caller.</p>
+                    <h2>Three frames unobserved, and the graph names them</h2>
+                    <p>The edge from <strong>Borrow a connection</strong> to <strong>Encode the command</strong> is labelled 3 unobserved and lists <code>_process.func1</code>, <code>pool.(*Conn).WithWriter</code>, <code>_process.func1.1</code>. Connection borrowing itself is <code>×1</code>: every command takes its own, none shared and none leaked. Across the window p50 was 4.3ms and p95 12.9ms.</p>
                 </article>
             </div>
         </section>

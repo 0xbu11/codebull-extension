@@ -4,21 +4,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CodeBull - I Counted a Running gin for Ten Minutes</title>
-    <meta name="description" content="No code changes: five observation points inside a running gin, one path driven to five different endings. For two of those minutes, 120 requests were served without my middleware chain being entered once — and the service's own access log has nothing at all for that stretch.">
+    <title>How many times does my middleware chain advance per request? | CodeBull</title>
+    <meta name="description" content="Four probes inside a running gin service, no code change, six and a half minutes of watching — and the numbers answer for themselves.">
     <meta property="og:type" content="article">
     <meta property="og:site_name" content="CodeBull">
     <meta property="og:locale" content="en_US">
-    <meta property="og:title" content="I counted a running gin for ten minutes, and for two of them my middleware was never called">
-    <meta property="og:description" content="One path, five endings: the chain is re-entered 4, 4, 4, 3 and 0 times per request. That last zero is 120 requests that never reached the chain — and the cost differences I thought I had measured were 77-94% my own probes.">
+    <meta property="og:title" content="How many times does my middleware chain advance per request?">
+    <meta property="og:description" content="Four probes inside a running gin service, no code change, six and a half minutes of watching — and the numbers answer for themselves.">
     <meta property="og:url" content="https://0xbu11.github.io/codebull-extension/article-gin-middleware.html">
     <meta property="og:image" content="https://0xbu11.github.io/codebull-extension/asset/og-site.png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="627">
     <meta property="og:image:alt" content="I counted a running gin for ten minutes, and for two of them my middleware was never called">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="I counted a running gin for ten minutes, and for two of them my middleware was never called">
-    <meta name="twitter:description" content="One path, five endings: the chain is re-entered 4, 4, 4, 3 and 0 times per request. That last zero is 120 requests that never reached the chain.">
+    <meta name="twitter:title" content="How many times does my middleware chain advance per request?">
+    <meta name="twitter:description" content="Four probes inside a running gin service, no code change, six and a half minutes of watching — and the numbers answer for themselves.">
     <meta name="twitter:image" content="https://0xbu11.github.io/codebull-extension/asset/og-site.png">
     <link rel="stylesheet" href="style.css?v=17">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -61,251 +61,334 @@
             <div class="container">
                 <a class="article-back" href="index.html#articles">← Back to articles</a>
                 <span class="article-card-source">gin · Field Notes</span>
-                <h1>I counted a running gin for ten minutes, and for two of them my middleware was never called</h1>
-                <div class="article-meta">
-                    <span>2026-07-28</span>
-                    <span>10 min window / 600 requests / 5 observation points</span>
-                    <span>gin v1.12.0</span>
-                </div>
-                <p class="article-lede">Without changing a single line of code, I attached five observation points inside a <strong>running</strong> gin and watched for ten minutes — driving one and the same path to five different endings.</p>
+                <h1>How many times does my middleware chain advance per request?</h1>
+                <div class="article-meta"><span>2026-08-28</span><span>6.5-minute window / 1,512 requests / 4 probes</span><span>gin v1.12.0</span></div>
+                <p class="article-lede">Four probes inside a running gin service, no code change, six and a half minutes of watching — and the numbers answer for themselves.</p>
             </div>
         </section>
 
         <section class="article-section">
             <div class="container">
                 <article class="article-body">
-                    <p>The question I was after is a dumb one: <strong>when a request comes in, how many times does my middleware chain actually get called?</strong> But this time I didn't just throw traffic at it. I made the same path, <code>/health</code>, produce five different endings: normal, no such route, wrong method, no token, one extra slash. Two minutes per ending, one request per second, nothing else changed in between.</p>
-                    <p>Ten minutes later, those five endings read like this on the panel: four, four, four, three — and then <strong>zero</strong>. For those last two minutes the service still took 120 requests and still answered every one of them, but not a single layer of my middleware ran, and the service's own access log has <strong>nothing whatsoever</strong> to say about that stretch.</p>
-                    <p>This piece isn't about a tool. It's about what counting a running framework gets you — including the part where it fooled me right at the end.</p>
+                    <div class="article-graph-embed"><!-- interactive behaviour graph -->
+<style>.cbg-root{
+  --cbg-bg:#EEF0F2; --cbg-panel:#FFFFFF; --cbg-sunk:#F5F6F8; --cbg-ink:#151B21; --cbg-dim:#5D6B77; --cbg-faint:#8A97A2;
+  --cbg-line:#D8DDE2; --cbg-line-soft:#E7EAEE; --cbg-accent:#2D5C7F; --cbg-accent-soft:#DCE7EF;
+  --cbg-entry:#54646F; --cbg-good:#2F8570; --cbg-money:#A9752A; --cbg-bad:#AE4630;
+  --cbg-shadow:0 1px 2px rgba(21,27,33,.05), 0 10px 26px -16px rgba(21,27,33,.35);
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --cbg-bg:#0E1317; --cbg-panel:#171E24; --cbg-sunk:#121920; --cbg-ink:#E2E8ED; --cbg-dim:#93A2AE; --cbg-faint:#6E7E8A;
+  --cbg-line:#28323A; --cbg-line-soft:#1F272E; --cbg-accent:#6FA5CE; --cbg-accent-soft:#16303F;
+  --cbg-entry:#8898A4; --cbg-good:#4FB79B; --cbg-money:#D7A44F; --cbg-bad:#DC7657;
+  --cbg-shadow:0 1px 2px rgba(0,0,0,.5), 0 12px 30px -18px rgba(0,0,0,.9);
+}}.cbg-root[data-theme="dark"]{
+  --cbg-bg:#0E1317; --cbg-panel:#171E24; --cbg-sunk:#121920; --cbg-ink:#E2E8ED; --cbg-dim:#93A2AE; --cbg-faint:#6E7E8A;
+  --cbg-line:#28323A; --cbg-line-soft:#1F272E; --cbg-accent:#6FA5CE; --cbg-accent-soft:#16303F;
+  --cbg-entry:#8898A4; --cbg-good:#4FB79B; --cbg-money:#D7A44F; --cbg-bad:#DC7657;
+  --cbg-shadow:0 1px 2px rgba(0,0,0,.5), 0 12px 30px -18px rgba(0,0,0,.9);
+}.cbg-root *{box-sizing:border-box}.cbg-root{margin:0;background:var(--cbg-bg);color:var(--cbg-ink);font-family:Archivo,system-ui,"Noto Sans TC",sans-serif;font-size:15px;line-height:1.6}.cbg-root .mono{font-family:"JetBrains Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}.cbg-root .shell{max-width:1300px;margin:0 auto;padding:34px 22px 70px;display:flex;flex-direction:column;gap:20px}.cbg-root header.top{display:flex;flex-direction:column;gap:9px}.cbg-root .tagline{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.cbg-root .badge{font-family:"JetBrains Mono",monospace;font-size:.66rem;letter-spacing:.14em;text-transform:uppercase;padding:3px 8px;border-radius:2px;background:var(--cbg-good);color:#fff}.cbg-root .src{font-family:"JetBrains Mono",monospace;font-size:.72rem;color:var(--cbg-faint)}.cbg-root .eyebrow{font-family:"JetBrains Mono",monospace;font-size:.68rem;letter-spacing:.15em;text-transform:uppercase;color:var(--cbg-faint)}.cbg-root h1{margin:0;font-size:clamp(1.6rem,3.4vw,2.3rem);line-height:1.15;letter-spacing:-.02em;font-weight:700;text-wrap:balance}.cbg-root .sub{color:var(--cbg-dim);max-width:64ch;margin:0}.cbg-root .panel{background:var(--cbg-panel);border:1px solid var(--cbg-line);border-radius:4px;box-shadow:var(--cbg-shadow)}.cbg-root .panel-head{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:11px 16px;border-bottom:1px solid var(--cbg-line-soft)}.cbg-root .panel-title{font-family:"JetBrains Mono",monospace;font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cbg-faint)}.cbg-root .presets{display:flex;gap:6px;flex-wrap:wrap}.cbg-root button{font:inherit;font-size:.8rem;color:var(--cbg-dim);background:var(--cbg-sunk);border:1px solid var(--cbg-line);border-radius:3px;padding:4px 11px;cursor:pointer;transition:background .15s,color .15s,border-color .15s}.cbg-root button:hover{color:var(--cbg-ink);border-color:var(--cbg-accent)}.cbg-root button[aria-pressed="true"]{background:var(--cbg-accent);border-color:var(--cbg-accent);color:#fff}.cbg-root :focus-visible{outline:2px solid var(--cbg-accent);outline-offset:2px}.cbg-root #cbg-timeline{padding:14px 16px 10px}.cbg-root #cbg-tl{display:block;width:100%;height:104px;cursor:crosshair;touch-action:none;user-select:none}.cbg-root .tl-legend{display:flex;gap:18px;flex-wrap:wrap;margin-top:8px;font-size:.78rem;color:var(--cbg-dim)}.cbg-root .tl-legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}.cbg-root .readout{display:flex;gap:22px;flex-wrap:wrap;align-items:baseline;padding:10px 16px;border-top:1px solid var(--cbg-line-soft);font-size:.85rem;color:var(--cbg-dim)}.cbg-root .readout b{color:var(--cbg-ink);font-family:"JetBrains Mono",monospace;font-weight:500}.cbg-root #cbg-graph{position:relative;padding:22px 16px 18px;overflow-x:auto}.cbg-root #cbg-stage{position:relative}.cbg-root #cbg-wires{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none}.cbg-root .node{position:absolute;width:300px;background:var(--cbg-panel);border:1px solid var(--cbg-line);border-radius:4px;box-shadow:var(--cbg-shadow);overflow:hidden}.cbg-root .node.entry{border-top:3px solid var(--cbg-entry)}.cbg-root .node.good{border-top:3px solid var(--cbg-good)}.cbg-root .node.money{border-top:3px solid var(--cbg-money)}.cbg-root .node.bad{border-top:3px solid var(--cbg-bad)}.cbg-root .nhead{padding:10px 13px 8px;border-bottom:1px solid var(--cbg-line-soft)}.cbg-root .nhead h3{margin:0;font-size:1.02rem;font-weight:600;letter-spacing:-.01em}.cbg-root .why{font-size:.78rem;color:var(--cbg-dim);line-height:1.4}.cbg-root .probes{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}.cbg-root .probe{font-family:"JetBrains Mono",monospace;font-size:.6rem;letter-spacing:.06em;text-transform:uppercase;padding:2px 6px;border-radius:2px;border:1px solid var(--cbg-line);color:var(--cbg-dim);background:var(--cbg-sunk)}.cbg-root .probe.log{color:var(--cbg-accent);border-color:var(--cbg-accent-soft);background:var(--cbg-accent-soft)}.cbg-root .probe.latency{color:var(--cbg-money)}.cbg-root .slot{padding:9px 13px;border-top:1px solid var(--cbg-line-soft)}.cbg-root .slot-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-family:"JetBrains Mono",monospace;font-size:.6rem;letter-spacing:.13em;text-transform:uppercase;color:var(--cbg-faint)}.cbg-root .big{font-family:"JetBrains Mono",monospace;font-size:1.5rem;font-weight:500;line-height:1.1;font-variant-numeric:tabular-nums}.cbg-root .unit{font-size:.72rem;color:var(--cbg-dim);font-family:Archivo,sans-serif;margin-left:4px}.cbg-root .spark{display:block;width:100%;height:34px;margin-top:5px}.cbg-root .lat{display:flex;gap:16px;align-items:baseline;margin-top:3px}.cbg-root .lat div{display:flex;gap:5px;align-items:baseline}.cbg-root .lat .k{font-family:"JetBrains Mono",monospace;font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:var(--cbg-faint)}.cbg-root .lat .v{font-family:"JetBrains Mono",monospace;font-size:1.02rem;font-variant-numeric:tabular-nums}.cbg-root .shape{margin-top:7px}.cbg-root .shape-row{display:flex;justify-content:space-between;gap:8px;font-size:.74rem;margin-bottom:2px}.cbg-root .shape-row .t{font-family:"JetBrains Mono",monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.cbg-root .shape-row .n{font-family:"JetBrains Mono",monospace;color:var(--cbg-dim);white-space:nowrap}.cbg-root .shape-row.new .t{color:var(--cbg-bad);font-weight:500}.cbg-root .bar{height:5px;border-radius:2px;background:var(--cbg-line-soft);overflow:hidden;margin-bottom:8px}.cbg-root .bar i{display:block;height:100%;border-radius:2px}.cbg-root .flame{display:flex;flex-direction:column;gap:5px;margin-top:7px}.cbg-root .chain{display:flex;height:17px;border-radius:2px;overflow:hidden;background:var(--cbg-line-soft)}.cbg-root .chain span{display:flex;align-items:center;padding:0 5px;font-family:"JetBrains Mono",monospace;font-size:.58rem;color:#fff;white-space:nowrap;overflow:hidden;border-right:1px solid rgba(255,255,255,.28)}.cbg-root .chain span:last-child{border-right:0}.cbg-root .chain-meta{display:flex;justify-content:space-between;font-size:.68rem;color:var(--cbg-dim);font-family:"JetBrains Mono",monospace}.cbg-root .wire{fill:none;stroke:var(--cbg-dim);stroke-width:2}.cbg-root .wire.alert{stroke:var(--cbg-bad);stroke-width:2.8}.cbg-root .wire.calm{stroke:var(--cbg-good);stroke-width:2.4}.cbg-root .wlabel{font-family:"JetBrains Mono",monospace;font-size:11.5px;fill:var(--cbg-ink)}.cbg-root .wsub{font-family:"JetBrains Mono",monospace;font-size:9.5px;fill:var(--cbg-faint)}.cbg-root .wbox{fill:var(--cbg-panel);stroke:var(--cbg-line)}.cbg-root #cbg-edge-list{display:none;flex-direction:column;gap:8px;padding:0 16px 16px}.cbg-root .echip{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;padding:9px 12px;border:1px solid var(--cbg-line);border-left:3px solid var(--cbg-dim);border-radius:3px;background:var(--cbg-sunk);font-size:.82rem}.cbg-root .echip.calm{border-left-color:var(--cbg-good)}.cbg-root .echip.alert{border-left-color:var(--cbg-bad)}.cbg-root .echip b{font-family:"JetBrains Mono",monospace;font-weight:500}.cbg-root .echip .sub{color:var(--cbg-dim);font-size:.76rem;font-family:"JetBrains Mono",monospace}.cbg-root .prose{max-width:40rem;margin:0 auto;padding:6px 22px 26px;font-size:16px;line-height:1.8}.cbg-root .prose h2{font-family:Archivo,sans-serif;font-size:1.35rem;font-weight:700;letter-spacing:-.01em;margin:0 0 14px}.cbg-root .prose h3{font-size:1.02rem;font-weight:600;margin:26px 0 6px}.cbg-root .prose p{margin:0 0 14px;color:var(--cbg-ink)}.cbg-root .prose code{font-family:"JetBrains Mono",monospace;font-size:.86em;background:var(--cbg-sunk);
+  border:1px solid var(--cbg-line);padding:.08em .3em;border-radius:2px}.cbg-root .notes{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));padding:16px}.cbg-root .note h4{margin:0 0 4px;font-size:.9rem}.cbg-root .note p{margin:0;font-size:.84rem;color:var(--cbg-dim)}.cbg-root footer{color:var(--cbg-faint);font-size:.78rem;border-top:1px solid var(--cbg-line);padding-top:14px}
+@media (max-width:900px){ #cbg-stage{min-width:0!important;height:auto!important;display:flex;flex-direction:column;gap:14px}
+.cbg-root .node{position:static!important;width:100%} #cbg-wires{display:none} #cbg-edge-list{display:flex} }.cbg-root{max-width:100%;overflow:hidden}.cbg-root #cbg-graph{max-width:100%;overflow-x:auto}.cbg-root #cbg-timeline,.cbg-root #cbg-readout{max-width:100%}</style>
 
-                    <h2>First decide where to stand</h2>
-                    <p>A framework's black-box quality is the same shape as an ORM's, just in a different place. An ORM puts a layer between "the line of Go you wrote" and "the SQL that actually went out"; a framework puts one between "the request the client typed" and "your handler being called". Route matching, path normalisation, redirects, the 405 decision, the 404 fallback — you can read all of it in the source, but <strong>while it runs, nothing tells you how many times each of them happened</strong>.</p>
-                    <p>Standing inside your own handler is the easy option and the least useful one: <strong>the requests that never reach a handler are exactly the ones I wanted to see.</strong> Dropping down to <code>net/http</code> is too far the other way — there's a single entrance there and no view of where gin sent the request internally. So I stood inside gin's own routing layer and picked five positions:</p>
-                    <div class="article-table-wrap">
-                    <table>
-                        <thead><tr><th>Position</th><th>Kind</th><th>Question it answers</th></tr></thead>
-                        <tbody>
-                            <tr><td><code>gin.(*Engine).handleHTTPRequest</code> <code>gin.go:708</code></td><td>log, <code>M={httpMethod} P={rPath}</code></td><td>which method and path the router actually received</td></tr>
-                            <tr><td><code>gin.(*Context).Next</code> <code>context.go:189</code></td><td>metric</td><td>how many times the chain is <strong>re-entered</strong></td></tr>
-                            <tr><td><code>gin.serveError</code> <code>gin.go:765</code></td><td>log, <code>status={code}</code></td><td>how many 404s and 405s</td></tr>
-                            <tr><td><code>gin.redirectTrailingSlash</code> <code>gin.go:782</code></td><td>metric</td><td>how many trailing-slash redirects</td></tr>
-                            <tr><td><code>gin.(*Engine).ServeHTTP</code> <code>gin.go:667 → 674</code></td><td>latency</td><td>how long a request spends inside the framework, from taking a Context to handing it back</td></tr>
-                        </tbody>
-                    </table>
-                    </div>
-                    <p>That <code>Next</code> counter becomes the lead of this piece. That last latency point comes back to bite me.</p>
-                    <p><strong>Two traps worth mentioning first.</strong></p>
-                    <p>The first is that a log point has to name the variables it captures — I learned that attaching this same point in an earlier round. In the scope at <code>gin.go:708</code>, the locals assigned further down (<code>i</code>, <code>root</code>, <code>allowed</code>) are not values yet; they are stack memory that hasn't entered its live range. Without a filter they get rendered too, and that round cost me several restarts. So this time I captured only <code>httpMethod</code> and <code>rPath</code> from the start. <strong>Where you attach decides not only what you can see, but what you might accidentally read.</strong></p>
-                    <p>The second is latency. On the very same <code>ServeHTTP</code> interval, <code>667 → 674</code>, I had tried three variations two days earlier: every one reported successful registration and showed as instrumented, and the latency table stayed completely empty with a hit count of zero. This time I did exactly one thing differently — I gave the registration a name (<code>gin_serve_latency</code>). <strong>Same line, same interval, and the samples appeared: 602 of them, exactly 1 : 1 with the router point's 602 hits.</strong></p>
-                    <p>What I concluded at the time was that a parameter which looks optional decides whether the whole dimension exists. <strong>That conclusion was wrong, and I have since chased it down</strong> — which is why it is still here, because what actually happened is more useful than what I thought had happened.</p>
-                    <p>A latency point's hit count does not count entries into the interval. It counts <strong>how many times the interval closed</strong>. So a hit count stuck at zero was never "this never fired" — it was <strong>the interval never closing at all</strong>. And the reason it could not close has nothing to do with names: an earlier registration had left a duration pair behind in the observed process, <strong>and removing it had reported success</strong>. The same position could no longer be registered, while I believed it was clean. The attempt where I changed the wording happened to take a registration path that did not collide with the leftover — <strong>that is what fixed it, not the name</strong>.</p>
-                    <p>I am keeping this passage because every step of the original reasoning looked sound: I changed one parameter, numbers appeared, therefore it was that parameter. <strong>There was no control — only a before and an after.</strong> This piece makes the same shape of mistake again later on, and that time I caught it.</p>
-                    <p>The service under observation is a very ordinary gin: <code>gin.New()</code>, three global middlewares (<code>requestID</code> → <code>accessLog</code> → <code>auth</code>), four routes and one <code>NoRoute</code>.</p>
 
-                    <h2>No sloppy traffic this time: one path, five endings</h2>
-                    <p>In an earlier round I mixed request kinds inside a single phase, and the result was "you can count what happened, but you can't attribute what it cost" — the latency on the panel was a stew. So this time the traffic is cut into five stretches, <strong>each containing exactly one kind of request</strong>, changing as close to one variable as possible:</p>
-                    <div class="article-table-wrap">
-                    <table>
-                        <thead><tr><th>Phase</th><th>What I sent</th><th>Ending</th><th>Why this one</th></tr></thead>
-                        <tbody>
-                            <tr><td>A</td><td><code>GET /health</code> with token</td><td>200</td><td>baseline: route matched, whole chain runs</td></tr>
-                            <tr><td>B</td><td><code>GET /nope</code> with token</td><td>404</td><td>matches no route at all</td></tr>
-                            <tr><td>C</td><td><code>PUT /health</code> with token</td><td>405</td><td>right path, wrong method</td></tr>
-                            <tr><td>D</td><td><code>GET /health</code> no token</td><td>401</td><td><code>auth</code> aborts mid-chain</td></tr>
-                            <tr><td>E</td><td><code>GET /health/</code> with token</td><td>301</td><td>one extra slash (and I do not follow the redirect)</td></tr>
-                        </tbody>
-                    </table>
-                    </div>
-                    <p>Two minutes each, one request per second, 120 requests per phase. The window ran <code>2026-07-28T08:53:57Z</code> to <code>09:04:03Z</code> — ten minutes and six seconds. The client counted <strong>600</strong> requests of its own; I also hit <code>/health</code> twice by hand mid-window to check the service was alive, so the panel should read 602. Keep that number in mind.</p>
+<div class="cbg-root">
 
-                    <h2>Makeup off: the footprints one request leaves under five endings</h2>
-                    <p>At the end of the window the five points totalled: router entries <strong>602</strong>, <code>Next()</code> <strong>1,808</strong>, <code>serveError</code> <strong>240</strong>, redirects <strong>120</strong>, latency samples <strong>602</strong>.</p>
-                    <p>Split by phase, that is the spine of this piece:</p>
-                    <div class="article-table-wrap">
-                    <table>
-                        <thead><tr><th>Phase</th><th>Client requests</th><th>Router entries</th><th><code>Next()</code> hits</th><th>Per request</th><th><code>serveError</code></th><th>Redirects</th></tr></thead>
-                        <tbody>
-                            <tr><td>A 200</td><td>120</td><td>121</td><td>484</td><td><strong>4.00</strong></td><td>0</td><td>0</td></tr>
-                            <tr><td>B 404</td><td>120</td><td>121</td><td>484</td><td><strong>4.00</strong></td><td>120</td><td>0</td></tr>
-                            <tr><td>C 405</td><td>120</td><td>120</td><td>480</td><td><strong>4.00</strong></td><td>120</td><td>0</td></tr>
-                            <tr><td>D 401</td><td>120</td><td>120</td><td>360</td><td><strong>3.00</strong></td><td>0</td><td>0</td></tr>
-                            <tr><td>E 301</td><td>120</td><td>120</td><td><strong>0</strong></td><td><strong>0.00</strong></td><td>0</td><td>120</td></tr>
-                        </tbody>
-                    </table>
-                    </div>
-                    <p>(The 121s in A and B each include one of my manual liveness checks.)</p>
-                    <p>Four phases divide out to whole numbers: <code>484 ÷ 121 = 4.00</code>, <code>480 ÷ 120 = 4.00</code>, <code>360 ÷ 120 = 3.00</code>. Summed, <code>484 + 484 + 480 + 360 + 0 = 1,808</code>, matching the panel exactly. <strong>No request took a path I failed to account for.</strong></p>
-                    <p>First, that <strong>4.00</strong>. For a request that matches a route, <code>c.Next()</code> is called four times: the engine itself calls it once at <code>gin.go:722</code>, and then <strong>each of my three middlewares calls it once more</strong>. That's gin's chaining design — <code>Next()</code> doesn't mean "run the next one", it means "<strong>run the entire rest of the chain to completion, then come back here</strong>" — so three middlewares means 1 + 3 = 4 re-entries. I knew you have to call <code>c.Next()</code> yourself; I had never pictured that number being exactly four for <em>every single request</em>.</p>
-                    <p>Now look at rows B and C: <strong>404 and 405 are also 4.00</strong>, not one call short. After <code>gin.go:758</code> swaps the handlers for <code>engine.allNoRoute</code>, <code>serveError</code> runs the whole chain at <code>gin.go:766</code> anyway. <strong>A request that matches no route still runs every one of your global middlewares</strong> — the auth, the rate limiter, the logging, the metrics you hung up there all run for 404s and 405s too.</p>
-                    <p>That <strong>3.00</strong> in D is the two minutes with the token removed: <code>auth</code> takes <code>c.AbortWithStatusJSON(401)</code> and returns, and it <strong>never calls <code>c.Next()</code></strong>. A whole layer's worth of re-entry disappears from the count.</p>
-                    <p>All still interesting but unsurprising. The last row is where I sat up.</p>
 
-                    <h2>Those two minutes, the chain was never entered once</h2>
-                    <p>In phase E I changed exactly one character: <code>/health</code> became <code>/health/</code>.</p>
-                    <p>gin has no such route, but it knows that dropping the slash gives one. So at <code>gin.go:728</code> it calls <code>redirectTrailingSlash</code>, rewrites <code>req.URL.Path</code> in place, answers a 301, and then <strong><code>return</code>s at <code>gin.go:729</code></strong> — which sits above <code>c.Next()</code>.</p>
-                    <p>Here is what those two minutes look like on the panel:</p>
-                    <ul>
-                        <li><code>handleHTTPRequest</code>: <strong>120</strong> (the router received every one of them)</li>
-                        <li><code>redirectTrailingSlash</code>: <strong>120</strong> (every one was redirected)</li>
-                        <li><code>gin_serve_latency</code>: <strong>120</strong> (every one really did complete <code>ServeHTTP</code>)</li>
-                        <li><code>Next()</code>: <strong>0</strong></li>
-                        <li><code>serveError</code>: <strong>0</strong></li>
-                    </ul>
-                    <p><strong>120 requests in, 120 responses out, and my middleware was never called once.</strong></p>
-                    <p>On the cumulative curve this needs no explanation; it just lies there:</p>
+<section class="panel">
+  <div class="panel-head"><span class="panel-title" id="cbg-tl-title"></span><div class="presets" id="cbg-presets"></div></div>
+  <div id="cbg-timeline">
+    <canvas id="cbg-tl"></canvas>
+    <div class="tl-legend" id="cbg-legend"></div>
+  </div>
+  <div class="readout" id="cbg-readout"></div>
+</section>
 
-                    <figure class="article-figure figure-wide">
-                        <a href="https://codebull-dashboard-service.web.app/gin-middleware-20260728/" target="_blank" rel="noopener noreferrer">
-                            <img src="asset/gin-middleware-chain-stops.webp" alt="CodeBull dashboard Metrics tab, the cumulative hit curve for gin.(*Context).Next - trace_hits: climbing from 16:54 to about 1,800, visibly flattening after 17:00, and simply ending after 17:02" loading="lazy">
-                        </a>
-                        <figcaption>The line has two inflections, matching the two things I changed. <strong>The slope flattens at 17:00</strong>, the moment I removed the token (4 calls per request becoming 3); <strong>the line disappears after 17:02</strong>, the moment I started sending trailing slashes. The traffic rate never changed — one request per second throughout. <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/gin-middleware-20260728/" target="_blank" rel="noopener noreferrer">Open the live dashboard →</a></span></figcaption>
-                    </figure>
+<section class="panel" id="cbg-graph">
+  <div id="cbg-stage"><svg id="cbg-wires"></svg></div>
+  <div id="cbg-edge-list"></div>
+</section>
 
-                    <p>Meanwhile the router point kept one row per second through that stretch, not one missing, rendered verbatim:</p>
 
-                    <figure class="article-figure figure-wide">
-                        <a href="https://codebull-dashboard-service.web.app/gin-middleware-20260728/" target="_blank" rel="noopener noreferrer">
-                            <img src="asset/gin-middleware-logs.webp" alt="CodeBull dashboard Logs tab: one row per second between 17:03:02 and 17:04:02 from gin.(*Engine).handleHTTPRequest:708, every one reading M=GET P=/health/ (httpMethod=GET, rPath=/health/), with ROWS 842 in the corner" loading="lazy">
-                        </a>
-                        <figcaption>Two solid minutes, one row per second, all of them <code>M=GET P=/health/</code>. That <code>ROWS: 842</code> in the corner reconciles too: the router's 602 rows plus <code>serveError</code>'s 240 is exactly 842. <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/gin-middleware-20260728/" target="_blank" rel="noopener noreferrer">Open the live dashboard →</a></span></figcaption>
-                    </figure>
 
-                    <p>Note that <code>rPath=/health/</code> — <strong>it is what the client actually typed</strong>, and <code>gin.go:790-792</code> overwrites <code>req.URL.Path</code> in place. (Nothing downstream ran during this phase, so "everything downstream reads the rewritten path" is something I <strong>did not measure</strong> here; that part is read off the source. What I measured is that the router layer still sees the original, slash and all.) If you want to know what the client actually sent, you have to stand upstream of the rewrite.</p>
+</div>
+<script id="cbg-data" type="application/json">{"mock": false, "title": "gin's middleware chain", "lede": "1,512 requests, six and a half minutes.", "source": "article/gin-demo/graph.json · 02:48–02:54 UTC", "window": {"startMs": 1787885280000, "stepMs": 10000, "buckets": 40}, "phases": [], "readout": {"ratios": [{"label": "chain advances / request", "num": "Advance the chain", "den": "Take the request", "tone": "good"}, {"label": "taken by the 301", "num": "Trailing-slash redirect", "den": "Take the request", "tone": "warn"}], "check": "exactly one route match per request"}, "nodes": [{"id": "n0", "name": "Advance the chain", "tone": "entry", "purpose": "How many times does the middleware chain actually advance?", "probes": [{"traceKey": "gin.(*Context).Next:189", "kind": "metric"}], "series": {"hits": [48, 120, 120, 120, 108, 120, 120, 108, 120, 120, 120, 108, 120, 120, 108, 120, 120, 108, 120, 120, 108, 120, 120, 108, 120, 120, 108, 120, 120, 120, 108, 120, 120, 108, 120, 120, 120, 108, 120, 60]}, "hitsFull": 4536, "latencyFull": null, "samples": [], "stacks": [{"frames": ["runtime.goexit", "net/http.(*Server).Serve.gowrap3", "net/http.(*conn).serve", "net/http.serverHandler.ServeHTTP", "shadow-github.com/gin-gonic/gin.(*Engine).ServeHTTP", "shadow-github.com/gin-gonic/gin.(*Engine).handleHTTPRequest", "github.com/gin-gonic/gin.(*Context).Next"], "perBucket": [12, 30, 30, 30, 27, 30, 30, 27, 30, 30, 30, 27, 30, 30, 27, 30, 30, 27, 30, 30, 27, 30, 30, 27, 30, 30, 27, 30, 30, 30, 27, 30, 30, 27, 30, 30, 30, 27, 30, 15]}, {"frames": ["runtime.goexit", "net/http.(*Server).Serve.gowrap3", "net/http.(*conn).serve", "net/http.serverHandler.ServeHTTP", "shadow-github.com/gin-gonic/gin.(*Engine).ServeHTTP", "shadow-github.com/gin-gonic/gin.(*Engine).handleHTTPRequest", "shadow-github.com/gin-gonic/gin.(*Context).Next", "main.requestID.func1", "github.com/gin-gonic/gin.(*Context).Next"], "perBucket": [12, 30, 30, 30, 27, 30, 30, 27, 30, 30, 30, 27, 30, 30, 27, 30, 30, 27, 30, 30, 27, 30, 30, 27, 30, 30, 27, 30, 30, 30, 27, 30, 30, 27, 30, 30, 30, 27, 30, 15]}, {"frames": ["runtime.goexit", "net/http.(*Server).Serve.gowrap3", "net/http.(*conn).serve", "net/http.serverHandler.ServeHTTP", "shadow-github.com/gin-gonic/gin.(*Engine).ServeHTTP", "shadow-github.com/gin-gonic/gin.(*Engine).handleHTTPRequest", "shadow-github.com/gin-gonic/gin.(*Context).Next", "main.requestID.func1", "shadow-github.com/gin-gonic/gin.(*Context).Next", "main.accessLog.func1", "github.com/gin-gonic/gin.(*Context).Next"], "perBucket": [12, 30, 30, 30, 27, 30, 30, 27, 30, 30, 30, 27, 30, 30, 27, 30, 30, 27, 30, 30, 27, 30, 30, 27, 30, 30, 27, 30, 30, 30, 27, 30, 30, 27, 30, 30, 30, 27, 30, 15]}, {"frames": ["runtime.goexit", "net/http.(*Server).Serve.gowrap3", "net/http.(*conn).serve", "net/http.serverHandler.ServeHTTP", "shadow-github.com/gin-gonic/gin.(*Engine).ServeHTTP", "shadow-github.com/gin-gonic/gin.(*Engine).handleHTTPRequest", "shadow-github.com/gin-gonic/gin.(*Context).Next", "main.requestID.func1", "shadow-github.com/gin-gonic/gin.(*Context).Next", "main.accessLog.func1", "shadow-github.com/gin-gonic/gin.(*Context).Next", "main.auth.func1", "github.com/gin-gonic/gin.(*Context).Next"], "perBucket": [12, 30, 30, 30, 27, 30, 30, 27, 30, 30, 30, 27, 30, 30, 27, 30, 30, 27, 30, 30, 27, 30, 30, 27, 30, 30, 27, 30, 30, 30, 27, 30, 30, 27, 30, 30, 30, 27, 30, 15]}], "x": 1040, "y": 0, "root": false}, {"id": "n1", "name": "Take the request", "tone": "good", "purpose": "How many requests a minute? How long does one spend inside the framework?", "probes": [{"traceKey": "gin.(*Engine).ServeHTTP:667", "kind": "metric"}, {"traceKey": "gin.(*Engine).ServeHTTP:668", "kind": "latency"}], "series": {"hits": [16, 40, 40, 40, 36, 40, 40, 36, 40, 40, 40, 36, 40, 40, 36, 40, 40, 36, 40, 40, 36, 40, 40, 36, 40, 40, 36, 40, 40, 40, 36, 40, 40, 36, 40, 40, 40, 36, 40, 20], "latencyP50": [0.564, 0.555, 0.579, 0.53, 0.516, 0.503, 0.525, 0.511, 0.545, 0.536, 0.564, 0.534, 0.546, 0.509, 0.545, 0.508, 0.52, 0.526, 0.52, 0.543, 0.515, 0.511, 0.503, 0.547, 0.522, 0.53, 0.532, 0.517, 0.516, 0.529, 0.499, 0.526, 0.486, 0.529, 0.515, 0.5, 0.5, 0.504, 0.564, 0.527], "latencyP95": [77.809, 1.238, 0.862, 0.729, 2.107, 2.324, 1.05, 2.391, 1.52, 1.253, 1.338, 15.345, 0.863, 0.716, 0.971, 0.981, 2.199, 0.737, 3.385, 5.181, 1.989, 3.403, 1.092, 1.228, 3.883, 3.572, 2.121, 0.876, 1.062, 0.837, 3.08, 2.523, 1.047, 0.663, 1.004, 2.325, 1.046, 2.101, 2.885, 3.579]}, "hitsFull": 1512, "latencyFull": {"count": 1512, "p50": 0.524, "p95": 2.137, "p99": 54.767, "max": 146.694}, "samples": [], "stacks": [{"frames": ["runtime.goexit", "net/http.(*Server).Serve.gowrap3", "net/http.(*conn).serve", "net/http.serverHandler.ServeHTTP", "github.com/gin-gonic/gin.(*Engine).ServeHTTP"], "perBucket": [16, 40, 40, 40, 36, 40, 40, 36, 40, 40, 40, 36, 40, 40, 36, 40, 40, 36, 40, 40, 36, 40, 40, 36, 40, 40, 36, 40, 40, 40, 36, 40, 40, 36, 40, 40, 40, 36, 40, 20]}], "x": 0, "y": 0, "root": true}, {"id": "n2", "name": "Match the route", "tone": "money", "purpose": "What path actually gets matched?", "probes": [{"traceKey": "gin.(*Engine).handleHTTPRequest:708", "kind": "log"}], "series": {"hits": [16, 40, 40, 40, 36, 40, 40, 36, 40, 40, 40, 36, 40, 40, 36, 40, 40, 36, 40, 40, 36, 40, 40, 36, 40, 40, 36, 40, 40, 40, 36, 40, 40, 36, 40, 40, 40, 36, 40, 20]}, "hitsFull": 1512, "latencyFull": null, "samples": [{"text": "M=GET P=/health", "perBucket": [4, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 9, 10, 10, 9, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 5]}, {"text": "M=GET P=/users", "perBucket": [4, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 9, 10, 10, 9, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 5]}, {"text": "M=GET P=/users/7", "perBucket": [4, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 9, 10, 10, 9, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 5]}, {"text": "M=GET P=/health/", "perBucket": [4, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 9, 10, 10, 9, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 5]}], "stacks": [{"frames": ["runtime.goexit", "net/http.(*Server).Serve.gowrap3", "net/http.(*conn).serve", "net/http.serverHandler.ServeHTTP", "shadow-github.com/gin-gonic/gin.(*Engine).ServeHTTP", "github.com/gin-gonic/gin.(*Engine).handleHTTPRequest"], "perBucket": [16, 40, 40, 40, 36, 40, 40, 36, 40, 40, 40, 36, 40, 40, 36, 40, 40, 36, 40, 40, 36, 40, 40, 36, 40, 40, 36, 40, 40, 40, 36, 40, 40, 36, 40, 40, 40, 36, 40, 20]}], "x": 520, "y": 0, "root": false}, {"id": "n3", "name": "Trailing-slash redirect", "tone": "bad", "purpose": "How many requests are taken by the 301?", "probes": [{"traceKey": "gin.redirectTrailingSlash:782", "kind": "metric"}], "series": {"hits": [4, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 9, 10, 10, 9, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 5]}, "hitsFull": 378, "latencyFull": null, "samples": [], "stacks": [{"frames": ["runtime.goexit", "net/http.(*Server).Serve.gowrap3", "net/http.(*conn).serve", "net/http.serverHandler.ServeHTTP", "shadow-github.com/gin-gonic/gin.(*Engine).ServeHTTP", "shadow-github.com/gin-gonic/gin.(*Engine).handleHTTPRequest", "github.com/gin-gonic/gin.redirectTrailingSlash"], "perBucket": [4, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 9, 10, 10, 9, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 5]}], "x": 1040, "y": 470, "root": false}], "edges": [{"from": "n2", "to": "n0", "countPerBucket": [48, 120, 120, 120, 108, 120, 120, 108, 120, 120, 120, 108, 120, 120, 108, 120, 120, 108, 120, 120, 108, 120, 120, 108, 120, 120, 108, 120, 120, 120, 108, 120, 120, 108, 120, 120, 120, 108, 120, 60], "countFull": 4536, "fanoutFull": 3, "gap": 3, "gapLabel": "0–3", "gapIn": ["main.auth", "main.accessLog", "main.requestID"], "alert": null}, {"from": "n1", "to": "n2", "countPerBucket": [16, 40, 40, 40, 36, 40, 40, 36, 40, 40, 40, 36, 40, 40, 36, 40, 40, 36, 40, 40, 36, 40, 40, 36, 40, 40, 36, 40, 40, 40, 36, 40, 40, 36, 40, 40, 40, 36, 40, 20], "countFull": 1512, "fanoutFull": 1, "gap": 0, "gapLabel": "0", "gapIn": [], "alert": null}, {"from": "n2", "to": "n3", "countPerBucket": [4, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 9, 10, 10, 9, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 5], "countFull": 378, "fanoutFull": 0.25, "gap": 0, "gapLabel": "0", "gapIn": [], "alert": null}], "notes": []}</script>
+<script>(function(){
 
-                    <h2>Then the latency — the part I nearly got wrong</h2>
-                    <p>Five phases, one rate, one script: the latencies should be directly comparable. Here are the medians from the panel:</p>
-                    <div class="article-table-wrap">
-                    <table>
-                        <thead><tr><th>Phase</th><th>p50</th><th>Relative to A</th></tr></thead>
-                        <tbody>
-                            <tr><td>A 200</td><td>0.524 ms</td><td>1.00</td></tr>
-                            <tr><td>B 404</td><td>0.613 ms</td><td><strong>1.17</strong></td></tr>
-                            <tr><td>C 405</td><td>0.612 ms</td><td><strong>1.17</strong></td></tr>
-                            <tr><td>D 401</td><td>0.463 ms</td><td>0.88</td></tr>
-                            <tr><td>E 301</td><td>0.321 ms</td><td>0.61</td></tr>
-                        </tbody>
-                    </table>
-                    </div>
-                    <p>My reading was right there, ready-made: 404s and 405s cost <strong>17% more</strong> than a normal request because they have to scan the other method trees as well (<code>gin.go:738-749</code> really does do that); 401 is cheaper because it skips a layer; 301 is cheapest because it never enters the chain at all.</p>
-                    <p>A tidy story. Tidy enough that I nearly wrote it down.</p>
-                    <p>But something didn't line up. I counted how many extra probe fires each phase costs per request — excluding the latency point itself, which is present in both rounds: A <strong>5</strong> (one router log plus four <code>Next</code>), B and C <strong>6</strong> (one more <code>serveError</code> log), D <strong>4</strong> (only three <code>Next</code>), E <strong>2</strong> (one router log plus one redirect counter).</p>
-                    <p><strong>That ordering is identical to the latency ordering.</strong></p>
-                    <p>Which means I cannot tell whether "404 costs more" is a property of gin or <strong>the price of my own probe</strong>. In this experiment the two are perfectly collinear.</p>
-                    <p>So I removed every observation point except the latency one, moved to a clean process, and <strong>ran the identical script — same 120 × 5, same one per second — for another ten minutes</strong>:</p>
-                    <div class="article-table-wrap">
-                    <table>
-                        <thead><tr><th>Phase</th><th>p50 with five points</th><th>p50 with latency only</th><th>Difference</th><th>Relative to A (clean)</th></tr></thead>
-                        <tbody>
-                            <tr><td>A 200</td><td>0.524 ms</td><td><strong>0.119 ms</strong></td><td>0.405</td><td>1.00</td></tr>
-                            <tr><td>B 404</td><td>0.613 ms</td><td><strong>0.104 ms</strong></td><td>0.509</td><td><strong>0.87</strong></td></tr>
-                            <tr><td>C 405</td><td>0.612 ms</td><td><strong>0.065 ms</strong></td><td>0.547</td><td><strong>0.55</strong></td></tr>
-                            <tr><td>D 401</td><td>0.463 ms</td><td><strong>0.072 ms</strong></td><td>0.391</td><td>0.60</td></tr>
-                            <tr><td>E 301</td><td>0.321 ms</td><td><strong>0.020 ms</strong></td><td>0.301</td><td><strong>0.17</strong></td></tr>
-                        </tbody>
-                    </table>
-                    </div>
-                    <p><strong>The ordering flipped completely.</strong></p>
-                    <p>In a clean gin, a 404 is <strong>13% cheaper</strong> than a normal request and a 405 is <strong>45% cheaper</strong> — the exact opposite of the reasoning above. That "17% more expensive" I was looking at is <strong>the weight of the log point I hung on <code>serveError</code></strong>.</p>
-                    <p>The 45% on the 405 I can account for: <code>gin.go:751</code> swaps the handlers for <code>engine.allNoMethod</code>, and this demo never registers a <code>NoMethod</code> handler, so that chain runs out with <strong>no handler at the end</strong> — the actual response is a single line of plain text, <code>default405Body</code>, written by <code>serveError</code>. Whereas <code>/health</code> has to encode JSON.</p>
-                    <p>As for why a 404 is 13% cheaper than a 200, <strong>I have no answer I can verify</strong>. This demo's <code>NoRoute</code> is my own and calls <code>c.JSON</code> just like <code>/health</code> does, so the convenient "404 skips the JSON encoding" story doesn't hold. I measured the gap, 0.104 against 0.119; I did not measure a mechanism, so I'm not inventing one for the reader.</p>
-                    <p>The same table shows something else: <strong>observation made every request 0.30 to 0.55 ms more expensive</strong>, which is <strong>77% to 94%</strong> of the number the panel displayed. Phase E is the extreme case — gin itself spends 0.020 ms, the panel said 0.321 ms, <strong>sixteen times over</strong>, because that request is so cheap to begin with that the probes' fixed cost swamps it entirely.</p>
-                    <p>What's left of phase E — the part that really belongs to gin — is <strong>0.020 ms</strong>, one sixth of a normal request (<code>0.119 ÷ 0.020 = 6.0</code>). And the distribution is tight: p25 to p90 spans 0.013 to 0.054 ms, and <strong>the largest sample in the whole phase is 0.097 ms — it never even breaks 0.1</strong>.</p>
-                    <p><strong>A request that gin redirects on the spot costs a sixth of a normal one, and will not appear in any log you have.</strong></p>
+const D = JSON.parse(document.getElementById("cbg-data").textContent);
+const NB = D.window.buckets, STEP = D.window.stepMs, T0 = D.window.startMs;
+const N = Object.fromEntries(D.nodes.map(n => [n.id, n]));
+const TONE = { entry:"--cbg-entry", good:"--cbg-good", money:"--cbg-money", bad:"--cbg-bad" };
+const css = v => getComputedStyle(document.querySelector(".cbg-root")).getPropertyValue(v).trim();
+const sum = (a,f,t) => a.slice(f,t).reduce((x,y)=>x+y,0);
+const fmt = n => Math.round(n).toLocaleString("en-US");
+const ms = (v) => (v >= 10 ? v.toFixed(0) : v >= 1 ? v.toFixed(1) : v.toFixed(2));
+const clock = b => new Date(T0 + b*STEP).toISOString().slice(11,16);
+// github.com/gin-gonic/gin.(*Engine).ServeHTTP → ServeHTTP. Taking the last
+// dot-segment alone leaves "func1" for every closure, and taking the last path
+// segment alone leaves the whole package prefix.
+const shortFn = (s) => {
+  // Generic type arguments carry dots of their own — NewCache[...].gowrap1 —
+  // so they come off before anything splits on ".".
+  const noGeneric = s.replace(/\[[^\]]*\]/g, "");
+  const noRecv = noGeneric.split("/").pop().replace(/\(\*?[^)]*\)\./g, "");
+  const parts = noRecv.split(".").filter(Boolean);
+  // A closure carries the name of the function it was written in, and can carry
+  // several suffixes at once: serveStreams.func2.1, NewFIFOScheduler.gowrap1.
+  while (parts.length > 1 && /^(func\d+|gowrap\d+|\d+)$/.test(parts[parts.length - 1])) parts.pop();
+  return parts[parts.length - 1];
+};
+let sel = { from:0, to:NB };
 
-                    <h2>Honest part: what I got wrong, can't see, and can't call</h2>
-                    <p><strong>77% to 94% of the latency numbers in my first round were me.</strong> That's the section above. The point isn't "so latency observation is useless" — another round with the same tool is what produced the truth — it's that <strong>when your observation points sit on a path every request takes, what you measure is "the observed system", not "the system".</strong> If phases happen to trigger different numbers of probes, that difference will impersonate the conclusion you were hoping for. Without counting the probe fires and running a second round, this piece would have contained a very tidy, completely wrong causal claim.</p>
-                    <p><strong>One round of evidence got eaten.</strong> On the first attempt at the control run, the observation host died silently 2 minutes 13 seconds in: the gin under observation was perfectly fine, the traffic script ran its full ten minutes and printed a beautiful complete tally at the end — but the panel only kept the first phase's 121 samples, the other four phases' 480 samples were gone, and the log file contained not one line of error. <strong>I only caught it because the sample count didn't match the client's count.</strong> The comparison table above is from a full re-run. The lesson is blunt: if you don't reconcile after a window closes, you have no idea whether you're holding a fifth of your data.</p>
-                    <p><strong>The control round carries 3% contamination.</strong> For that round I had a health check polling <code>/health</code> every 30 seconds — precisely to detect the failure above — so each phase contains roughly 4 extra "normal" requests, 124 samples instead of 120. They look identical to everything else in the sample set; I couldn't pick them out, so I didn't. That round's panel also shows three orphan spikes, one each in phases A, B and C (maxima of 45.2, 44.9 and 35.1 ms), which drag those averages to 0.36–0.48 ms — which is why I quote medians and quartiles above, never averages.</p>
-                    <p><strong>The <code>Next()</code> counter can't tell you which layer went missing.</strong> It only tells me how many times the chain was re-entered. Phase D drops to 3.00 and I know one call is gone, but "the missing one is <code>auth</code>" comes from 4 − 3 = 1 plus reading the code — <strong>the panel never pointed at it</strong>. To have the panel say so directly, you'd need a point on each middleware.</p>
-                    <p><strong>Phase boundaries carry about one row of attribution error.</strong> The service's own access log has second-resolution timestamps, so a row or two at each boundary lands in the neighbouring phase (one of phase A's 121 rows is a 404). The totals are exact; the per-phase edges are approximate.</p>
-                    <p><strong>Everything here ran at one request per second.</strong> I did not measure high load, so nothing in this piece is a statement about throughput. Whether these ratios hold at thousands of requests per second I don't know, and I'm not going to guess.</p>
-                    <p>What you can see, you can see; what you can't, you mark as unseen — you don't hand the reader something that pretends to be complete.</p>
+/* children of an edge target = what the timeline stacks */
+const hasOut = new Set(D.edges.map(e => e.from));
+/* The ends of the graph: nodes nothing leads away from. Stacking those counts
+   each piece of work once, and an island — a step reached on its own goroutine,
+   with no edge at all — is an end like any other, so it stays on the timeline. */
+const leaves = D.nodes.filter(n => !hasOut.has(n.id)).map(n => n.id);
 
-                    <h2>The comparison: why the service's own access log isn't enough</h2>
-                    <p>This service already carries an <code>accessLog</code> middleware printing the most typical thing there is: method, path, status, elapsed. In fairness it is not blind at all — over the same window it recorded <strong>481 rows</strong>: 120 each for 404, 405 and 401, and 121 for 200 (including my manual liveness checks). Every cell matches what the client counted.</p>
-                    <p>The problem is that the router on the panel received <strong>602</strong>.</p>
-                    <p><strong>A gap of 121.</strong> 120 of those are phase E's redirects; the remaining one is the boundary error above. In the whole access log, <code>301</code> appears <strong>0 times</strong> and <code>/health/</code> appears <strong>0 times</strong> — not "logged more coarsely", but <strong>a structural blank two minutes wide</strong>.</p>
-                    <p>The reason is in the earlier table: on the redirect path <code>Next()</code> is hit 0 times, and <code>accessLog</code> is itself a layer of that chain. Nobody calls it, so it doesn't run; it doesn't run, so there is no row. The same log proves the other half as well: for the 404 and 405 phases it <strong>missed nothing, recording 120 rows each</strong>, precisely because the chain really did run. <strong>What it says proves 404s run the full chain; what it doesn't say proves 301s ran none of it.</strong></p>
-                    <p>And even where it does print, the elapsed time it prints is not the elapsed time you think it is. Put its own numbers next to the clean round's <code>ServeHTTP</code>:</p>
-                    <div class="article-table-wrap">
-                    <table>
-                        <thead><tr><th>Phase</th><th>Access log median</th><th>What the framework actually spent (clean round p50)</th><th>How much it can see</th></tr></thead>
-                        <tbody>
-                            <tr><td>A 200</td><td>0.043 ms</td><td>0.119 ms</td><td><strong>36%</strong></td></tr>
-                            <tr><td>C 405</td><td>0.0006 ms</td><td>0.065 ms</td><td><strong>1%</strong></td></tr>
-                            <tr><td>E 301</td><td>— (no such row)</td><td>0.020 ms</td><td><strong>0%</strong></td></tr>
-                        </tbody>
-                    </table>
-                    </div>
-                    <p>That <strong>0.0006 ms</strong> on the 405 is the interesting one (a median — around six hundred nanoseconds; every row in that stretch is a few hundred). <code>accessLog</code> times around its own call to <code>c.Next()</code>, and on the 405 path <code>c.Next()</code> runs <code>engine.allNoMethod</code> — which, since this demo never registers <code>NoMethod</code>, contains only my three middlewares and no handler at all. <strong>The actual 405 response is written inside <code>serveError</code>, after <code>c.Next()</code> has already returned</strong> (<code>gin.go:766-778</code>). So almost nothing happens inside the stretch it times: your log says this request took 0.0006 ms while the framework spent 0.065 — <strong>it sees one percent.</strong></p>
-                    <p>So what did the observation points add? Three things:</p>
-                    <ol>
-                        <li><strong>They stand outside the chain.</strong> The access log only records requests where the chain ran; the router point records requests the framework received. The gap between those two numbers is exactly the volume handled before the chain ever starts.</li>
-                        <li><strong>They give you the verbatim, pre-rewrite content.</strong> Those 120 <code>M=GET P=/health/</code> rows are what <code>req.URL.Path</code> looked like <strong>before</strong> it was overwritten.</li>
-                        <li><strong>They reconcile.</strong> 602 against 481 is itself information. The day that gap starts widening, a batch of requests is being handled at the framework layer — and your log will be entirely silent about it.</li>
-                    </ol>
+{ const _e = document.getElementById("cbg-title"); if (_e) _e.textContent = D.title; }
+{ const _e = document.getElementById("cbg-lede"); if (_e) _e.textContent = D.lede; }
+{ const _e = document.getElementById("cbg-src"); if (_e) _e.textContent = D.source ?? ""; }
+{ const _e = document.getElementById("cbg-eyebrow"); if (_e) _e.textContent = "Behavior Graph · " + D.nodes.length + " nodes · " +
+  D.nodes.reduce((a,n)=>a+n.probes.length,0) + " probes"; }
+document.getElementById("cbg-tl-title").textContent =
+  `Timeline · ${STEP/1000}s per bucket · ${Math.round(NB*STEP/60000)} minutes`;
+document.getElementById("cbg-legend").innerHTML =
+  leaves.map(id => `<span><i style="background:var(${TONE[N[id].tone]})"></i>${N[id].name}</span>`).join("") +
+  `<span><i style="background:var(--bad);opacity:.28"></i>selection</span>
+   <span style="color:var(--faint)">drag on the chart to select any span</span>`;
 
-                    <figure class="article-figure figure-wide">
-                        <a href="https://codebull-dashboard-service.web.app/gin-middleware-20260728/" target="_blank" rel="noopener noreferrer">
-                            <img src="asset/gin-middleware-metrics.webp" alt="CodeBull dashboard Metrics tab overview with three charts: top left, the cumulative curve for gin.(*Context).Next - trace_hits climbing to about 1,800 and ending at 17:02; top right, the gin.(*Engine).ServeHTTP - gin_serve_latency scatter hugging the area below 1 ms with a single 27.5 ms spike near 16:57; bottom left, gin.redirectTrailingSlash - trace_hits climbing from 0 to 120 with an x-axis spanning only 17:02:20 to 17:04" loading="lazy">
-                        </a>
-                        <figcaption>The bottom-left panel is the quietest chart here: <strong>it is only two minutes wide</strong>. Redirects happened only in that final stretch, and the panel doesn't even need to be asked. <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/gin-middleware-20260728/" target="_blank" rel="noopener noreferrer">Open the live dashboard →</a></span></figcaption>
-                    </figure>
+/* ── stage ─────────────────────────────────────────────── */
+const stage = document.getElementById("cbg-stage");
+D.nodes.forEach(n => {
+  const el = document.createElement("div");
+  el.className = "node " + n.tone; el.id = "cbg-node-" + n.id;
+  el.style.left = n.x + "px"; el.style.top = n.y + "px";
+  stage.appendChild(el);
+});
+stage.style.minWidth = (Math.max(...D.nodes.map(n=>n.x)) + 320) + "px";
 
-                    <h2>Wrapping up</h2>
-                    <p>I didn't change a line of code, didn't restart the service, didn't stand up a trace backend first. I picked five positions in a running process, drove one path to five endings, and counted carefully for ten minutes — and then, because the numbers looked too tidy, pulled the points off and ran it again.</p>
-                    <p>What that bought: a request re-entering the same function four times; 404s and 405s running the entire middleware chain with nothing skipped; that number dropping from 4.00 to 3.00 the moment auth aborts, dividing evenly across three phases; two minutes in which 120 requests never got through the chain's door while the service's own log said nothing about them; the router layer still seeing the <code>/health/</code> the client typed; that redirected request costing a sixth of a normal one; and my own observation points impersonating a "404s cost 17% more" conclusion that wasn't there.</p>
-                    <p>A framework is a black box, but a black box is only "invisible by default", not "impossible to see". And once you can see it, there's a second job: <strong>make sure what you're looking at is it, and not you.</strong></p>
+/* ── timeline ──────────────────────────────────────────── */
+const cv = document.getElementById("cbg-tl"), ctx = cv.getContext("2d");
+function drawTimeline(){
+  const dpr = devicePixelRatio||1, w = cv.clientWidth, h = cv.clientHeight;
+  cv.width = w*dpr; cv.height = h*dpr; ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,h);
+  const stacks = leaves.map(id => N[id].series.hits);
+  const peak = Math.max(...Array.from({length:NB}, (_,i) => stacks.reduce((a,s)=>a+s[i],0))) * 1.1;
+  const bw = w/NB;
+  D.phases.forEach((p,i) => { if (i%2) { ctx.fillStyle = css("--cbg-sunk");
+    ctx.fillRect(p.fromBucket*bw, 0, (p.toBucket-p.fromBucket)*bw, h); } });
+  for (let i=0;i<NB;i++){
+    let acc = 0;
+    stacks.forEach((s,si) => {
+      const hh = (s[i]/peak)*h;
+      ctx.fillStyle = css(TONE[N[leaves[si]].tone]); ctx.globalAlpha = .88;
+      ctx.fillRect(i*bw, h-acc-hh, Math.max(bw-.4,.6), hh); acc += hh;
+    });
+  }
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = css("--cbg-bad"); ctx.globalAlpha = .15;
+  ctx.fillRect(sel.from*bw, 0, (sel.to-sel.from)*bw, h); ctx.globalAlpha = 1;
+  ctx.strokeStyle = css("--cbg-bad"); ctx.lineWidth = 1.5; ctx.beginPath();
+  ctx.moveTo(sel.from*bw,0); ctx.lineTo(sel.from*bw,h);
+  ctx.moveTo(sel.to*bw,0); ctx.lineTo(sel.to*bw,h); ctx.stroke();
+  ctx.font = '500 10px "JetBrains Mono", monospace'; ctx.fillStyle = css("--cbg-faint");
+  D.phases.forEach(p => ctx.fillText(p.label, p.fromBucket*bw+5, 12));
+}
+let dragging = false, anchor = 0;
+const bucketAt = ev => { const r = cv.getBoundingClientRect();
+  return Math.max(0, Math.min(NB, Math.round(((ev.clientX-r.left)/r.width)*NB))); };
+cv.addEventListener("pointerdown", e => { dragging = true; anchor = bucketAt(e); cv.setPointerCapture(e.pointerId); });
+cv.addEventListener("pointermove", e => { if(!dragging) return;
+  const b = bucketAt(e); sel = { from:Math.min(anchor,b), to:Math.max(anchor,b) };
+  if (sel.to - sel.from < 2) sel.to = Math.min(NB, sel.from+2); render(); });
+addEventListener("pointerup", () => { if(dragging){ dragging = false; syncPresets(); } });
 
-                    <h3>Appendix: this round's setup (reproducible)</h3>
-                    <ul>
-                        <li><strong>The five points (all inside gin, with no source edits)</strong>:
-                            <ul>
-                                <li><code>gin.(*Engine).handleHTTPRequest</code> <code>gin.go:708</code> — log, <code>M={httpMethod} P={rPath}</code>, <strong><code>variableNames</code> must be limited to those two</strong> or it reads locals that aren't assigned yet at that line</li>
-                                <li><code>gin.(*Context).Next</code> <code>context.go:189</code> — metric (chain re-entry count)</li>
-                                <li><code>gin.serveError</code> <code>gin.go:765</code> — log, <code>status={code}</code></li>
-                                <li><code>gin.redirectTrailingSlash</code> <code>gin.go:782</code> — metric</li>
-                                <li><code>gin.(*Engine).ServeHTTP</code> <code>gin.go:667 → 674</code> — latency, template alias <code>gin_serve_latency</code>. <strong>I originally wrote that without an alias this dimension yields zero samples; that was wrong</strong> — a latency point counts closed intervals, and the count sat at zero because an earlier registration had left a duration pair behind (and removing it reported success). Nothing to do with the alias. See the body.</li>
-                            </ul>
-                        </li>
-                        <li><strong>Observed service</strong>: gin v1.12.0 (vendored to <code>./gin_pkg</code> via replace), <code>gin.New()</code> + three global middlewares + four routes + <code>NoRoute</code>, on <code>:8080</code>; <code>HandleMethodNotAllowed</code> explicitly enabled (gin defaults to false), <code>RedirectTrailingSlash</code> left at its default true</li>
-                        <li><strong>Build</strong>: <code>go build -gcflags="all=-dwarflocationlists=true -N -l"</code>; SDK <code>github.com/0xbu11/codebull v0.0.28</code></li>
-                        <li><strong>Instrumented window (five points)</strong>: <code>2026-07-28T08:53:57Z</code> → <code>09:04:03Z</code> (10 min 06 s), five phases of 120 requests each, one per second:
-                            <ul>
-                                <li>A <code>GET /health</code> +token → 200: <code>Next</code> 484 (4.00)</li>
-                                <li>B <code>GET /nope</code> +token → 404: <code>Next</code> 484 (4.00), <code>serveError</code> 120</li>
-                                <li>C <code>PUT /health</code> +token → 405: <code>Next</code> 480 (4.00), <code>serveError</code> 120</li>
-                                <li>D <code>GET /health</code> no token → 401: <code>Next</code> 360 (3.00)</li>
-                                <li>E <code>GET /health/</code> +token → 301 (not followed): <code>Next</code> <strong>0</strong>, redirects 120</li>
-                            </ul>
-                        </li>
-                        <li><strong>Panel totals</strong>: router 602, <code>Next</code> 1,808, <code>serveError</code> 240, redirects 120, latency samples 602; Logs tab <code>ROWS: 842</code> = 602 + 240</li>
-                        <li><strong>Arithmetic</strong>: <code>484 + 484 + 480 + 360 + 0 = 1,808</code>; <code>602 + 240 = 842</code>; 602 = 600 client requests + 2 manual liveness checks</li>
-                        <li><strong>Control window (latency point only, fresh process)</strong>: <code>10:27:29Z</code> → <code>10:37:35Z</code>, same script, same 120 × 5. p50: A 0.119, B 0.104, C 0.065, D 0.072, E 0.020 ms</li>
-                        <li><strong>Cross-check</strong>: the service's own access log has 481 rows over the same window (<code>301</code> and <code>/health/</code> both 0), against the panel's 602 — a gap of 121 = 120 redirects + 1 boundary error</li>
-                        <li><strong>What this round did not do</strong>:
-                            <ul>
-                                <li>In the five-point round, <strong>77–94% of the latency is the cost of observation itself</strong>, so any cross-phase cost conclusion rests on the control round</li>
-                                <li>The first control round lost four phases to a silent crash on the observation side (only 121 samples survived); the whole round was scrapped and re-run</li>
-                                <li>Each control phase absorbed about 4 health-check requests (~3%) that cannot be filtered out of the samples</li>
-                                <li>No point on each individual middleware, so "the missing layer is <code>auth</code>" is inference, not something the panel pointed at</li>
-                                <li>That <code>req.URL.Path</code> is rewritten in place, and that the <code>allNoMethod</code> chain a 405 takes has no handler, are both <strong>read from the source</strong> (<code>gin.go:790-792</code>, <code>gin.go:751</code>) — this round did not attach anything downstream to measure them</li>
-                                <li>The 13% gap between 404 and 200 was measured but its mechanism was not, so no explanation is offered for it anywhere in this piece</li>
-                                <li>Everything ran at one request per second; nothing here is a conclusion about high load</li>
-                            </ul>
-                        </li>
-                    </ul>
+// A real window arrives without authored phases. Thirds are not a claim about
+// the run — they are a fast way to ask "did this move", which is the only
+// reason the timeline is here.
+const PRESETS = D.phases.length
+  ? [{label:"All",from:0,to:NB}, ...D.phases.map(p=>({label:p.label,from:p.fromBucket,to:p.toBucket}))]
+  : [{label:"All",from:0,to:NB},
+     {label:"First third",from:0,to:Math.round(NB/3)},
+     {label:"Middle",from:Math.round(NB/3),to:Math.round(2*NB/3)},
+     {label:"Last third",from:Math.round(2*NB/3),to:NB}];
+const pbox = document.getElementById("cbg-presets");
+PRESETS.forEach((p,i) => { const b = document.createElement("button"); b.textContent = p.label;
+  b.onclick = () => { sel = {from:p.from,to:p.to}; render(); syncPresets(); }; pbox.appendChild(b); });
+const syncPresets = () => [...pbox.children].forEach((b,i) =>
+  b.setAttribute("aria-pressed", String(PRESETS[i].from===sel.from && PRESETS[i].to===sel.to)));
 
-                    <div class="article-callout">
-                        <p>📊 <strong>Remote dashboard for this article</strong> (real measured data, viewable online): <a href="https://codebull-dashboard-service.web.app/gin-middleware-20260728/" target="_blank" rel="noopener noreferrer">gin-middleware-20260728</a></p>
-                        <p>The <strong>Metrics</strong> tab has three panels: the <code>Next</code> curve climbing to 1,808 and ending at 17:02, the <code>gin_serve_latency</code> scatter, and the two-minute-wide <code>redirectTrailingSlash</code>. The <strong>Logs</strong> tab lets you reconcile the <code>M=…P=…</code> and <code>status=…</code> rows verbatim; <code>ROWS: 842</code> is 602 + 240. The control round has its own dashboard: <a href="https://codebull-dashboard-service.web.app/gin-middleware-control-20260728/" target="_blank" rel="noopener noreferrer">gin-middleware-control-20260728</a> (a single latency scatter, flattened by three 45 ms orphan samples — that round's structure is in the numbers, not the picture). The panel's time axis is local time, UTC+8: 16:53–17:04 there is the UTC window quoted in the text.</p>
-                    </div>
+/* ── node cards ────────────────────────────────────────── */
+function spark(series, cvar, hi){
+  const w = 274, h = 34, max = Math.max(...series, 1);
+  const pts = series.map((v,i) => `${(i/(series.length-1))*w},${h-(v/max)*(h-3)-1.5}`).join(" ");
+  const x1 = (sel.from/series.length)*w, x2 = (sel.to/series.length)*w;
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
+    <rect x="${x1}" y="0" width="${Math.max(x2-x1,1)}" height="${h}" fill="var(${hi||cvar})" opacity=".14"/>
+    <polyline points="${pts}" fill="none" stroke="var(${cvar})" stroke-width="1.4" stroke-linejoin="round"/></svg>`;
+}
+function renderNode(n){
+  const cvar = TONE[n.tone];
+  const whole = sel.from === 0 && sel.to === NB;
+  const total = whole && n.hitsFull != null ? n.hitsFull : sum(n.series.hits, 0, NB);
+  const hits = whole && n.hitsFull != null ? n.hitsFull : sum(n.series.hits, sel.from, sel.to);
+  const mins = ((sel.to-sel.from)*STEP)/60000;
+  let lat = "";
+  if (n.series.latencyP50){
+    const win = a => a.slice(sel.from, sel.to);
+    const avg = a => { const v = a.filter(x => x > 0); return v.length ? v.reduce((x,y)=>x+y,0)/v.length : 0; };
+    // Over the whole window the reservoir's own percentiles are the honest
+    // answer. Over a sub-range there is no reservoir, so the per-bucket
+    // percentiles are averaged — which is not a percentile of the range, and
+    // the caption says so rather than letting the number pass as one.
+    const whole = sel.from === 0 && sel.to === NB && n.latencyFull;
+    const p50 = whole ? n.latencyFull.p50 : avg(win(n.series.latencyP50));
+    const p95 = whole ? n.latencyFull.p95 : avg(win(n.series.latencyP95));
+    const worst = Math.max(...n.series.latencyP95);
+    lat = `<div class="slot"><div class="slot-h"><span>latency · latency probe</span><span>${whole ? "whole-window percentiles" : "mean of per-bucket percentiles"}</span></div>
+      <div class="lat"><div><span class="k">p50</span><span class="v">${ms(p50)}<span class="unit">ms</span></span></div>
+      <div><span class="k">p95</span><span class="v" style="color:${p95>worst*.6?"var(--bad)":"inherit"}">${ms(p95)}<span class="unit">ms</span></span></div></div>
+      ${spark(n.series.latencyP95, cvar, "--cbg-bad")}</div>`;
+  }
+  const shapeAll = n.samples.reduce((a,s)=>a+sum(s.perBucket,sel.from,sel.to),0) || 1;
+  const shapes = n.samples.map(s => {
+    const v = sum(s.perBucket, sel.from, sel.to);
+    if (v === 0) return "";
+    const pct = v/shapeAll*100;
+    // a shape absent from the first tenth of the window is new behaviour, not background
+    const isNew = sum(s.perBucket, 0, Math.floor(NB/10)) === 0;
+    return `<div class="shape"><div class="shape-row ${isNew?"new":""}">
+        <span class="t" title="${s.text}">${isNew?"▲ ":""}${s.text}</span><span class="n">${pct.toFixed(0)}% · ${fmt(v)}</span></div>
+      <div class="bar"><i style="width:${pct}%;background:var(${isNew?"--cbg-bad":cvar})"></i></div></div>`;
+  }).join("") || `<p class="why" style="margin-top:6px">nothing captured in this span</p>`;
 
-                    <div class="article-footnote">
-                        <p>The "no code changes, attach observation points to a running process, then watch" part of this piece was done with <strong>CodeBull</strong> — a VS Code extension that dynamically injects Metric / Log / Latency observation points into running Go services: no source edits, no recompile, no restart. That middleware curve vanishing for the final two minutes, and the control round that dismantled my own false conclusion, were both produced live this way.</p>
-                        <p><em>Every count and every millisecond here comes from CodeBull's measurements against a running gin service, and can be reconciled online via the dashboard link above.</em></p>
-                        <p><a class="btn" href="https://marketplace.visualstudio.com/items?itemName=0xbu11.codebull" target="_blank" rel="noopener noreferrer">Install CodeBull</a></p>
-                    </div>
+  const chainAll = n.stacks.reduce((a,s)=>a+sum(s.perBucket,sel.from,sel.to),0) || 1;
+  const flame = n.stacks.map(s => {
+    const v = sum(s.perBucket, sel.from, sel.to); if (!v) return "";
+    const share = v/chainAll*100;
+    const MAX_FRAMES = 5;
+    // The outermost frames are where the goroutine started, and that is what
+    // tells two islands apart — so the head stays visible and the middle folds.
+    const head = s.frames.length > MAX_FRAMES ? s.frames.slice(0, 2) : [];
+    const tail = s.frames.slice(head.length ? head.length - MAX_FRAMES : 0);
+    const hidden = s.frames.length - head.length - tail.length;
+    const chip = (f, i) =>
+      `<span style="flex:1;background:color-mix(in srgb, var(${cvar}) ${90-i*12}%, #000 10%)" title="${f}">${shortFn(f)}</span>`;
+    const cells =
+      head.map(chip).join("") +
+      (hidden > 0
+        ? `<span style="flex:0 0 auto;background:var(--line);color:var(--dim)" title="${s.frames.slice(head.length, head.length + hidden).join(" < ")}">+${hidden}</span>`
+        : "") +
+      tail.map((f, i) => chip(f, i + head.length)).join("");
+    return `<div><div class="chain" style="width:${Math.max(share,55)}%">${cells}</div>
+      <div class="chain-meta"><span>${share.toFixed(0)}% take this path</span><span>${fmt(v)}</span></div></div>`;
+  }).join("");
+
+  document.getElementById("cbg-node-"+n.id).innerHTML = `
+    <div class="nhead"><h3>${n.name}</h3><div class="why">${n.purpose}</div>
+      <div class="probes">${n.probes.map(p=>`<span class="probe ${p.kind}">${p.kind}</span>`).join("")}
+        <span class="probe">${n.probes.length} probe</span>
+        ${n.root ? '<span class="probe" title="no instrumented caller on the stack">root</span>' : ""}</div></div>
+    <div class="slot"><div class="slot-h"><span>hits · metric</span><span>${(hits/total*100).toFixed(0)}% of ${fmt(total)}</span></div>
+      <div class="big">${fmt(hits)}<span class="unit"> · ${(hits/mins).toFixed(0)}/min</span></div>${spark(n.series.hits, cvar)}</div>
+    ${lat}
+    <div class="slot"><div class="slot-h"><span>captured · log</span><span>${n.samples.length} shapes</span></div>${shapes}</div>
+    <div class="slot"><div class="slot-h"><span>paths here · stacks</span><span>${n.stacks.length} chains</span></div>
+      <div class="flame">${flame}</div></div>`;
+}
+
+/* ── edges ─────────────────────────────────────────────── */
+function edgeFacts(e){
+  const whole = sel.from === 0 && sel.to === NB;
+  const parent = sum(N[e.from].series.hits, sel.from, sel.to);
+  const series = sum(e.countPerBucket, sel.from, sel.to);
+  const n = whole && e.countFull != null ? e.countFull : series;
+  const f = whole && e.fanoutFull != null ? e.fanoutFull : (parent ? series/parent : 0);
+  const approx = !whole;
+  return { n, f, parent, approx, alert: e.alert != null && f > e.alert,
+    sub: e.gap > 0
+      ? `${e.gapLabel ?? e.gap} unobserved · ${e.gapIn.map(shortFn).join(" · ") || "(names not recorded)"}`
+      : "direct call, nothing skipped" };
+}
+function renderEdges(){
+  document.getElementById("cbg-edge-list").innerHTML = D.edges.map(e => { const f = edgeFacts(e);
+    return `<div class="echip ${f.alert?"alert":(e.gap===0?"calm":"")}"><b>${N[e.from].name} → ${N[e.to].name}</b>
+      <b style="color:${f.alert?"var(--bad)":"var(--ink)"}">${f.approx?"≈":""}×${f.f.toFixed(2)}</b>
+      <span class="sub">${fmt(f.n)} ÷ ${fmt(f.parent)}</span><span class="sub">${f.sub}</span></div>`; }).join("");
+
+  const svg = document.getElementById("cbg-wires");
+  if (getComputedStyle(svg).display === "none") return;
+  const s = stage.getBoundingClientRect();
+  const box = id => { const r = document.getElementById("cbg-node-"+id).getBoundingClientRect();
+    return { x:r.left-s.left, y:r.top-s.top, w:r.width, h:r.height }; };
+  let out = ["","alert","calm"].map(k => `<marker id="ah${k}" viewBox="0 0 10 10" refX="9" refY="5"
+      markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"
+      fill="var(${k==="alert"?"--cbg-bad":k==="calm"?"--cbg-good":"--cbg-dim"})"/></marker>`).join("");
+  out = `<defs>${out}</defs>`;
+  D.edges.forEach(e => {
+    const a = box(e.from), b = box(e.to);
+    const x1 = a.x+a.w, y1 = a.y+70, x2 = b.x-9, y2 = b.y+70, mx = (x1+x2)/2, ty = (y1+y2)/2;
+    const f = edgeFacts(e);
+    const kind = f.alert ? "alert" : (e.gap === 0 ? "calm" : "");
+    out += `<path class="wire ${kind}" marker-end="url(#ah${kind})"
+      d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}" ${e.gap>0?'stroke-dasharray="6 5"':""}/>`;
+    const w = Math.min(Math.max(f.sub.length*6.2+20, 160), x2-x1-10);
+    out += `<rect class="wbox" x="${mx-w/2}" y="${ty-20}" width="${w}" height="40" rx="3"/>
+      <text class="wlabel" x="${mx}" y="${ty-3}" text-anchor="middle" fill="${f.alert?"var(--bad)":"var(--ink)"}">${f.approx?"≈":""}×${f.f.toFixed(2)} · ${fmt(f.n)} calls</text>
+      <text class="wsub" x="${mx}" y="${ty+12}" text-anchor="middle">${f.sub}</text>`;
+  });
+  svg.innerHTML = out;
+  stage.style.height = (Math.max(...D.nodes.map(n => box(n.id).y + box(n.id).h)) + 8) + "px";
+}
+
+/* ── readout ───────────────────────────────────────────── */
+function renderReadout(){
+  const val = (name) => {
+    const n = D.nodes.find((x) => x.name === name);
+    if (!n) return 0;
+    return sel.from === 0 && sel.to === NB && n.hitsFull != null
+      ? n.hitsFull
+      : sum(n.series.hits, sel.from, sel.to);
+  };
+  const a = D.nodes[0];
+  const parts = [`<span>Selected <b>${clock(sel.from)}–${clock(sel.to)}</b> (${((sel.to-sel.from)*STEP/60000).toFixed(1)} min)</span>`,
+    `<span>${a.name} <b>${fmt(val(a.name))}</b></span>`];
+  D.readout.ratios.forEach(r => {
+    const v = val(r.den) ? val(r.num)/val(r.den)*100 : 0;
+    parts.push(`<span>${r.label} <b style="color:var(${r.tone==="good"?"--cbg-good":"--cbg-money"})">${v.toFixed(0)}%</b></span>`);
+  });
+  const lnode = D.nodes.find(n => n.series.latencyP95);
+  if (lnode){ const whole = sel.from === 0 && sel.to === NB;
+    const w = lnode.series.latencyP95.slice(sel.from, sel.to).filter(v => v > 0);
+    const p95 = whole && lnode.latencyFull ? lnode.latencyFull.p95 : w.reduce((x,y)=>x+y,0)/(w.length||1);
+    const worst = Math.max(...lnode.series.latencyP95);
+    parts.push(`<span>${lnode.name} p95 <b style="color:${p95>worst*.6?"var(--bad)":"inherit"}">${ms(p95)} ms</b></span>`); }
+  parts.push(`<span style="color:var(--faint)">${D.readout.check}</span>`);
+  document.getElementById("cbg-readout").innerHTML = parts.join("");
+}
+
+const notesEl = document.getElementById("cbg-notes");
+if (notesEl) notesEl.innerHTML = (D.notes||[]).map(n =>
+  `<div class="note"><h4>${n.h}</h4><p>${n.p}</p></div>`).join("");
+
+function render(){ drawTimeline(); D.nodes.forEach(renderNode); renderReadout();
+  requestAnimationFrame(renderEdges); }
+addEventListener("resize", render);
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
+render(); syncPresets();
+
+})();</script>
+</div>
+                    <h2>×3 is written in no line of code</h2>
+                    <p>Over the window 1,512 requests came in and <code>Context.Next()</code> advanced <strong>4,536</strong> times — exactly three per request. Three is the length of this chain: how many layers <code>r.Use(...)</code> registered is a startup fact, how many times <code>Next()</code> actually advanced is a traffic fact, and only the second one tells you whether the chain was ever cut short.</p>
+                    <h2>The dashed edge is the honest part</h2>
+                    <p>The edge from <strong>Match the route</strong> to <strong>Advance the chain</strong> is labelled <strong>0–3 unobserved</strong>, and it names them: <code>requestID</code>, <code>accessLog</code>, <code>auth</code>. The middleware chain is itself the layer nobody measured. The range is not noise — <code>Next()</code> is called at different depths of the chain, with nothing above it the first time and three layers stacked on the last.</p>
+                    <h2>A quarter of the requests never reach a handler</h2>
+                    <p><code>×0.25</code>: 378 requests were taken by the trailing-slash redirect. The route node lists four paths at 378 each, and the <code>/health/</code> one turns around inside the framework before any handler runs. Across the whole window p50 was 0.52ms and p95 2.1ms.</p>
+                    <p>Every number above can be checked by dragging the timeline.</p>
                 </article>
             </div>
         </section>

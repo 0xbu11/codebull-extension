@@ -4,21 +4,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CodeBull - I Watched a Running GORM for Eight Minutes</title>
-    <meta name="description" content="No code changes: two observation points inside a running Go service's GORM, and eight minutes later an UPDATE that had lost its primary key.">
+    <title>One Preload, one extra statement on the read path | CodeBull</title>
+    <meta name="description" content="Probes on a running GORM, from four API callers down to the line that emits the statement — no code change, six minutes forty.">
     <meta property="og:type" content="article">
     <meta property="og:site_name" content="CodeBull">
     <meta property="og:locale" content="en_US">
-    <meta property="og:title" content="I watched a running GORM for eight minutes, and saw it lose the primary key">
-    <meta property="og:description" content="Two observation points inside a running service's GORM, no code changes: soft deletes rewriting DELETE into UPDATE, one Preload becoming two SELECTs, and an UPDATE degenerating into a full-table shape — caught live.">
+    <meta property="og:title" content="One Preload, one extra statement on the read path">
+    <meta property="og:description" content="Probes on a running GORM, from four API callers down to the line that emits the statement — no code change, six minutes forty.">
     <meta property="og:url" content="https://0xbu11.github.io/codebull-extension/article-gorm-runtime.html">
     <meta property="og:image" content="https://0xbu11.github.io/codebull-extension/asset/og-gorm-runtime.png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="627">
     <meta property="og:image:alt" content="I watched a running GORM for eight minutes, and saw it lose the primary key">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="I watched a running GORM for eight minutes, and saw it lose the primary key">
-    <meta name="twitter:description" content="Two observation points inside a running service's GORM, no code changes: soft deletes rewriting DELETE into UPDATE, one Preload becoming two SELECTs, and an UPDATE degenerating into a full-table shape — caught live.">
+    <meta name="twitter:title" content="One Preload, one extra statement on the read path">
+    <meta name="twitter:description" content="Probes on a running GORM, from four API callers down to the line that emits the statement — no code change, six minutes forty.">
     <meta name="twitter:image" content="https://0xbu11.github.io/codebull-extension/asset/og-gorm-runtime.png">
     <link rel="stylesheet" href="style.css?v=16">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -61,176 +61,334 @@
             <div class="container">
                 <a class="article-back" href="index.html#articles">← Back to articles</a>
                 <span class="article-card-source">GORM · Field Notes</span>
-                <h1>I watched a running GORM for eight minutes, and saw it lose the primary key</h1>
-                <div class="article-meta">
-                    <span>2026-07-24</span>
-                    <span>~8 min window / 163 CRUD rounds</span>
-                    <span>gorm-demo + PostgreSQL 16</span>
-                </div>
-                <p class="article-lede">A few days ago I did something I don't usually do: without changing a single line of code, I attached two observation points inside GORM in a <strong>running</strong> Go service, then sat in front of the dashboard and watched.</p>
+                <h1>One Preload, one extra statement on the read path</h1>
+                <div class="article-meta"><span>2026-08-28</span><span>6m40s window / 137 rounds of CRUD / 7 probes</span><span>GORM + PostgreSQL 16</span></div>
+                <p class="article-lede">Probes on a running GORM, from four API callers down to the line that emits the statement — no code change, six minutes forty.</p>
             </div>
         </section>
 
         <section class="article-section">
             <div class="container">
                 <article class="article-body">
-                    <p>Eight minutes in, I saw an <code>UPDATE</code> that should never have looked the way it did — it had lost its primary key and degenerated into the shape of a full-table update. This piece isn't really about a tool. It's about <strong>how much you can see simply by watching an ORM while it runs</strong>.</p>
+                    <div class="article-graph-embed"><!-- interactive behaviour graph -->
+<style>.cbg-root{
+  --cbg-bg:#EEF0F2; --cbg-panel:#FFFFFF; --cbg-sunk:#F5F6F8; --cbg-ink:#151B21; --cbg-dim:#5D6B77; --cbg-faint:#8A97A2;
+  --cbg-line:#D8DDE2; --cbg-line-soft:#E7EAEE; --cbg-accent:#2D5C7F; --cbg-accent-soft:#DCE7EF;
+  --cbg-entry:#54646F; --cbg-good:#2F8570; --cbg-money:#A9752A; --cbg-bad:#AE4630;
+  --cbg-shadow:0 1px 2px rgba(21,27,33,.05), 0 10px 26px -16px rgba(21,27,33,.35);
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --cbg-bg:#0E1317; --cbg-panel:#171E24; --cbg-sunk:#121920; --cbg-ink:#E2E8ED; --cbg-dim:#93A2AE; --cbg-faint:#6E7E8A;
+  --cbg-line:#28323A; --cbg-line-soft:#1F272E; --cbg-accent:#6FA5CE; --cbg-accent-soft:#16303F;
+  --cbg-entry:#8898A4; --cbg-good:#4FB79B; --cbg-money:#D7A44F; --cbg-bad:#DC7657;
+  --cbg-shadow:0 1px 2px rgba(0,0,0,.5), 0 12px 30px -18px rgba(0,0,0,.9);
+}}.cbg-root[data-theme="dark"]{
+  --cbg-bg:#0E1317; --cbg-panel:#171E24; --cbg-sunk:#121920; --cbg-ink:#E2E8ED; --cbg-dim:#93A2AE; --cbg-faint:#6E7E8A;
+  --cbg-line:#28323A; --cbg-line-soft:#1F272E; --cbg-accent:#6FA5CE; --cbg-accent-soft:#16303F;
+  --cbg-entry:#8898A4; --cbg-good:#4FB79B; --cbg-money:#D7A44F; --cbg-bad:#DC7657;
+  --cbg-shadow:0 1px 2px rgba(0,0,0,.5), 0 12px 30px -18px rgba(0,0,0,.9);
+}.cbg-root *{box-sizing:border-box}.cbg-root{margin:0;background:var(--cbg-bg);color:var(--cbg-ink);font-family:Archivo,system-ui,"Noto Sans TC",sans-serif;font-size:15px;line-height:1.6}.cbg-root .mono{font-family:"JetBrains Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}.cbg-root .shell{max-width:1300px;margin:0 auto;padding:34px 22px 70px;display:flex;flex-direction:column;gap:20px}.cbg-root header.top{display:flex;flex-direction:column;gap:9px}.cbg-root .tagline{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.cbg-root .badge{font-family:"JetBrains Mono",monospace;font-size:.66rem;letter-spacing:.14em;text-transform:uppercase;padding:3px 8px;border-radius:2px;background:var(--cbg-good);color:#fff}.cbg-root .src{font-family:"JetBrains Mono",monospace;font-size:.72rem;color:var(--cbg-faint)}.cbg-root .eyebrow{font-family:"JetBrains Mono",monospace;font-size:.68rem;letter-spacing:.15em;text-transform:uppercase;color:var(--cbg-faint)}.cbg-root h1{margin:0;font-size:clamp(1.6rem,3.4vw,2.3rem);line-height:1.15;letter-spacing:-.02em;font-weight:700;text-wrap:balance}.cbg-root .sub{color:var(--cbg-dim);max-width:64ch;margin:0}.cbg-root .panel{background:var(--cbg-panel);border:1px solid var(--cbg-line);border-radius:4px;box-shadow:var(--cbg-shadow)}.cbg-root .panel-head{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:11px 16px;border-bottom:1px solid var(--cbg-line-soft)}.cbg-root .panel-title{font-family:"JetBrains Mono",monospace;font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cbg-faint)}.cbg-root .presets{display:flex;gap:6px;flex-wrap:wrap}.cbg-root button{font:inherit;font-size:.8rem;color:var(--cbg-dim);background:var(--cbg-sunk);border:1px solid var(--cbg-line);border-radius:3px;padding:4px 11px;cursor:pointer;transition:background .15s,color .15s,border-color .15s}.cbg-root button:hover{color:var(--cbg-ink);border-color:var(--cbg-accent)}.cbg-root button[aria-pressed="true"]{background:var(--cbg-accent);border-color:var(--cbg-accent);color:#fff}.cbg-root :focus-visible{outline:2px solid var(--cbg-accent);outline-offset:2px}.cbg-root #cbg-timeline{padding:14px 16px 10px}.cbg-root #cbg-tl{display:block;width:100%;height:104px;cursor:crosshair;touch-action:none;user-select:none}.cbg-root .tl-legend{display:flex;gap:18px;flex-wrap:wrap;margin-top:8px;font-size:.78rem;color:var(--cbg-dim)}.cbg-root .tl-legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}.cbg-root .readout{display:flex;gap:22px;flex-wrap:wrap;align-items:baseline;padding:10px 16px;border-top:1px solid var(--cbg-line-soft);font-size:.85rem;color:var(--cbg-dim)}.cbg-root .readout b{color:var(--cbg-ink);font-family:"JetBrains Mono",monospace;font-weight:500}.cbg-root #cbg-graph{position:relative;padding:22px 16px 18px;overflow-x:auto}.cbg-root #cbg-stage{position:relative}.cbg-root #cbg-wires{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none}.cbg-root .node{position:absolute;width:300px;background:var(--cbg-panel);border:1px solid var(--cbg-line);border-radius:4px;box-shadow:var(--cbg-shadow);overflow:hidden}.cbg-root .node.entry{border-top:3px solid var(--cbg-entry)}.cbg-root .node.good{border-top:3px solid var(--cbg-good)}.cbg-root .node.money{border-top:3px solid var(--cbg-money)}.cbg-root .node.bad{border-top:3px solid var(--cbg-bad)}.cbg-root .nhead{padding:10px 13px 8px;border-bottom:1px solid var(--cbg-line-soft)}.cbg-root .nhead h3{margin:0;font-size:1.02rem;font-weight:600;letter-spacing:-.01em}.cbg-root .why{font-size:.78rem;color:var(--cbg-dim);line-height:1.4}.cbg-root .probes{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}.cbg-root .probe{font-family:"JetBrains Mono",monospace;font-size:.6rem;letter-spacing:.06em;text-transform:uppercase;padding:2px 6px;border-radius:2px;border:1px solid var(--cbg-line);color:var(--cbg-dim);background:var(--cbg-sunk)}.cbg-root .probe.log{color:var(--cbg-accent);border-color:var(--cbg-accent-soft);background:var(--cbg-accent-soft)}.cbg-root .probe.latency{color:var(--cbg-money)}.cbg-root .slot{padding:9px 13px;border-top:1px solid var(--cbg-line-soft)}.cbg-root .slot-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-family:"JetBrains Mono",monospace;font-size:.6rem;letter-spacing:.13em;text-transform:uppercase;color:var(--cbg-faint)}.cbg-root .big{font-family:"JetBrains Mono",monospace;font-size:1.5rem;font-weight:500;line-height:1.1;font-variant-numeric:tabular-nums}.cbg-root .unit{font-size:.72rem;color:var(--cbg-dim);font-family:Archivo,sans-serif;margin-left:4px}.cbg-root .spark{display:block;width:100%;height:34px;margin-top:5px}.cbg-root .lat{display:flex;gap:16px;align-items:baseline;margin-top:3px}.cbg-root .lat div{display:flex;gap:5px;align-items:baseline}.cbg-root .lat .k{font-family:"JetBrains Mono",monospace;font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:var(--cbg-faint)}.cbg-root .lat .v{font-family:"JetBrains Mono",monospace;font-size:1.02rem;font-variant-numeric:tabular-nums}.cbg-root .shape{margin-top:7px}.cbg-root .shape-row{display:flex;justify-content:space-between;gap:8px;font-size:.74rem;margin-bottom:2px}.cbg-root .shape-row .t{font-family:"JetBrains Mono",monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.cbg-root .shape-row .n{font-family:"JetBrains Mono",monospace;color:var(--cbg-dim);white-space:nowrap}.cbg-root .shape-row.new .t{color:var(--cbg-bad);font-weight:500}.cbg-root .bar{height:5px;border-radius:2px;background:var(--cbg-line-soft);overflow:hidden;margin-bottom:8px}.cbg-root .bar i{display:block;height:100%;border-radius:2px}.cbg-root .flame{display:flex;flex-direction:column;gap:5px;margin-top:7px}.cbg-root .chain{display:flex;height:17px;border-radius:2px;overflow:hidden;background:var(--cbg-line-soft)}.cbg-root .chain span{display:flex;align-items:center;padding:0 5px;font-family:"JetBrains Mono",monospace;font-size:.58rem;color:#fff;white-space:nowrap;overflow:hidden;border-right:1px solid rgba(255,255,255,.28)}.cbg-root .chain span:last-child{border-right:0}.cbg-root .chain-meta{display:flex;justify-content:space-between;font-size:.68rem;color:var(--cbg-dim);font-family:"JetBrains Mono",monospace}.cbg-root .wire{fill:none;stroke:var(--cbg-dim);stroke-width:2}.cbg-root .wire.alert{stroke:var(--cbg-bad);stroke-width:2.8}.cbg-root .wire.calm{stroke:var(--cbg-good);stroke-width:2.4}.cbg-root .wlabel{font-family:"JetBrains Mono",monospace;font-size:11.5px;fill:var(--cbg-ink)}.cbg-root .wsub{font-family:"JetBrains Mono",monospace;font-size:9.5px;fill:var(--cbg-faint)}.cbg-root .wbox{fill:var(--cbg-panel);stroke:var(--cbg-line)}.cbg-root #cbg-edge-list{display:none;flex-direction:column;gap:8px;padding:0 16px 16px}.cbg-root .echip{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;padding:9px 12px;border:1px solid var(--cbg-line);border-left:3px solid var(--cbg-dim);border-radius:3px;background:var(--cbg-sunk);font-size:.82rem}.cbg-root .echip.calm{border-left-color:var(--cbg-good)}.cbg-root .echip.alert{border-left-color:var(--cbg-bad)}.cbg-root .echip b{font-family:"JetBrains Mono",monospace;font-weight:500}.cbg-root .echip .sub{color:var(--cbg-dim);font-size:.76rem;font-family:"JetBrains Mono",monospace}.cbg-root .prose{max-width:40rem;margin:0 auto;padding:6px 22px 26px;font-size:16px;line-height:1.8}.cbg-root .prose h2{font-family:Archivo,sans-serif;font-size:1.35rem;font-weight:700;letter-spacing:-.01em;margin:0 0 14px}.cbg-root .prose h3{font-size:1.02rem;font-weight:600;margin:26px 0 6px}.cbg-root .prose p{margin:0 0 14px;color:var(--cbg-ink)}.cbg-root .prose code{font-family:"JetBrains Mono",monospace;font-size:.86em;background:var(--cbg-sunk);
+  border:1px solid var(--cbg-line);padding:.08em .3em;border-radius:2px}.cbg-root .notes{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));padding:16px}.cbg-root .note h4{margin:0 0 4px;font-size:.9rem}.cbg-root .note p{margin:0;font-size:.84rem;color:var(--cbg-dim)}.cbg-root footer{color:var(--cbg-faint);font-size:.78rem;border-top:1px solid var(--cbg-line);padding-top:14px}
+@media (max-width:900px){ #cbg-stage{min-width:0!important;height:auto!important;display:flex;flex-direction:column;gap:14px}
+.cbg-root .node{position:static!important;width:100%} #cbg-wires{display:none} #cbg-edge-list{display:flex} }.cbg-root{max-width:100%;overflow:hidden}.cbg-root #cbg-graph{max-width:100%;overflow-x:auto}.cbg-root #cbg-timeline,.cbg-root #cbg-readout{max-width:100%}</style>
 
-                    <h2>First decide where to stand</h2>
-                    <p>The annoying thing about an ORM is the layer it puts between "the line of Go you wrote" and "the SQL that actually reaches the database." You call <code>db.Update()</code>, and it builds the SQL, adds conditions, picks optimizations — none of which you can see in the source. You only find out once it runs.</p>
-                    <p>So the first decision in observability is: <strong>which layer do you stand on</strong>. Too high (your business code) and you can't see the SQL. Too low (the database) and you can't trace it back to the code that sent it.</p>
-                    <p>I picked GORM's internal convergence point — <code>gorm.(*processor).Execute</code>. Every Create / Preload / Update / Count / Delete in GORM eventually flows through this function. One entry, one exit, and you've cut the whole ORM in half. So I attached two points:</p>
-                    <ul>
-                        <li><strong>Entry (<code>callbacks.go:82</code>)</strong> — a pure counter, answering "how often does this convergence point get hit."</li>
-                        <li><strong>Exit (<code>callbacks.go:140</code>)</strong> — a point that pulls variables out, with the template <code>SQL={string(stmt.SQL.buf)} | rows={db.RowsAffected}</code> — rendering GORM's internal, not-yet-printed SQL buffer into a human-readable statement, and grabbing "how many rows were affected" along with it.</li>
-                    </ul>
-                    <p>That <code>rows</code> field becomes the protagonist of this whole story. Points attached, the service kept running one CRUD round every three seconds, and I started watching.</p>
 
-                    <h2>What the first eight minutes showed: a CRUD round with no makeup on</h2>
-                    <p>The observation window was about eight minutes (starting 03:43:12Z, last entry 03:51:18Z, covering 163 rounds). The exit point recorded <strong>1,045 SQL events</strong>, the entry point <strong>2,090 hits</strong>, and after deduplication, <strong>12 distinct</strong> statement shapes.</p>
-                    <figure class="article-chart">
-                        <p class="chart-title">Entry vs exit: two points on the same convergence function</p>
-                        <p class="chart-subtitle">Observation window 2026-07-24 03:43:12Z → 03:51:18Z (~8 minutes / 163 rounds)</p>
-                        <div class="chart-rows">
-                            <div class="chart-row">
-                                <div class="chart-row-label">Entry hits<br><code>callbacks.go:82</code></div>
-                                <div class="chart-bars">
-                                    <div class="chart-bar-line" title="2,090 entry hits">
-                                        <div class="chart-bar" style="width: 100%"></div>
-                                        <span class="chart-value">2,090 hits</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="chart-row">
-                                <div class="chart-row-label">Exit SQL<br><code>callbacks.go:140</code></div>
-                                <div class="chart-bars">
-                                    <div class="chart-bar-line" title="1,045 SQL events at the exit point">
-                                        <div class="chart-bar" style="width: 50%"></div>
-                                        <span class="chart-value">1,045 events</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <p class="chart-note">The convergence point is entered exactly twice as often as it emits SQL — GORM wraps single writes in an implicit transaction, and those transaction-control passes never produce a recorded statement at the exit. That ratio is itself a health line worth watching.</p>
-                    </figure>
-                    <p>Start with the healthy half — in steady state, a full CRUD round with no makeup on (transcribed verbatim from the dashboard):</p>
-                    <div class="article-table-wrap">
-                        <table>
-                            <thead>
-                                <tr><th>What I wrote</th><th>The SQL actually running, on the dashboard</th><th>rows</th><th>Count</th></tr>
-                            </thead>
-                            <tbody>
-                                <tr><td><code>db.Create(&amp;user)</code></td><td><code>INSERT INTO "users" (...) VALUES ($1..$6) RETURNING "id"</code></td><td>1</td><td>80</td></tr>
-                                <tr><td><code>db.Create(&amp;order)</code></td><td><code>INSERT INTO "orders" (...) VALUES ($1..$6) RETURNING "id"</code></td><td>1</td><td>80</td></tr>
-                                <tr><td><code>db.Preload("User").First(...)</code></td><td><code>SELECT * FROM "users" WHERE "users"."id" = $1 AND "users"."deleted_at" IS NULL</code></td><td>1</td><td>80</td></tr>
-                                <tr><td>(same line as above)</td><td><code>SELECT * FROM "orders" WHERE "orders"."id" = $1 AND ... ORDER BY "orders"."id" LIMIT $2</code></td><td>1</td><td>80</td></tr>
-                                <tr><td><code>db.Model(&amp;u).Update("Age", …)</code></td><td><code>UPDATE "users" SET "age"=$1,"updated_at"=$2 WHERE "users"."deleted_at" IS NULL AND "id" = $3</code></td><td>1</td><td>80</td></tr>
-                                <tr><td><code>db.Count(&amp;n)</code></td><td><code>SELECT count(*) FROM "users" WHERE "users"."deleted_at" IS NULL</code></td><td>1</td><td>163</td></tr>
-                                <tr><td><code>db.Delete(&amp;oldest)</code></td><td><code>UPDATE "users" SET "deleted_at"=$1 WHERE "users"."id" = $2 AND "users"."deleted_at" IS NULL</code></td><td>1</td><td>75</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    <p>This table alone contains two things I "knew about" but had never actually watched happen:</p>
-                    <p><strong><code>db.Delete()</code> actually runs an <code>UPDATE</code>.</strong> Because the model embeds <code>gorm.Model</code> (which carries <code>DeletedAt</code>), the delete is quietly rewritten into a soft delete that stamps a timestamp. The data is still in the table — it's just marked.</p>
-                    <p><strong>Every read and write silently gets <code>deleted_at IS NULL</code> appended.</strong> That's the other half of soft deletes — every query automatically filters out deleted rows for you. You never wrote that condition, but it's on every single statement. And that <code>db.Preload("User").First()</code> line I assumed was one query? On the dashboard it's <strong>two</strong> SELECTs: one for orders, then another for users. A belongs-to preload is not a JOIN — it's a second trip. Scale that up to a list page and you have the beginning of N+1.</p>
-                    <p>Up to here it's "interesting but not surprising." What made me sit up straight was the other half.</p>
+<div class="cbg-root">
 
-                    <h2>And then <code>rows</code> dropped to 0</h2>
-                    <p>The dashboard also carried another set of statements, nearly identical to the ones above with one difference — <strong><code>rows=0</code></strong> — each appearing <strong>83 times</strong>:</p>
-                    <div class="article-table-wrap">
-                        <table>
-                            <thead>
-                                <tr><th>Operation</th><th>SQL</th><th>rows</th><th>Count</th></tr>
-                            </thead>
-                            <tbody>
-                                <tr><td>Create user</td><td><code>INSERT INTO "users" (...) RETURNING "id"</code></td><td><strong>0</strong></td><td>83</td></tr>
-                                <tr><td>Create order</td><td><code>INSERT INTO "orders" (...) RETURNING "id"</code></td><td><strong>0</strong></td><td>83</td></tr>
-                                <tr><td>First(&amp;order)</td><td><code>SELECT * FROM "orders" WHERE "orders"."id" = $1 AND ...</code></td><td><strong>0</strong></td><td>83</td></tr>
-                                <tr><td>Update</td><td><code>UPDATE "users" SET "age"=$1,"updated_at"=$2 WHERE "users"."deleted_at" IS NULL</code></td><td><strong>0</strong></td><td>83</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    <p>Four statements, the same <code>rows=0</code>, 83 times each, lined up neatly. But <strong>each of them hit zero for a different reason</strong> — and that's exactly the value of the <code>rows</code> column: one signal exposing four different failures at once.</p>
-                    <ul>
-                        <li><strong>Create user</strong>: the SQL did reach PostgreSQL and was rejected by a unique index (duplicate email, <code>SQLSTATE 23505</code>).</li>
-                        <li><strong>Create order</strong>: also reached the DB, blocked by a foreign key (<code>fk_orders_user</code>, <code>SQLSTATE 23503</code>) — because the user wasn't created in the previous step, <code>user.ID</code> was still 0, so the order carried <code>user_id=0</code> and couldn't pass.</li>
-                        <li><strong>First(&amp;order)</strong>: this one genuinely ran; it just queried with <code>id=0</code> and found nothing.</li>
-                        <li><strong>Update</strong>: this is the special one — it <strong>never reached the DB at all</strong>. More on that in a second.</li>
-                    </ul>
-                    <p><code>rows=0</code> goes from a vague "it didn't work" to a set of clues you can trace one by one. The insidious thing about this class of failure is that nothing crashes — the program logs a line and keeps going. But on the dashboard, <code>rows=0</code> is glaring, and <strong>with four of them side by side, the causality surfaces on its own</strong>.</p>
 
-                    <h2>What bothered me most: that UPDATE lost its primary key</h2>
-                    <p>Put the two versions of the <code>UPDATE</code> side by side, and you get the title of this piece:</p>
-                    <pre class="code-block"><code>-- healthy
-UPDATE "users" SET "age"=$1,"updated_at"=$2 WHERE "users"."deleted_at" IS NULL AND "id" = $3
--- failing
-UPDATE "users" SET "age"=$1,"updated_at"=$2 WHERE "users"."deleted_at" IS NULL</code></pre>
-                    <p><strong>The same line of <code>db.Model(&amp;user).Update(...)</code> produced two different SQL statements.</strong> The difference is that the latter lost <code>AND "id" = $3</code> — it no longer updates "that one user," it updates "every user that hasn't been soft-deleted." This is the classic ORM footgun: <strong>the primary key isn't populated, and the update degenerates into the shape of a full-table update</strong>.</p>
-                    <p>Why? Line up the counts of the four <code>rows=0</code> statements on the dashboard — all <strong>83</strong> — and the causal chain surfaces by itself:</p>
-                    <ol class="causal-chain">
-                        <li><span>Create user fails, <code>user.ID</code> is still 0</span><span class="count">rows=0 · 83×</span></li>
-                        <li><span>Create order carries <code>user_id=0</code> and is rejected by the foreign key</span><span class="count">rows=0 · 83×</span></li>
-                        <li><span><code>First</code> queries with <code>id=0</code> and finds nothing</span><span class="count">rows=0 · 83×</span></li>
-                        <li><span><code>Update</code>, with <code>user.ID</code> at 0, can't have <code>id = $3</code> built by GORM, so it degenerates into a WHERE carrying only the soft-delete scope</span><span class="count">rows=0 · 83×</span></li>
-                    </ol>
-                    <p><strong>But that degenerate UPDATE never actually hit the whole table.</strong> I cross-checked the service's own log: it returned <code>rows=0</code> because <strong>GORM's built-in guard blocked it</strong> — <code>WHERE conditions required</code> (<code>ErrMissingWhereClause</code>) — taking <strong>0.18 ms with zero DB round trips</strong>. In other words, the observation points let me see two things at once: <strong>GORM was building a full-table UPDATE that had lost its primary key, and GORM's own safety net caught it on the spot.</strong> The danger and the save, both laid out on the dashboard within one line.</p>
-                    <p>That matters — because if someone ever disables that guard (<code>db.Session(&amp;gorm.Session{AllowGlobalUpdate: true})</code>), this <code>rows=0</code> becomes <code>rows=thousands</code>. And on the dashboard, you'd see that number jump <strong>immediately</strong>.</p>
+<section class="panel">
+  <div class="panel-head"><span class="panel-title" id="cbg-tl-title"></span><div class="presets" id="cbg-presets"></div></div>
+  <div id="cbg-timeline">
+    <canvas id="cbg-tl"></canvas>
+    <div class="tl-legend" id="cbg-legend"></div>
+  </div>
+  <div class="readout" id="cbg-readout"></div>
+</section>
 
-                    <figure class="article-figure figure-wide">
-                        <a href="https://codebull-dashboard-service.web.app/gorm-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">
-                            <img src="asset/gorm-runtime-dashboard-logs.webp" alt="CodeBull remote dashboard, Logs tab: 1,045 verbatim GORM SQL statements with their rows values" loading="lazy">
-                        </a>
-                        <figcaption>The <strong>Logs</strong> tab of the remote dashboard for this run: 1,045 exit events, each one a verbatim SQL statement carrying its <code>rows</code> value, timestamped and tagged with <code>callbacks.go:140</code>. Every statement quoted in this piece is reconcilable there. <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/gorm-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">Open the live dashboard →</a></span></figcaption>
-                    </figure>
+<section class="panel" id="cbg-graph">
+  <div id="cbg-stage"><svg id="cbg-wires"></svg></div>
+  <div id="cbg-edge-list"></div>
+</section>
 
-                    <h2>A comparison: why the built-in log still isn't enough</h2>
-                    <p>I also checked what the service's own GORM logger (default Warn level) printed. To be fair, it <strong>wasn't blind</strong> — during the failing phase it missed none of the four errors: duplicate key, foreign key, record not found, and that <code>WHERE conditions required</code>. It called them all out.</p>
-                    <p>So what did the observation points add? Three things:</p>
-                    <ol>
-                        <li><strong>It said nothing about the 600+ successful statements.</strong> The built-in logger is designed to be "quiet normally, loud on errors" — so you never get to see what healthy looks like, and you have no baseline to compare against.</li>
-                        <li><strong>It only gives you error messages, not verbatim SQL.</strong> "WHERE conditions required" tells you something went wrong, but it doesn't show you what shape that degenerate UPDATE took. The dashboard does — every character of it.</li>
-                        <li><strong>It doesn't reconcile.</strong> Entry 2,090 vs exit 1,045: that gap is itself information (the convergence point is entered roughly twice as often as SQL is actually emitted — GORM wraps single writes in an implicit transaction, and those transaction-control passes don't produce a recorded SQL statement at the exit). The day those two numbers <strong>diverge sharply</strong> is the day a batch of operations broke before SQL generation. The built-in logger can't give you that.</li>
-                    </ol>
-                    <p>As for that entry counter — I didn't look at its "value," because it's a hit marker: every hit records a 1, so the value is always 1 and plots as a flat, information-free line. What's actually worth looking at is the <strong>cumulative</strong> view: a line climbing from 0 to <strong>2,090</strong>, where the endpoint is the total hit count and <strong>the slope is the frequency</strong>. Interestingly, that line has an inflection point in the middle — going from 100 to 160 hits per 30 seconds — which is exactly the moment the service recovered from the failing phase and started doing more DB operations per round. A bare counter, viewed cumulatively, marks "when the service recovered" all by itself.</p>
-                    <p>That's where the value of observability lies: it doesn't hand you "where the error is," it hands you <strong>a complete, symmetric, reconcilable record of the scene</strong>. Successes and failures treated alike. With that, a lot of bugs aren't "debugged" out of hiding by you — they <strong>surface on the dashboard by themselves</strong>.</p>
 
-                    <h2>Wrapping up: turning "invisible" into "visible"</h2>
-                    <p>I didn't change a line of code, didn't restart the service, didn't stand up a trace backend first. I just picked the right convergence point in a running process, attached two observation points, and paid attention for eight minutes.</p>
-                    <p>What I got: I watched <code>Delete</code> actually run an <code>UPDATE</code>, watched every query silently carry <code>deleted_at IS NULL</code>, watched one Preload turn into two trips, watched four different reasons for <code>rows</code> dropping to 0, and finally watched an UPDATE lose its primary key in front of me — and get caught by GORM's guard on the spot.</p>
-                    <p>An ORM is a black box, but a black box is only "invisible by default," not "impossible to see into." Stand in the right place, pull the variables out — what it ran should have been visible all along.</p>
 
-                    <h3>Appendix: this round's setup (reproducible)</h3>
-                    <ul>
-                        <li>Convergence point: <code>gorm.(*processor).Execute</code>
-                            <ul>
-                                <li><code>:82</code> entry hit counter (metric; variable filter keeps only <code>trace_hits</code> so the dashboard stays clean)</li>
-                                <li><code>:140</code> exit, capturing <code>SQL={string(stmt.SQL.buf)} | rows={db.RowsAffected}</code></li>
-                            </ul>
-                        </li>
-                        <li>Observed service: gorm-demo running one CRUD round every 3 seconds + PostgreSQL 16 (persistent volume; the first 100 emails were already taken, so the run starts in a failing phase and then recovers — which conveniently exposes both paths)</li>
-                        <li>Observation window: 2026-07-24 03:43:12Z → 03:51:18Z (~8 minutes / 163 rounds); 1,045 exit events, 2,090 entry hits, 12 deduplicated statement shapes (in the failing phase each <code>rows=0</code> statement appears 83 times; in steady state each <code>rows=1</code> statement appears 80 times)</li>
-                        <li>Cross-check: the service's built-in GORM logger recorded four error classes over the same period (duplicate key / foreign key / record not found / WHERE conditions required), but is nearly blind to successful queries, gives no verbatim SQL, and does no reconciliation</li>
-                        <li>The degenerate UPDATE's <code>rows=0</code> comes from GORM's <code>ErrMissingWhereClause</code> guard (0.18 ms, no DB round trip) — not from matching 0 rows</li>
-                        <li>This round attached Metric + Log only, with no latency measurement, so no millisecond figures appear anywhere in this piece — what wasn't measured doesn't get written</li>
-                    </ul>
+</div>
+<script id="cbg-data" type="application/json">{"mock": false, "title": "GORM's read path", "lede": "137 rounds of CRUD, six minutes forty.", "source": "article/gorm-demo/graph.json · 03:16–03:22 UTC", "window": {"startMs": 1787886960000, "stepMs": 10000, "buckets": 40}, "phases": [], "readout": {"ratios": [{"label": "SQL / execution", "num": "Emit the SQL", "den": "One ORM execution", "tone": "good"}], "check": "×1.5 sits on the Find-the-first → execution edge"}, "nodes": [{"id": "n0", "name": "One ORM execution", "tone": "entry", "purpose": "How many executions do those calls become? How long is one?", "probes": [{"traceKey": "gorm.(*processor).Execute:82", "kind": "metric"}, {"traceKey": "gorm.(*processor).Execute:135", "kind": "latency"}], "series": {"hits": [24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24], "latencyP50": [0.894, 0.929, 0.94, 1.051, 1.003, 0.953, 0.862, 0.881, 1.098, 0.785, 0.904, 1.047, 0.972, 1.037, 0.894, 1.06, 1.024, 0.81, 0.835, 1.036, 0.995, 1.013, 1.07, 0.999, 1.127, 0.992, 1.009, 0.991, 0.921, 0.906, 0.947, 0.899, 0.797, 0.853, 0.915, 0.826, 0.874, 1.061, 1.094, 1.036], "latencyP95": [9.201, 9.616, 9.468, 58.19, 40.089, 57.877, 9.624, 41.184, 9.856, 9.485, 41.146, 9.718, 9.12, 9.942, 9.228, 57.941, 8.927, 9.025, 8.834, 39.899, 10.625, 58.364, 41.516, 9.398, 9.581, 40.964, 8.971, 9.011, 41.375, 56.665, 8.892, 9.826, 56.835, 34.969, 9.397, 57.896, 9.103, 41.158, 10.053, 9.912]}, "hitsFull": 1096, "latencyFull": {"count": 959, "p50": 0.931, "p95": 56.665, "p99": 58.642, "max": 59.762}, "samples": [], "stacks": [{"frames": ["runtime.goexit", "runtime.main", "main.main", "shadow-gorm.io/gorm.(*DB).Create", "gorm.io/gorm.(*processor).Execute"], "perBucket": [6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6]}], "x": 520, "y": 0, "root": true}, {"id": "n1", "name": "Emit the SQL", "tone": "good", "purpose": "What statement actually leaves the process?", "probes": [{"traceKey": "gorm.(*processor).Execute:150", "kind": "log"}], "series": {"hits": [24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24]}, "hitsFull": 1096, "latencyFull": null, "samples": [{"text": "INSERT INTO \"users\" (\"created_at\",\"updated_at\",\"deleted_at\",\"name\",\"email\",\"age\") VALUES ($1,$2,$3,$4,$5,$6) RETURNING \"id\"", "perBucket": [3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3]}, {"text": "INSERT INTO \"orders\" (\"created_at\",\"updated_at\",\"deleted_at\",\"user_id\",\"item\",\"amount\") VALUES ($1,$2,$3,$4,$5,$6) RETURNING \"id\"", "perBucket": [3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3]}, {"text": "SELECT * FROM \"users\" WHERE \"users\".\"id\" = $1 AND \"users\".\"deleted_at\" IS NULL", "perBucket": [3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3]}, {"text": "SELECT * FROM \"orders\" WHERE \"orders\".\"id\" = $1 AND \"orders\".\"deleted_at\" IS NULL ORDER BY \"orders\".\"id\" LIMIT $2", "perBucket": [3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3]}, {"text": "UPDATE \"users\" SET \"age\"=$1,\"updated_at\"=$2 WHERE \"users\".\"deleted_at\" IS NULL AND \"id\" = $3", "perBucket": [3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3]}, {"text": "SELECT count(*) FROM \"users\" WHERE \"users\".\"deleted_at\" IS NULL", "perBucket": [3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3]}, {"text": "SELECT * FROM \"users\" WHERE \"users\".\"deleted_at\" IS NULL ORDER BY created_at asc,\"users\".\"id\" LIMIT $1", "perBucket": [3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3]}, {"text": "UPDATE \"users\" SET \"deleted_at\"=$1 WHERE \"users\".\"id\" = $2 AND \"users\".\"deleted_at\" IS NULL", "perBucket": [3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3]}], "stacks": [{"frames": ["runtime.goexit", "runtime.main", "main.main", "shadow-gorm.io/gorm.(*DB).Create", "gorm.io/gorm.(*processor).Execute"], "perBucket": [6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6]}], "x": 1040, "y": 0, "root": false}, {"id": "n2", "name": "Create a row", "tone": "money", "purpose": "How many creates per round?", "probes": [{"traceKey": "gorm.(*DB).Create:24", "kind": "metric"}], "series": {"hits": [6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6]}, "hitsFull": 274, "latencyFull": null, "samples": [], "stacks": [{"frames": ["runtime.goexit", "runtime.main", "main.main", "gorm.io/gorm.(*DB).Create"], "perBucket": [6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6]}], "x": 0, "y": 0, "root": true}, {"id": "n3", "name": "Find the first", "tone": "bad", "purpose": "How many times does the read path run per round?", "probes": [{"traceKey": "gorm.(*DB).First:121", "kind": "metric"}], "series": {"hits": [6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6]}, "hitsFull": 274, "latencyFull": null, "samples": [], "stacks": [{"frames": ["runtime.goexit", "runtime.main", "main.main", "gorm.io/gorm.(*DB).First"], "perBucket": [6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6]}], "x": 0, "y": 470, "root": true}, {"id": "n4", "name": "Count users", "tone": "entry", "purpose": "How many counts?", "probes": [{"traceKey": "gorm.(*DB).Count:445", "kind": "metric"}], "series": {"hits": [3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3]}, "hitsFull": 137, "latencyFull": null, "samples": [], "stacks": [], "x": 0, "y": 940, "root": true}, {"id": "n5", "name": "Update one column", "tone": "good", "purpose": "How many updates?", "probes": [{"traceKey": "gorm.(*DB).Update:404", "kind": "metric"}], "series": {"hits": [3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3]}, "hitsFull": 137, "latencyFull": null, "samples": [], "stacks": [], "x": 0, "y": 1410, "root": true}], "edges": [{"from": "n0", "to": "n1", "countPerBucket": [24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24, 32, 24, 24], "countFull": 1096, "fanoutFull": 1, "gap": 0, "gapLabel": "0", "gapIn": [], "alert": null}, {"from": "n3", "to": "n0", "countPerBucket": [9, 12, 9, 9, 12, 9, 9, 12, 9, 9, 12, 9, 9, 12, 9, 9, 12, 9, 9, 12, 9, 9, 12, 9, 9, 12, 9, 9, 12, 9, 9, 12, 9, 9, 12, 9, 9, 12, 9, 9], "countFull": 411, "fanoutFull": 1.5, "gap": 4, "gapLabel": "0–4", "gapIn": ["gorm.(*DB).Find", "callbacks.preload", "callbacks.preloadEntryPoint", "callbacks.Preload"], "alert": null}, {"from": "n2", "to": "n0", "countPerBucket": [6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6, 8, 6, 6], "countFull": 274, "fanoutFull": 1, "gap": 0, "gapLabel": "0", "gapIn": [], "alert": null}, {"from": "n4", "to": "n0", "countPerBucket": [3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3], "countFull": 137, "fanoutFull": 1, "gap": 0, "gapLabel": "0", "gapIn": [], "alert": null}, {"from": "n5", "to": "n0", "countPerBucket": [3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3, 4, 3, 3], "countFull": 137, "fanoutFull": 1, "gap": 0, "gapLabel": "0", "gapIn": [], "alert": null}], "notes": []}</script>
+<script>(function(){
 
-                    <figure class="article-figure figure-wide">
-                        <a href="https://codebull-dashboard-service.web.app/gorm-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">
-                            <img src="asset/gorm-runtime-dashboard-metrics.webp" alt="CodeBull remote dashboard, Metrics tab: entry hit counter for gorm.(*processor).Execute climbing to 2,090" loading="lazy">
-                        </a>
-                        <figcaption>The <strong>Metrics</strong> tab: the entry counter on <code>callbacks.go:82</code> climbing across the eight-minute window to 2,090 hits — the number the 1,045 exit events get reconciled against. <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/gorm-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">Open the live dashboard →</a></span></figcaption>
-                    </figure>
+const D = JSON.parse(document.getElementById("cbg-data").textContent);
+const NB = D.window.buckets, STEP = D.window.stepMs, T0 = D.window.startMs;
+const N = Object.fromEntries(D.nodes.map(n => [n.id, n]));
+const TONE = { entry:"--cbg-entry", good:"--cbg-good", money:"--cbg-money", bad:"--cbg-bad" };
+const css = v => getComputedStyle(document.querySelector(".cbg-root")).getPropertyValue(v).trim();
+const sum = (a,f,t) => a.slice(f,t).reduce((x,y)=>x+y,0);
+const fmt = n => Math.round(n).toLocaleString("en-US");
+const ms = (v) => (v >= 10 ? v.toFixed(0) : v >= 1 ? v.toFixed(1) : v.toFixed(2));
+const clock = b => new Date(T0 + b*STEP).toISOString().slice(11,16);
+// github.com/gin-gonic/gin.(*Engine).ServeHTTP → ServeHTTP. Taking the last
+// dot-segment alone leaves "func1" for every closure, and taking the last path
+// segment alone leaves the whole package prefix.
+const shortFn = (s) => {
+  // Generic type arguments carry dots of their own — NewCache[...].gowrap1 —
+  // so they come off before anything splits on ".".
+  const noGeneric = s.replace(/\[[^\]]*\]/g, "");
+  const noRecv = noGeneric.split("/").pop().replace(/\(\*?[^)]*\)\./g, "");
+  const parts = noRecv.split(".").filter(Boolean);
+  // A closure carries the name of the function it was written in, and can carry
+  // several suffixes at once: serveStreams.func2.1, NewFIFOScheduler.gowrap1.
+  while (parts.length > 1 && /^(func\d+|gowrap\d+|\d+)$/.test(parts[parts.length - 1])) parts.pop();
+  return parts[parts.length - 1];
+};
+let sel = { from:0, to:NB };
 
-                    <div class="article-callout">
-                        <p>📊 <strong>Remote dashboard for this article</strong> (real measured data, viewable online): <a href="https://codebull-dashboard-service.web.app/gorm-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">gorm-observing-runtime-20260724</a></p>
-                        <p>Every SQL statement, every <code>rows</code> value, and every count above can be reconciled verbatim on the <strong>Logs</strong> tab of that dashboard; the <strong>Metrics</strong> tab holds the entry hit counter for <code>Execute</code>.</p>
-                    </div>
+/* children of an edge target = what the timeline stacks */
+const hasOut = new Set(D.edges.map(e => e.from));
+/* The ends of the graph: nodes nothing leads away from. Stacking those counts
+   each piece of work once, and an island — a step reached on its own goroutine,
+   with no edge at all — is an end like any other, so it stays on the timeline. */
+const leaves = D.nodes.filter(n => !hasOut.has(n.id)).map(n => n.id);
 
-                    <div class="article-footnote">
-                        <p>The "no code changes, attach observation points to a running process, then watch" part of this piece was done with <strong>CodeBull</strong> — a VS Code extension that dynamically injects Metric / Log / Latency observation points into running Go services: no source edits, no recompile, no restart. That UPDATE losing its primary key is exactly how I caught it live.</p>
-                        <p><em>Every SQL statement and every number here comes from CodeBull's measurements against the running gorm-demo service, and can be reconciled online via the dashboard link above.</em></p>
-                        <p><a class="btn" href="https://marketplace.visualstudio.com/items?itemName=0xbu11.codebull" target="_blank" rel="noopener noreferrer">Install CodeBull</a></p>
-                    </div>
+{ const _e = document.getElementById("cbg-title"); if (_e) _e.textContent = D.title; }
+{ const _e = document.getElementById("cbg-lede"); if (_e) _e.textContent = D.lede; }
+{ const _e = document.getElementById("cbg-src"); if (_e) _e.textContent = D.source ?? ""; }
+{ const _e = document.getElementById("cbg-eyebrow"); if (_e) _e.textContent = "Behavior Graph · " + D.nodes.length + " nodes · " +
+  D.nodes.reduce((a,n)=>a+n.probes.length,0) + " probes"; }
+document.getElementById("cbg-tl-title").textContent =
+  `Timeline · ${STEP/1000}s per bucket · ${Math.round(NB*STEP/60000)} minutes`;
+document.getElementById("cbg-legend").innerHTML =
+  leaves.map(id => `<span><i style="background:var(${TONE[N[id].tone]})"></i>${N[id].name}</span>`).join("") +
+  `<span><i style="background:var(--bad);opacity:.28"></i>selection</span>
+   <span style="color:var(--faint)">drag on the chart to select any span</span>`;
+
+/* ── stage ─────────────────────────────────────────────── */
+const stage = document.getElementById("cbg-stage");
+D.nodes.forEach(n => {
+  const el = document.createElement("div");
+  el.className = "node " + n.tone; el.id = "cbg-node-" + n.id;
+  el.style.left = n.x + "px"; el.style.top = n.y + "px";
+  stage.appendChild(el);
+});
+stage.style.minWidth = (Math.max(...D.nodes.map(n=>n.x)) + 320) + "px";
+
+/* ── timeline ──────────────────────────────────────────── */
+const cv = document.getElementById("cbg-tl"), ctx = cv.getContext("2d");
+function drawTimeline(){
+  const dpr = devicePixelRatio||1, w = cv.clientWidth, h = cv.clientHeight;
+  cv.width = w*dpr; cv.height = h*dpr; ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,h);
+  const stacks = leaves.map(id => N[id].series.hits);
+  const peak = Math.max(...Array.from({length:NB}, (_,i) => stacks.reduce((a,s)=>a+s[i],0))) * 1.1;
+  const bw = w/NB;
+  D.phases.forEach((p,i) => { if (i%2) { ctx.fillStyle = css("--cbg-sunk");
+    ctx.fillRect(p.fromBucket*bw, 0, (p.toBucket-p.fromBucket)*bw, h); } });
+  for (let i=0;i<NB;i++){
+    let acc = 0;
+    stacks.forEach((s,si) => {
+      const hh = (s[i]/peak)*h;
+      ctx.fillStyle = css(TONE[N[leaves[si]].tone]); ctx.globalAlpha = .88;
+      ctx.fillRect(i*bw, h-acc-hh, Math.max(bw-.4,.6), hh); acc += hh;
+    });
+  }
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = css("--cbg-bad"); ctx.globalAlpha = .15;
+  ctx.fillRect(sel.from*bw, 0, (sel.to-sel.from)*bw, h); ctx.globalAlpha = 1;
+  ctx.strokeStyle = css("--cbg-bad"); ctx.lineWidth = 1.5; ctx.beginPath();
+  ctx.moveTo(sel.from*bw,0); ctx.lineTo(sel.from*bw,h);
+  ctx.moveTo(sel.to*bw,0); ctx.lineTo(sel.to*bw,h); ctx.stroke();
+  ctx.font = '500 10px "JetBrains Mono", monospace'; ctx.fillStyle = css("--cbg-faint");
+  D.phases.forEach(p => ctx.fillText(p.label, p.fromBucket*bw+5, 12));
+}
+let dragging = false, anchor = 0;
+const bucketAt = ev => { const r = cv.getBoundingClientRect();
+  return Math.max(0, Math.min(NB, Math.round(((ev.clientX-r.left)/r.width)*NB))); };
+cv.addEventListener("pointerdown", e => { dragging = true; anchor = bucketAt(e); cv.setPointerCapture(e.pointerId); });
+cv.addEventListener("pointermove", e => { if(!dragging) return;
+  const b = bucketAt(e); sel = { from:Math.min(anchor,b), to:Math.max(anchor,b) };
+  if (sel.to - sel.from < 2) sel.to = Math.min(NB, sel.from+2); render(); });
+addEventListener("pointerup", () => { if(dragging){ dragging = false; syncPresets(); } });
+
+// A real window arrives without authored phases. Thirds are not a claim about
+// the run — they are a fast way to ask "did this move", which is the only
+// reason the timeline is here.
+const PRESETS = D.phases.length
+  ? [{label:"All",from:0,to:NB}, ...D.phases.map(p=>({label:p.label,from:p.fromBucket,to:p.toBucket}))]
+  : [{label:"All",from:0,to:NB},
+     {label:"First third",from:0,to:Math.round(NB/3)},
+     {label:"Middle",from:Math.round(NB/3),to:Math.round(2*NB/3)},
+     {label:"Last third",from:Math.round(2*NB/3),to:NB}];
+const pbox = document.getElementById("cbg-presets");
+PRESETS.forEach((p,i) => { const b = document.createElement("button"); b.textContent = p.label;
+  b.onclick = () => { sel = {from:p.from,to:p.to}; render(); syncPresets(); }; pbox.appendChild(b); });
+const syncPresets = () => [...pbox.children].forEach((b,i) =>
+  b.setAttribute("aria-pressed", String(PRESETS[i].from===sel.from && PRESETS[i].to===sel.to)));
+
+/* ── node cards ────────────────────────────────────────── */
+function spark(series, cvar, hi){
+  const w = 274, h = 34, max = Math.max(...series, 1);
+  const pts = series.map((v,i) => `${(i/(series.length-1))*w},${h-(v/max)*(h-3)-1.5}`).join(" ");
+  const x1 = (sel.from/series.length)*w, x2 = (sel.to/series.length)*w;
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
+    <rect x="${x1}" y="0" width="${Math.max(x2-x1,1)}" height="${h}" fill="var(${hi||cvar})" opacity=".14"/>
+    <polyline points="${pts}" fill="none" stroke="var(${cvar})" stroke-width="1.4" stroke-linejoin="round"/></svg>`;
+}
+function renderNode(n){
+  const cvar = TONE[n.tone];
+  const whole = sel.from === 0 && sel.to === NB;
+  const total = whole && n.hitsFull != null ? n.hitsFull : sum(n.series.hits, 0, NB);
+  const hits = whole && n.hitsFull != null ? n.hitsFull : sum(n.series.hits, sel.from, sel.to);
+  const mins = ((sel.to-sel.from)*STEP)/60000;
+  let lat = "";
+  if (n.series.latencyP50){
+    const win = a => a.slice(sel.from, sel.to);
+    const avg = a => { const v = a.filter(x => x > 0); return v.length ? v.reduce((x,y)=>x+y,0)/v.length : 0; };
+    // Over the whole window the reservoir's own percentiles are the honest
+    // answer. Over a sub-range there is no reservoir, so the per-bucket
+    // percentiles are averaged — which is not a percentile of the range, and
+    // the caption says so rather than letting the number pass as one.
+    const whole = sel.from === 0 && sel.to === NB && n.latencyFull;
+    const p50 = whole ? n.latencyFull.p50 : avg(win(n.series.latencyP50));
+    const p95 = whole ? n.latencyFull.p95 : avg(win(n.series.latencyP95));
+    const worst = Math.max(...n.series.latencyP95);
+    lat = `<div class="slot"><div class="slot-h"><span>latency · latency probe</span><span>${whole ? "whole-window percentiles" : "mean of per-bucket percentiles"}</span></div>
+      <div class="lat"><div><span class="k">p50</span><span class="v">${ms(p50)}<span class="unit">ms</span></span></div>
+      <div><span class="k">p95</span><span class="v" style="color:${p95>worst*.6?"var(--bad)":"inherit"}">${ms(p95)}<span class="unit">ms</span></span></div></div>
+      ${spark(n.series.latencyP95, cvar, "--cbg-bad")}</div>`;
+  }
+  const shapeAll = n.samples.reduce((a,s)=>a+sum(s.perBucket,sel.from,sel.to),0) || 1;
+  const shapes = n.samples.map(s => {
+    const v = sum(s.perBucket, sel.from, sel.to);
+    if (v === 0) return "";
+    const pct = v/shapeAll*100;
+    // a shape absent from the first tenth of the window is new behaviour, not background
+    const isNew = sum(s.perBucket, 0, Math.floor(NB/10)) === 0;
+    return `<div class="shape"><div class="shape-row ${isNew?"new":""}">
+        <span class="t" title="${s.text}">${isNew?"▲ ":""}${s.text}</span><span class="n">${pct.toFixed(0)}% · ${fmt(v)}</span></div>
+      <div class="bar"><i style="width:${pct}%;background:var(${isNew?"--cbg-bad":cvar})"></i></div></div>`;
+  }).join("") || `<p class="why" style="margin-top:6px">nothing captured in this span</p>`;
+
+  const chainAll = n.stacks.reduce((a,s)=>a+sum(s.perBucket,sel.from,sel.to),0) || 1;
+  const flame = n.stacks.map(s => {
+    const v = sum(s.perBucket, sel.from, sel.to); if (!v) return "";
+    const share = v/chainAll*100;
+    const MAX_FRAMES = 5;
+    // The outermost frames are where the goroutine started, and that is what
+    // tells two islands apart — so the head stays visible and the middle folds.
+    const head = s.frames.length > MAX_FRAMES ? s.frames.slice(0, 2) : [];
+    const tail = s.frames.slice(head.length ? head.length - MAX_FRAMES : 0);
+    const hidden = s.frames.length - head.length - tail.length;
+    const chip = (f, i) =>
+      `<span style="flex:1;background:color-mix(in srgb, var(${cvar}) ${90-i*12}%, #000 10%)" title="${f}">${shortFn(f)}</span>`;
+    const cells =
+      head.map(chip).join("") +
+      (hidden > 0
+        ? `<span style="flex:0 0 auto;background:var(--line);color:var(--dim)" title="${s.frames.slice(head.length, head.length + hidden).join(" < ")}">+${hidden}</span>`
+        : "") +
+      tail.map((f, i) => chip(f, i + head.length)).join("");
+    return `<div><div class="chain" style="width:${Math.max(share,55)}%">${cells}</div>
+      <div class="chain-meta"><span>${share.toFixed(0)}% take this path</span><span>${fmt(v)}</span></div></div>`;
+  }).join("");
+
+  document.getElementById("cbg-node-"+n.id).innerHTML = `
+    <div class="nhead"><h3>${n.name}</h3><div class="why">${n.purpose}</div>
+      <div class="probes">${n.probes.map(p=>`<span class="probe ${p.kind}">${p.kind}</span>`).join("")}
+        <span class="probe">${n.probes.length} probe</span>
+        ${n.root ? '<span class="probe" title="no instrumented caller on the stack">root</span>' : ""}</div></div>
+    <div class="slot"><div class="slot-h"><span>hits · metric</span><span>${(hits/total*100).toFixed(0)}% of ${fmt(total)}</span></div>
+      <div class="big">${fmt(hits)}<span class="unit"> · ${(hits/mins).toFixed(0)}/min</span></div>${spark(n.series.hits, cvar)}</div>
+    ${lat}
+    <div class="slot"><div class="slot-h"><span>captured · log</span><span>${n.samples.length} shapes</span></div>${shapes}</div>
+    <div class="slot"><div class="slot-h"><span>paths here · stacks</span><span>${n.stacks.length} chains</span></div>
+      <div class="flame">${flame}</div></div>`;
+}
+
+/* ── edges ─────────────────────────────────────────────── */
+function edgeFacts(e){
+  const whole = sel.from === 0 && sel.to === NB;
+  const parent = sum(N[e.from].series.hits, sel.from, sel.to);
+  const series = sum(e.countPerBucket, sel.from, sel.to);
+  const n = whole && e.countFull != null ? e.countFull : series;
+  const f = whole && e.fanoutFull != null ? e.fanoutFull : (parent ? series/parent : 0);
+  const approx = !whole;
+  return { n, f, parent, approx, alert: e.alert != null && f > e.alert,
+    sub: e.gap > 0
+      ? `${e.gapLabel ?? e.gap} unobserved · ${e.gapIn.map(shortFn).join(" · ") || "(names not recorded)"}`
+      : "direct call, nothing skipped" };
+}
+function renderEdges(){
+  document.getElementById("cbg-edge-list").innerHTML = D.edges.map(e => { const f = edgeFacts(e);
+    return `<div class="echip ${f.alert?"alert":(e.gap===0?"calm":"")}"><b>${N[e.from].name} → ${N[e.to].name}</b>
+      <b style="color:${f.alert?"var(--bad)":"var(--ink)"}">${f.approx?"≈":""}×${f.f.toFixed(2)}</b>
+      <span class="sub">${fmt(f.n)} ÷ ${fmt(f.parent)}</span><span class="sub">${f.sub}</span></div>`; }).join("");
+
+  const svg = document.getElementById("cbg-wires");
+  if (getComputedStyle(svg).display === "none") return;
+  const s = stage.getBoundingClientRect();
+  const box = id => { const r = document.getElementById("cbg-node-"+id).getBoundingClientRect();
+    return { x:r.left-s.left, y:r.top-s.top, w:r.width, h:r.height }; };
+  let out = ["","alert","calm"].map(k => `<marker id="ah${k}" viewBox="0 0 10 10" refX="9" refY="5"
+      markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"
+      fill="var(${k==="alert"?"--cbg-bad":k==="calm"?"--cbg-good":"--cbg-dim"})"/></marker>`).join("");
+  out = `<defs>${out}</defs>`;
+  D.edges.forEach(e => {
+    const a = box(e.from), b = box(e.to);
+    const x1 = a.x+a.w, y1 = a.y+70, x2 = b.x-9, y2 = b.y+70, mx = (x1+x2)/2, ty = (y1+y2)/2;
+    const f = edgeFacts(e);
+    const kind = f.alert ? "alert" : (e.gap === 0 ? "calm" : "");
+    out += `<path class="wire ${kind}" marker-end="url(#ah${kind})"
+      d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}" ${e.gap>0?'stroke-dasharray="6 5"':""}/>`;
+    const w = Math.min(Math.max(f.sub.length*6.2+20, 160), x2-x1-10);
+    out += `<rect class="wbox" x="${mx-w/2}" y="${ty-20}" width="${w}" height="40" rx="3"/>
+      <text class="wlabel" x="${mx}" y="${ty-3}" text-anchor="middle" fill="${f.alert?"var(--bad)":"var(--ink)"}">${f.approx?"≈":""}×${f.f.toFixed(2)} · ${fmt(f.n)} calls</text>
+      <text class="wsub" x="${mx}" y="${ty+12}" text-anchor="middle">${f.sub}</text>`;
+  });
+  svg.innerHTML = out;
+  stage.style.height = (Math.max(...D.nodes.map(n => box(n.id).y + box(n.id).h)) + 8) + "px";
+}
+
+/* ── readout ───────────────────────────────────────────── */
+function renderReadout(){
+  const val = (name) => {
+    const n = D.nodes.find((x) => x.name === name);
+    if (!n) return 0;
+    return sel.from === 0 && sel.to === NB && n.hitsFull != null
+      ? n.hitsFull
+      : sum(n.series.hits, sel.from, sel.to);
+  };
+  const a = D.nodes[0];
+  const parts = [`<span>Selected <b>${clock(sel.from)}–${clock(sel.to)}</b> (${((sel.to-sel.from)*STEP/60000).toFixed(1)} min)</span>`,
+    `<span>${a.name} <b>${fmt(val(a.name))}</b></span>`];
+  D.readout.ratios.forEach(r => {
+    const v = val(r.den) ? val(r.num)/val(r.den)*100 : 0;
+    parts.push(`<span>${r.label} <b style="color:var(${r.tone==="good"?"--cbg-good":"--cbg-money"})">${v.toFixed(0)}%</b></span>`);
+  });
+  const lnode = D.nodes.find(n => n.series.latencyP95);
+  if (lnode){ const whole = sel.from === 0 && sel.to === NB;
+    const w = lnode.series.latencyP95.slice(sel.from, sel.to).filter(v => v > 0);
+    const p95 = whole && lnode.latencyFull ? lnode.latencyFull.p95 : w.reduce((x,y)=>x+y,0)/(w.length||1);
+    const worst = Math.max(...lnode.series.latencyP95);
+    parts.push(`<span>${lnode.name} p95 <b style="color:${p95>worst*.6?"var(--bad)":"inherit"}">${ms(p95)} ms</b></span>`); }
+  parts.push(`<span style="color:var(--faint)">${D.readout.check}</span>`);
+  document.getElementById("cbg-readout").innerHTML = parts.join("");
+}
+
+const notesEl = document.getElementById("cbg-notes");
+if (notesEl) notesEl.innerHTML = (D.notes||[]).map(n =>
+  `<div class="note"><h4>${n.h}</h4><p>${n.p}</p></div>`).join("");
+
+function render(){ drawTimeline(); D.nodes.forEach(renderNode); renderReadout();
+  requestAnimationFrame(renderEdges); }
+addEventListener("resize", render);
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
+render(); syncPresets();
+
+})();</script>
+</div>
+                    <h2>×1.5: called twice, executed three times</h2>
+                    <p>Over the window <code>First()</code> was called <strong>274</strong> times, while the ORM underneath executed <strong>411</strong>. The extra 137 come from <code>Preload(&quot;User&quot;)</code> — one chained call that expands into a second query at run time. The ratio is written in no line of code; you only get it by counting.</p>
+                    <h2>The dashed edge names what it cannot see</h2>
+                    <p>That edge is labelled <strong>0–4 unobserved</strong>, and it lists them: <code>Find</code>, <code>preload</code>, <code>preloadEntryPoint</code>, <code>Preload</code>. The extra query is emitted from inside those four frames. The graph does not pretend to see them, but it does tell you where they are.</p>
+                    <h2>A caller with no probe becomes its own island</h2>
+                    <p>137 of the 1,096 executions have no upstream on the graph. That is <code>Delete()</code>, the one call in this round with no probe on it. With the caller off the graph, its executions show up as a second starting point instead of being attached to somebody else.</p>
+                    <p>The <strong>Emit the SQL</strong> node lists the 8 distinct statements that actually left the process this round, 133 each. Across the window p50 was 0.93ms and p95 57ms.</p>
                 </article>
             </div>
         </section>

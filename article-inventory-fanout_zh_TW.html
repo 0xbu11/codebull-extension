@@ -4,21 +4,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CodeBull - 我在 MySQL driver 的門口站了八分鐘</title>
-    <meta name="description" content="不改一行 code，在執行中的 Go 服務的 MySQL driver 掛兩個觀測點，然後看到一次「改個數量」寫了三張表。">
+    <title>前端改一次數量，資料庫收到三句寫入 | CodeBull</title>
+    <meta name="description" content="不改一行 code，對一個正在跑的 Gin + GORM + MySQL 服務，從 HTTP handler 一路掛到 driver 的門口，看六分四十秒。">
     <meta property="og:type" content="article">
     <meta property="og:site_name" content="CodeBull">
     <meta property="og:locale" content="zh_TW">
-    <meta property="og:title" content="我在 MySQL driver 的門口站了八分鐘，然後看到一次「改個數量」寫了三張表">
-    <meta property="og:description" content="驅動門口兩個點、應用層三個計數：一次列表查詢是 3 條 SQL 而不是 N+1，一次 PUT 在底下展開成六條，而一個沒人操作的分頁每秒要走 8 條查詢。">
+    <meta property="og:title" content="前端改一次數量，資料庫收到三句寫入">
+    <meta property="og:description" content="不改一行 code，對一個正在跑的 Gin + GORM + MySQL 服務，從 HTTP handler 一路掛到 driver 的門口，看六分四十秒。">
     <meta property="og:url" content="https://0xbu11.github.io/codebull-extension/article-inventory-fanout_zh_TW.html">
     <meta property="og:image" content="https://0xbu11.github.io/codebull-extension/asset/og-inventory-fanout-zh.png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="627">
     <meta property="og:image:alt" content="我在 MySQL driver 的門口站了八分鐘，然後看到一次「改個數量」寫了三張表">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="我在 MySQL driver 的門口站了八分鐘，然後看到一次「改個數量」寫了三張表">
-    <meta name="twitter:description" content="驅動門口兩個點、應用層三個計數：一次列表查詢是 3 條 SQL 而不是 N+1，一次 PUT 在底下展開成六條，而一個沒人操作的分頁每秒要走 8 條查詢。">
+    <meta name="twitter:title" content="前端改一次數量，資料庫收到三句寫入">
+    <meta name="twitter:description" content="不改一行 code，對一個正在跑的 Gin + GORM + MySQL 服務，從 HTTP handler 一路掛到 driver 的門口，看六分四十秒。">
     <meta name="twitter:image" content="https://0xbu11.github.io/codebull-extension/asset/og-inventory-fanout-zh.png">
     <link rel="stylesheet" href="style.css?v=17">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -61,195 +61,333 @@
             <div class="container">
                 <a class="article-back" href="index_zh_TW.html#articles">← 回文章列表</a>
                 <span class="article-card-source">Gin + GORM + MySQL · 實測筆記</span>
-                <h1>我在 MySQL driver 的門口站了八分鐘，然後看到一次「改個數量」寫了三張表</h1>
-                <div class="article-meta">
-                    <span>2026-07-26</span>
-                    <span>8 分鐘窗口 / 4,341 條語句</span>
-                    <span>inventory-example + MySQL 8.0</span>
-                </div>
-                <p class="article-lede">前幾天我又做了一件平常不太會做的事：不改任何一行 code，對一個<strong>正在跑的</strong>庫存管理服務（Gin + GORM + MySQL）掛了幾個觀測點，然後坐著看八分鐘。</p>
+                <h1>前端改一次數量，資料庫收到三句寫入</h1>
+                <div class="article-meta"><span>2026-08-28</span><span>6 分 40 秒窗口 / 387 次改動 / 6 個觀測點</span><span>Gin + GORM + MySQL 8.0</span></div>
+                <p class="article-lede">不改一行 code，對一個正在跑的 Gin + GORM + MySQL 服務，從 HTTP handler 一路掛到 driver 的門口，看六分四十秒。</p>
             </div>
         </section>
 
         <section class="article-section">
             <div class="container">
                 <article class="article-body">
-                    <p>八分鐘裡，我看到一件到現在還讓我有點在意的事——<strong>前端只是改了某個商品的數量，資料庫這邊卻收到六條語句，其中兩條是往 <code>categories</code> 和 <code>suppliers</code> 這兩張「我根本沒打算動」的表寫 INSERT。</strong></p>
-                    <p>這篇聊的不是工具，是「站在對的位置，把一個 CRUD 服務底下真正發生的事看完」這件事本身。</p>
+                    <div class="article-graph-embed"><!-- interactive behaviour graph -->
+<style>.cbg-root{
+  --cbg-bg:#EEF0F2; --cbg-panel:#FFFFFF; --cbg-sunk:#F5F6F8; --cbg-ink:#151B21; --cbg-dim:#5D6B77; --cbg-faint:#8A97A2;
+  --cbg-line:#D8DDE2; --cbg-line-soft:#E7EAEE; --cbg-accent:#2D5C7F; --cbg-accent-soft:#DCE7EF;
+  --cbg-entry:#54646F; --cbg-good:#2F8570; --cbg-money:#A9752A; --cbg-bad:#AE4630;
+  --cbg-shadow:0 1px 2px rgba(21,27,33,.05), 0 10px 26px -16px rgba(21,27,33,.35);
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --cbg-bg:#0E1317; --cbg-panel:#171E24; --cbg-sunk:#121920; --cbg-ink:#E2E8ED; --cbg-dim:#93A2AE; --cbg-faint:#6E7E8A;
+  --cbg-line:#28323A; --cbg-line-soft:#1F272E; --cbg-accent:#6FA5CE; --cbg-accent-soft:#16303F;
+  --cbg-entry:#8898A4; --cbg-good:#4FB79B; --cbg-money:#D7A44F; --cbg-bad:#DC7657;
+  --cbg-shadow:0 1px 2px rgba(0,0,0,.5), 0 12px 30px -18px rgba(0,0,0,.9);
+}}.cbg-root[data-theme="dark"]{
+  --cbg-bg:#0E1317; --cbg-panel:#171E24; --cbg-sunk:#121920; --cbg-ink:#E2E8ED; --cbg-dim:#93A2AE; --cbg-faint:#6E7E8A;
+  --cbg-line:#28323A; --cbg-line-soft:#1F272E; --cbg-accent:#6FA5CE; --cbg-accent-soft:#16303F;
+  --cbg-entry:#8898A4; --cbg-good:#4FB79B; --cbg-money:#D7A44F; --cbg-bad:#DC7657;
+  --cbg-shadow:0 1px 2px rgba(0,0,0,.5), 0 12px 30px -18px rgba(0,0,0,.9);
+}.cbg-root *{box-sizing:border-box}.cbg-root{margin:0;background:var(--cbg-bg);color:var(--cbg-ink);font-family:Archivo,system-ui,"Noto Sans TC",sans-serif;font-size:15px;line-height:1.6}.cbg-root .mono{font-family:"JetBrains Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}.cbg-root .shell{max-width:1300px;margin:0 auto;padding:34px 22px 70px;display:flex;flex-direction:column;gap:20px}.cbg-root header.top{display:flex;flex-direction:column;gap:9px}.cbg-root .tagline{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.cbg-root .badge{font-family:"JetBrains Mono",monospace;font-size:.66rem;letter-spacing:.14em;text-transform:uppercase;padding:3px 8px;border-radius:2px;background:var(--cbg-good);color:#fff}.cbg-root .src{font-family:"JetBrains Mono",monospace;font-size:.72rem;color:var(--cbg-faint)}.cbg-root .eyebrow{font-family:"JetBrains Mono",monospace;font-size:.68rem;letter-spacing:.15em;text-transform:uppercase;color:var(--cbg-faint)}.cbg-root h1{margin:0;font-size:clamp(1.6rem,3.4vw,2.3rem);line-height:1.15;letter-spacing:-.02em;font-weight:700;text-wrap:balance}.cbg-root .sub{color:var(--cbg-dim);max-width:64ch;margin:0}.cbg-root .panel{background:var(--cbg-panel);border:1px solid var(--cbg-line);border-radius:4px;box-shadow:var(--cbg-shadow)}.cbg-root .panel-head{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:11px 16px;border-bottom:1px solid var(--cbg-line-soft)}.cbg-root .panel-title{font-family:"JetBrains Mono",monospace;font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cbg-faint)}.cbg-root .presets{display:flex;gap:6px;flex-wrap:wrap}.cbg-root button{font:inherit;font-size:.8rem;color:var(--cbg-dim);background:var(--cbg-sunk);border:1px solid var(--cbg-line);border-radius:3px;padding:4px 11px;cursor:pointer;transition:background .15s,color .15s,border-color .15s}.cbg-root button:hover{color:var(--cbg-ink);border-color:var(--cbg-accent)}.cbg-root button[aria-pressed="true"]{background:var(--cbg-accent);border-color:var(--cbg-accent);color:#fff}.cbg-root :focus-visible{outline:2px solid var(--cbg-accent);outline-offset:2px}.cbg-root #cbg-timeline{padding:14px 16px 10px}.cbg-root #cbg-tl{display:block;width:100%;height:104px;cursor:crosshair;touch-action:none;user-select:none}.cbg-root .tl-legend{display:flex;gap:18px;flex-wrap:wrap;margin-top:8px;font-size:.78rem;color:var(--cbg-dim)}.cbg-root .tl-legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}.cbg-root .readout{display:flex;gap:22px;flex-wrap:wrap;align-items:baseline;padding:10px 16px;border-top:1px solid var(--cbg-line-soft);font-size:.85rem;color:var(--cbg-dim)}.cbg-root .readout b{color:var(--cbg-ink);font-family:"JetBrains Mono",monospace;font-weight:500}.cbg-root #cbg-graph{position:relative;padding:22px 16px 18px;overflow-x:auto}.cbg-root #cbg-stage{position:relative}.cbg-root #cbg-wires{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none}.cbg-root .node{position:absolute;width:300px;background:var(--cbg-panel);border:1px solid var(--cbg-line);border-radius:4px;box-shadow:var(--cbg-shadow);overflow:hidden}.cbg-root .node.entry{border-top:3px solid var(--cbg-entry)}.cbg-root .node.good{border-top:3px solid var(--cbg-good)}.cbg-root .node.money{border-top:3px solid var(--cbg-money)}.cbg-root .node.bad{border-top:3px solid var(--cbg-bad)}.cbg-root .nhead{padding:10px 13px 8px;border-bottom:1px solid var(--cbg-line-soft)}.cbg-root .nhead h3{margin:0;font-size:1.02rem;font-weight:600;letter-spacing:-.01em}.cbg-root .why{font-size:.78rem;color:var(--cbg-dim);line-height:1.4}.cbg-root .probes{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}.cbg-root .probe{font-family:"JetBrains Mono",monospace;font-size:.6rem;letter-spacing:.06em;text-transform:uppercase;padding:2px 6px;border-radius:2px;border:1px solid var(--cbg-line);color:var(--cbg-dim);background:var(--cbg-sunk)}.cbg-root .probe.log{color:var(--cbg-accent);border-color:var(--cbg-accent-soft);background:var(--cbg-accent-soft)}.cbg-root .probe.latency{color:var(--cbg-money)}.cbg-root .slot{padding:9px 13px;border-top:1px solid var(--cbg-line-soft)}.cbg-root .slot-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-family:"JetBrains Mono",monospace;font-size:.6rem;letter-spacing:.13em;text-transform:uppercase;color:var(--cbg-faint)}.cbg-root .big{font-family:"JetBrains Mono",monospace;font-size:1.5rem;font-weight:500;line-height:1.1;font-variant-numeric:tabular-nums}.cbg-root .unit{font-size:.72rem;color:var(--cbg-dim);font-family:Archivo,sans-serif;margin-left:4px}.cbg-root .spark{display:block;width:100%;height:34px;margin-top:5px}.cbg-root .lat{display:flex;gap:16px;align-items:baseline;margin-top:3px}.cbg-root .lat div{display:flex;gap:5px;align-items:baseline}.cbg-root .lat .k{font-family:"JetBrains Mono",monospace;font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:var(--cbg-faint)}.cbg-root .lat .v{font-family:"JetBrains Mono",monospace;font-size:1.02rem;font-variant-numeric:tabular-nums}.cbg-root .shape{margin-top:7px}.cbg-root .shape-row{display:flex;justify-content:space-between;gap:8px;font-size:.74rem;margin-bottom:2px}.cbg-root .shape-row .t{font-family:"JetBrains Mono",monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.cbg-root .shape-row .n{font-family:"JetBrains Mono",monospace;color:var(--cbg-dim);white-space:nowrap}.cbg-root .shape-row.new .t{color:var(--cbg-bad);font-weight:500}.cbg-root .bar{height:5px;border-radius:2px;background:var(--cbg-line-soft);overflow:hidden;margin-bottom:8px}.cbg-root .bar i{display:block;height:100%;border-radius:2px}.cbg-root .flame{display:flex;flex-direction:column;gap:5px;margin-top:7px}.cbg-root .chain{display:flex;height:17px;border-radius:2px;overflow:hidden;background:var(--cbg-line-soft)}.cbg-root .chain span{display:flex;align-items:center;padding:0 5px;font-family:"JetBrains Mono",monospace;font-size:.58rem;color:#fff;white-space:nowrap;overflow:hidden;border-right:1px solid rgba(255,255,255,.28)}.cbg-root .chain span:last-child{border-right:0}.cbg-root .chain-meta{display:flex;justify-content:space-between;font-size:.68rem;color:var(--cbg-dim);font-family:"JetBrains Mono",monospace}.cbg-root .wire{fill:none;stroke:var(--cbg-dim);stroke-width:2}.cbg-root .wire.alert{stroke:var(--cbg-bad);stroke-width:2.8}.cbg-root .wire.calm{stroke:var(--cbg-good);stroke-width:2.4}.cbg-root .wlabel{font-family:"JetBrains Mono",monospace;font-size:11.5px;fill:var(--cbg-ink)}.cbg-root .wsub{font-family:"JetBrains Mono",monospace;font-size:9.5px;fill:var(--cbg-faint)}.cbg-root .wbox{fill:var(--cbg-panel);stroke:var(--cbg-line)}.cbg-root #cbg-edge-list{display:none;flex-direction:column;gap:8px;padding:0 16px 16px}.cbg-root .echip{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;padding:9px 12px;border:1px solid var(--cbg-line);border-left:3px solid var(--cbg-dim);border-radius:3px;background:var(--cbg-sunk);font-size:.82rem}.cbg-root .echip.calm{border-left-color:var(--cbg-good)}.cbg-root .echip.alert{border-left-color:var(--cbg-bad)}.cbg-root .echip b{font-family:"JetBrains Mono",monospace;font-weight:500}.cbg-root .echip .sub{color:var(--cbg-dim);font-size:.76rem;font-family:"JetBrains Mono",monospace}.cbg-root .prose{max-width:40rem;margin:0 auto;padding:6px 22px 26px;font-size:16px;line-height:1.8}.cbg-root .prose h2{font-family:Archivo,sans-serif;font-size:1.35rem;font-weight:700;letter-spacing:-.01em;margin:0 0 14px}.cbg-root .prose h3{font-size:1.02rem;font-weight:600;margin:26px 0 6px}.cbg-root .prose p{margin:0 0 14px;color:var(--cbg-ink)}.cbg-root .prose code{font-family:"JetBrains Mono",monospace;font-size:.86em;background:var(--cbg-sunk);
+  border:1px solid var(--cbg-line);padding:.08em .3em;border-radius:2px}.cbg-root .notes{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));padding:16px}.cbg-root .note h4{margin:0 0 4px;font-size:.9rem}.cbg-root .note p{margin:0;font-size:.84rem;color:var(--cbg-dim)}.cbg-root footer{color:var(--cbg-faint);font-size:.78rem;border-top:1px solid var(--cbg-line);padding-top:14px}
+@media (max-width:900px){ #cbg-stage{min-width:0!important;height:auto!important;display:flex;flex-direction:column;gap:14px}
+.cbg-root .node{position:static!important;width:100%} #cbg-wires{display:none} #cbg-edge-list{display:flex} }.cbg-root{max-width:100%;overflow:hidden}.cbg-root #cbg-graph{max-width:100%;overflow-x:auto}.cbg-root #cbg-timeline,.cbg-root #cbg-readout{max-width:100%}</style>
 
-                    <h2>先決定要站在哪裡看</h2>
-                    <p>這個服務是最典型的三層：Gin handler → service → repository → GORM → MySQL。你寫的是 <code>db.Save(product)</code>，真正送到 MySQL 的是什麼，中間隔了兩層。</p>
-                    <p>我第一次選的位置是 GORM 內部的收斂點 <code>gorm.(*processor).Execute</code>——上次觀測另一個服務時就是站在那裡。模板照抄：<code>SQL={string(stmt.SQL.buf)}</code>。</p>
-                    <p><strong>結果面板上抓到的是這個：</strong></p>
-                    <pre class="code-block"><code>SQL=len=67 | rows=6
-SQL=len=63 | rows=5</code></pre>
-                    <p><code>stmt.SQL</code> 是個 <code>strings.Builder</code>，它的內部 buffer 沒被展開成字串，我只拿到長度。這次的 GORM 版本、這次的建置條件下，這條路走不通。</p>
-                    <p>所以我往下退了一層，退到<strong>驅動的門口</strong>：</p>
-                    <pre class="code-block"><code>func (mc *mysqlConn) QueryContext(
-        ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error)
 
-func (mc *mysqlConn) ExecContext(
-        ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error)</code></pre>
-                    <p><code>query</code> 在這裡是一個<strong>實實在在的 <code>string</code> 參數</strong>——它就是即將送上線的那條 SQL。讀走 <code>QueryContext</code>、寫走 <code>ExecContext</code>，兩個點就把整個服務對資料庫做的每一件事切成乾淨的兩半。</p>
-                    <p>於是這一輪的觀測設定是這樣：</p>
-                    <ul>
-                        <li><strong>讀</strong>（<code>connection.go:510</code>）：<code>Q={query}</code></li>
-                        <li><strong>寫</strong>（<code>connection.go:529</code>）：<code>Q={query}</code></li>
-                        <li>另外在應用自己那一層放三個純計數：<code>ProductRepository.FindAll</code>、<code>ProductRepository.Create</code>、<code>StatRepository.GetStats</code>——用來跟底下的 SQL <strong>對帳</strong>。</li>
-                    </ul>
-                    <p>上層數「一次 API 呼叫」，底層數「幾條 SQL」。這兩個數字之間的比例，等一下就是整篇的主角。</p>
+<div class="cbg-root">
 
-                    <h2>前四分鐘：沒有人在看的服務</h2>
-                    <p>第一段窗口（2026-07-25 16:19:31Z → 16:23:31Z）我什麼都沒做，只有服務內建的 demo 模擬器每兩秒動一次：抓一次商品清單，然後隨機做新增／修改／刪除。四分鐘，底下跑了 <strong>1,203 條 SQL</strong>（讀 800、寫 403）。</p>
-                    <p>去重之後長這樣（逐字抄自面板）：</p>
-                    <div class="article-table-wrap">
-                        <table>
-                            <thead>
-                                <tr><th>我寫的 Go</th><th>面板上真正送到 MySQL 的</th><th>次數</th></tr>
-                            </thead>
-                            <tbody>
-                                <tr><td><code>repo.FindAll("")</code> 的第一趟</td><td><code>SELECT * FROM `products`</code></td><td>121</td></tr>
-                                <tr><td>（同一行 <code>Preload("Category")</code>）</td><td><code>SELECT * FROM `categories` WHERE `categories`.`id` IN (?,?,?,?,?,?)</code></td><td>121</td></tr>
-                                <tr><td>（同一行 <code>Preload("Supplier")</code>）</td><td><code>SELECT * FROM `suppliers` WHERE `suppliers`.`id` IN (?,?,?,?,?)</code></td><td>121</td></tr>
-                                <tr><td><code>db.Create(product)</code></td><td><code>INSERT INTO `products` (`name`,…,`created_at`,`updated_at`) VALUES (?,?,?,?,?,?,?,?)</code></td><td>114</td></tr>
-                                <tr><td><code>db.Delete(&amp;Product{}, id)</code></td><td><code>DELETE FROM `products` WHERE `products`.`id` = ?</code></td><td>91</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    <p>第一件對得上的事：<strong><code>FindAll</code> 那個純計數，四分鐘剛好也是 121 次</strong>——而面板上 <code>SELECT * FROM `products`</code> 也是 121。上層一次呼叫，底層一條主查詢，一分不差。同樣的，<code>Create</code> 計數 114 對上 <code>INSERT INTO products</code> 114。<strong>兩層之間對得起來，後面所有推論才站得住。</strong></p>
-                    <p>第二件事我本來以為會看到、結果沒看到：<strong>N+1</strong>。一次 <code>Preload</code> 兩張關聯表，我等著看它對每一列商品各發一條 SELECT，結果面板上是兩條 <code>IN (?,?,…)</code> 的批次查詢。GORM 幫你收好了——所以<strong>一次列表查詢是 1 + 2 = 3 條 SQL，不是 1 + N</strong>。這是「我知道，但沒真的看過」的第一項。</p>
-                    <p>第三件事跟上一個服務相反：<strong>這裡的 <code>Delete</code> 真的是 <code>DELETE</code></strong>。上次那個服務因為 model 內嵌了 <code>gorm.Model</code>，<code>db.Delete()</code> 底下跑的其實是軟刪除的 <code>UPDATE</code>；這個 <code>Product</code> 沒有 <code>DeletedAt</code> 欄位，所以刪除就是刪除，查詢也不會被偷加 <code>deleted_at IS NULL</code>。<strong>同一個 ORM、同一行 API，形狀完全取決於你的 model 長什麼樣</strong>——而這件事只有把 SQL 攤開才看得到。</p>
-                    <p>到這裡都還算「有趣但不驚訝」。真正讓我坐直的，是表格底下那一段——六條語句，次數整整齊齊都是 <strong>66</strong>。</p>
 
-                    <h2>六條一模一樣的 66</h2>
-                    <p>同一段四分鐘裡，面板上還有這幾條：</p>
-                    <div class="article-table-wrap">
-                        <table>
-                            <thead>
-                                <tr><th>SQL</th><th>次數</th></tr>
-                            </thead>
-                            <tbody>
-                                <tr><td><code>SELECT * FROM `products` WHERE `products`.`id` = ? ORDER BY `products`.`id` LIMIT ?</code></td><td>67</td></tr>
-                                <tr><td><code>SELECT * FROM `categories` WHERE `categories`.`id` = ?</code></td><td>66</td></tr>
-                                <tr><td><code>SELECT * FROM `suppliers` WHERE `suppliers`.`id` = ?</code></td><td>66</td></tr>
-                                <tr><td><code>INSERT INTO `categories` (`name`,`created_at`,`updated_at`,`id`) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE `id`=`id`</code></td><td><strong>66</strong></td></tr>
-                                <tr><td><code>INSERT INTO `suppliers` (`name`,`contact`,`created_at`,`updated_at`,`id`) VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE `id`=`id`</code></td><td><strong>66</strong></td></tr>
-                                <tr><td><code>UPDATE `products` SET `name`=?,`description`=?,`price`=?,`quantity`=?,`category_id`=?,`supplier_id`=?,`created_at`=?,`updated_at`=? WHERE `id` = ?</code></td><td>66</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    <p>六條不同的語句，同一個次數。這種整齊不會是巧合——<strong>它們是同一條因果鏈上的六個節點</strong>。而且在面板的 Logs 分頁裡，它們就是連號的六列（#4293 到 #4298），照著順序排在一起。</p>
+<section class="panel">
+  <div class="panel-head"><span class="panel-title" id="cbg-tl-title"></span><div class="presets" id="cbg-presets"></div></div>
+  <div id="cbg-timeline">
+    <canvas id="cbg-tl"></canvas>
+    <div class="tl-legend" id="cbg-legend"></div>
+  </div>
+  <div class="readout" id="cbg-readout"></div>
+</section>
 
-                    <figure class="article-figure figure-wide">
-                        <a href="https://codebull-dashboard-service.web.app/inventory-observing-runtime-20260726/" target="_blank" rel="noopener noreferrer">
-                            <img src="asset/inventory-runtime-dashboard-update-chain.webp" alt="面板上連號的六列：三條 SELECT、兩條 INSERT ... ON DUPLICATE KEY UPDATE、最後一條 UPDATE products" loading="lazy">
-                        </a>
-                        <figcaption><strong>Logs</strong> 分頁的 #4293–#4298：一次 <code>PUT /products/:id</code> 在底下展開成三條 <code>QueryContext</code> 的 SELECT、兩條 <code>ExecContext</code> 對 <code>categories</code> 與 <code>suppliers</code> 的 upsert，最後才是 <code>UPDATE products</code>。 <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/inventory-observing-runtime-20260726/" target="_blank" rel="noopener noreferrer">打開線上面板 →</a></span></figcaption>
-                    </figure>
+<section class="panel" id="cbg-graph">
+  <div id="cbg-stage"><svg id="cbg-wires"></svg></div>
+  <div id="cbg-edge-list"></div>
+</section>
 
-                    <p>那條鏈是這樣的，一次「使用者改了商品數量」的 <code>PUT /api/v1/products/:id</code>：</p>
-                    <ol class="causal-chain">
-                        <li><span>controller 先用 id 把商品讀回來（<code>FindByID</code>，帶兩個 <code>Preload</code>）</span><span class="count">3 條 SELECT</span></li>
-                        <li><span><code>ShouldBindJSON</code> 把請求的 JSON 蓋在這個「已經帶著 Category 和 Supplier 物件」的結構上</span><span class="count">—</span></li>
-                        <li><span><code>db.Save(product)</code>：GORM 看到結構上掛著兩個關聯物件，先幫它們各做一次 upsert</span><span class="count">2 條 INSERT</span></li>
-                        <li><span>最後才是真正的 <code>UPDATE products</code></span><span class="count">1 條 UPDATE</span></li>
-                    </ol>
-                    <p>而前端做的事，是最自然不過的：<code>GET /products</code> 拿到的 JSON 裡本來就帶著 <code>category</code> 和 <code>supplier</code> 兩個巢狀物件，改完數量原封不動 <code>PUT</code> 回去。<strong>你把讀到的東西原樣送回來，GORM 就認為你想連關聯一起存。</strong></p>
-                    <p>還有那條 <code>UPDATE</code>：它 <code>SET</code> 了<strong>每一個欄位</strong>，包括 <code>created_at</code>。<code>Save</code> 是全欄位寫回——不是「只更新你改的那兩欄」。</p>
 
-                    <h2>誠實一點：這件事有多嚴重</h2>
-                    <p>我不打算把它寫成災難，因為面板上的證據不支持：</p>
-                    <ul>
-                        <li>那兩條 <code>INSERT … ON DUPLICATE KEY UPDATE `id`=`id`</code> 是<strong>沒有副作用的</strong>。撞到既有主鍵時，它把 <code>id</code> 更新成 <code>id</code>——什麼都沒改。所以 <code>categories</code> 和 <code>suppliers</code> 的資料不會被這條路徑寫壞。</li>
-                        <li><strong>但它仍然是一次寫入。</strong> MySQL 這邊要走一次寫路徑、拿一次列鎖、進一次 binlog。四分鐘 132 次（66 + 66），只因為前端把讀到的物件原樣送回來。</li>
-                        <li>那條 <code>SET</code> 了 <code>created_at</code> 的全欄位 <code>UPDATE</code> 才是我比較在意的：它意味著<strong>任何沒被帶回來的欄位都會被寫成當初讀到的值</strong>。這一輪我<strong>沒有</strong>觀測到因此掉資料的證據——沒量到的我就不寫，只是把這條 SQL 的形狀擺在這裡。</li>
-                    </ul>
-                    <p>觀測點本身也有盲區，一起說清楚：</p>
-                    <ul>
-                        <li>這一輪只掛了 <strong>Metric + Log，沒有量延遲</strong>，所以全篇不會出現任何毫秒數字。</li>
-                        <li>站在驅動門口看到的是<strong>帶 <code>?</code> 佔位符的語句</strong>，參數是另外送的——所以面板上看得到「改了哪些欄位」，<strong>看不到改成什麼值</strong>。想看值就得再往下站一層，這一輪我沒有。</li>
-                        <li>掛在 <code>GetStats</code> 上那個計數點抓的是回傳值，而它在函式入口還是零值——所以面板上那條線是<strong>五條全零的序列</strong>，只能當「被呼叫過幾次」用，不能當統計值讀。這是我選點的代價，不是資料的意思。</li>
-                    </ul>
-                    <p><strong>看得到就是看得到，看不到就標明看不到。</strong></p>
 
-                    <h2>然後我把那個頁面打開了</h2>
-                    <p>第二段四分鐘（16:23:31Z → 16:27:32Z），我什麼程式都沒改，只做了一件事：<strong>開一個瀏覽器分頁盯著那個庫存後台頁面</strong>——它的 <code>refreshAll()</code> 每秒跑一次，同時打 <code>/categories</code>、<code>/suppliers</code>、<code>/products</code>、<code>/stats</code> 四支 API。</p>
-                    <p>同樣四分鐘，底下的 SQL 從 <strong>1,203 條變成 3,138 條</strong>。</p>
-                    <p>多出來的 1,935 條是誰？把面板上的次數拆開來算就知道了：</p>
-                    <div class="article-table-wrap">
-                        <table>
-                            <thead>
-                                <tr><th>那一秒的四支 API</th><th>底下的 SQL</th><th>條數</th></tr>
-                            </thead>
-                            <tbody>
-                                <tr><td><code>GET /categories</code></td><td><code>SELECT * FROM `categories`</code></td><td>1</td></tr>
-                                <tr><td><code>GET /suppliers</code></td><td><code>SELECT * FROM `suppliers`</code></td><td>1</td></tr>
-                                <tr><td><code>GET /products</code></td><td>主查詢 + 兩條 <code>IN</code> 預載</td><td>3</td></tr>
-                                <tr><td><code>GET /stats</code></td><td><code>count(*)</code> × 3 + 一條 <code>SUM(quantity), SUM(quantity*price)</code></td><td>4</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    <p><strong>一次畫面刷新 = 9 條 SQL。</strong> 面板上 <code>/stats</code> 那四條語句這段窗口各出現 <strong>214</strong> 次，也就是頁面刷新了 214 次：<strong>9 × 214 = 1,926</strong>，跟實測多出來的 1,935 只差 9 條——剛好是一次刷新。數字自己兜起來了。</p>
-                    <p>一個沒有人在操作、只是開著的頁面，每秒讓 MySQL 跑 8 條查詢。其中 <code>SELECT * FROM `products`</code> 是<strong>沒有 WHERE、沒有 LIMIT 的整表查詢</strong>，每秒一次。</p>
-                    <p>這件事在 Metrics 分頁上更好看：<code>FindAll</code> 那條累積計數線，<strong>在 16:23:31 有一個明顯的斜率轉折</strong>——從每兩秒一次變成每秒一次多。而旁邊 <code>Create</code> 那條線是直的，斜率完全沒變。<strong>讀的行為被我打開的分頁改變了，寫的行為沒有</strong>，一眼就分得出來。</p>
+</div>
+<script id="cbg-data" type="application/json">{"mock": false, "title": "一次改動的展開", "lede": "387 次 PUT、六分四十秒。", "source": "article/inventory-example/graph.json · 03:25–03:31 UTC", "window": {"startMs": 1787887500000, "stepMs": 10000, "buckets": 40}, "phases": [], "readout": {"ratios": [{"label": "寫語句 / 存回", "num": "送出寫入 SQL", "den": "存回商品", "tone": "bad"}, {"label": "讀語句 / 讀出", "num": "送出讀取 SQL", "den": "先讀出商品", "tone": "warn"}], "check": "改一個數量 = 三句寫入"}, "nodes": [{"id": "n0", "name": "送出讀取 SQL", "tone": "entry", "purpose": "真正離開行程的讀語句長什麼樣？", "probes": [{"traceKey": "mysql.(*mysqlConn).QueryContext:510", "kind": "log"}], "series": {"hits": [54, 60, 60, 60, 54, 60, 60, 54, 60, 60, 60, 54, 60, 60, 60, 54, 60, 60, 54, 60, 60, 60, 54, 60, 60, 60, 54, 60, 60, 54, 60, 60, 60, 54, 60, 60, 57, 57, 60, 48]}, "hitsFull": 2322, "latencyFull": null, "samples": [{"text": "SELECT * FROM `categories` WHERE `categories`.`id` = ?", "perBucket": [18, 20, 20, 20, 18, 20, 20, 18, 20, 20, 20, 18, 20, 20, 20, 18, 20, 20, 18, 20, 20, 20, 18, 20, 20, 20, 18, 20, 20, 18, 20, 20, 20, 18, 20, 20, 19, 19, 20, 16]}, {"text": "SELECT * FROM `suppliers` WHERE `suppliers`.`id` = ?", "perBucket": [18, 20, 20, 20, 18, 20, 20, 18, 20, 20, 20, 18, 20, 20, 20, 18, 20, 20, 18, 20, 20, 20, 18, 20, 20, 20, 18, 20, 20, 18, 20, 20, 20, 18, 20, 20, 19, 19, 20, 16]}, {"text": "SELECT * FROM `products` WHERE `products`.`id` = ? ORDER BY `products`.`id` LIMIT ?", "perBucket": [18, 20, 20, 20, 18, 20, 20, 18, 20, 20, 20, 18, 20, 20, 20, 18, 20, 20, 18, 20, 20, 20, 18, 20, 20, 20, 18, 20, 20, 18, 20, 20, 20, 18, 20, 20, 19, 19, 20, 16]}], "stacks": [{"frames": ["runtime.goexit", "net/http.(*Server).Serve.gowrap3", "net/http.(*conn).serve", "net/http.serverHandler.ServeHTTP", "github.com/gin-gonic/gin.(*Engine).ServeHTTP", "github.com/gin-gonic/gin.(*Engine).handleHTTPRequest", "github.com/gin-gonic/gin.(*Context).Next", "github.com/gin-gonic/gin.LoggerWithConfig.func1", "github.com/gin-gonic/gin.(*Context).Next", "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1", "github.com/gin-gonic/gin.(*Context).Next", "shadow-inventory/controllers.UpdateProduct", "inventory/services.(*ProductService).GetProductByID", "shadow-inventory/repositories.(*ProductRepository).FindByID", "gorm.io/gorm.(*DB).First", "gorm.io/gorm.(*processor).Execute", "gorm.io/gorm/callbacks.Preload", "gorm.io/gorm/callbacks.preloadEntryPoint", "gorm.io/gorm/callbacks.preload", "gorm.io/gorm.(*DB).Find", "gorm.io/gorm.(*processor).Execute", "gorm.io/gorm/callbacks.Query", "database/sql.(*DB).QueryContext", "database/sql.(*DB).retry", "database/sql.(*DB).QueryContext.func1", "database/sql.(*DB).query", "database/sql.(*DB).queryDC", "database/sql.withLock", "database/sql.(*DB).queryDC.func1", "database/sql.ctxDriverQuery", "github.com/go-sql-driver/mysql.(*mysqlConn).QueryContext"], "perBucket": [18, 20, 20, 20, 18, 20, 20, 18, 20, 20, 20, 18, 20, 20, 20, 18, 20, 20, 18, 20, 20, 20, 18, 20, 20, 20, 18, 20, 20, 18, 20, 20, 20, 18, 20, 20, 19, 19, 20, 16]}], "x": 1040, "y": 0, "root": false}, {"id": "n1", "name": "送出寫入 SQL", "tone": "good", "purpose": "真正離開行程的寫語句長什麼樣？", "probes": [{"traceKey": "mysql.(*mysqlConn).ExecContext:529", "kind": "log"}], "series": {"hits": [27, 30, 30, 30, 27, 30, 30, 27, 30, 30, 30, 27, 30, 30, 30, 27, 30, 30, 27, 30, 30, 30, 27, 30, 30, 30, 27, 30, 30, 27, 30, 30, 30, 27, 30, 30, 30, 27, 30, 24]}, "hitsFull": 1161, "latencyFull": null, "samples": [{"text": "INSERT INTO `suppliers` (`name`,`contact`,`created_at`,`updated_at`,`id`) VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE `id`=`id`", "perBucket": [9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 10, 9, 10, 8]}, {"text": "UPDATE `products` SET `name`=?,`description`=?,`price`=?,`quantity`=?,`category_id`=?,`supplier_id`=?,`created_at`=?,`updated_at`=? WHERE `id` = ?", "perBucket": [9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 10, 9, 10, 8]}, {"text": "INSERT INTO `categories` (`name`,`created_at`,`updated_at`,`id`) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE `id`=`id`", "perBucket": [9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 10, 9, 10, 8]}], "stacks": [{"frames": ["runtime.goexit", "net/http.(*Server).Serve.gowrap3", "net/http.(*conn).serve", "net/http.serverHandler.ServeHTTP", "github.com/gin-gonic/gin.(*Engine).ServeHTTP", "github.com/gin-gonic/gin.(*Engine).handleHTTPRequest", "github.com/gin-gonic/gin.(*Context).Next", "github.com/gin-gonic/gin.LoggerWithConfig.func1", "github.com/gin-gonic/gin.(*Context).Next", "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1", "github.com/gin-gonic/gin.(*Context).Next", "shadow-inventory/controllers.UpdateProduct", "inventory/services.(*ProductService).UpdateProduct", "shadow-inventory/repositories.(*ProductRepository).Save", "gorm.io/gorm.(*DB).Save", "gorm.io/gorm.(*processor).Execute", "gorm.io/gorm/callbacks.SaveBeforeAssociations.func1", "gorm.io/gorm/callbacks.saveAssociations", "gorm.io/gorm.(*DB).Create", "gorm.io/gorm.(*processor).Execute", "gorm.io/gorm/callbacks.Create.func1", "database/sql.(*Tx).ExecContext", "database/sql.(*DB).execDC", "database/sql.withLock", "database/sql.(*DB).execDC.func2", "database/sql.ctxDriverExec", "github.com/go-sql-driver/mysql.(*mysqlConn).ExecContext"], "perBucket": [18, 20, 20, 20, 18, 20, 20, 18, 20, 20, 20, 18, 20, 20, 20, 18, 20, 20, 18, 20, 20, 20, 18, 20, 20, 20, 18, 20, 20, 18, 20, 20, 20, 18, 20, 20, 19, 19, 20, 16]}], "x": 1040, "y": 470, "root": false}, {"id": "n2", "name": "先讀出商品", "tone": "money", "purpose": "改之前要先讀幾次？", "probes": [{"traceKey": "repositories.(*ProductRepository).FindByID:28", "kind": "metric"}], "series": {"hits": [18, 20, 20, 20, 18, 20, 20, 18, 20, 20, 20, 18, 20, 20, 20, 18, 20, 20, 18, 20, 20, 20, 18, 20, 20, 20, 18, 20, 20, 18, 20, 20, 20, 18, 20, 20, 19, 19, 20, 16]}, "hitsFull": 774, "latencyFull": null, "samples": [], "stacks": [], "x": 520, "y": 0, "root": true}, {"id": "n3", "name": "存回商品", "tone": "bad", "purpose": "一次 Save 對應幾次寫入？", "probes": [{"traceKey": "repositories.(*ProductRepository).Save:38", "kind": "metric"}], "series": {"hits": [9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 10, 9, 10, 8]}, "hitsFull": 387, "latencyFull": null, "samples": [], "stacks": [], "x": 520, "y": 470, "root": false}, {"id": "n4", "name": "改一個商品", "tone": "entry", "purpose": "前端改一次數量，底下要走多少事？一次多久？", "probes": [{"traceKey": "controllers.UpdateProduct:46", "kind": "metric"}, {"traceKey": "controllers.UpdateProduct:47", "kind": "latency"}], "series": {"hits": [9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 10, 9, 10, 8], "latencyP50": [12.161, 11.716, 11.347, 11.699, 11.623, 11.573, 11.812, 12.349, 11.869, 12.062, 12.188, 11.613, 10.969, 10.874, 11.864, 12.026, 11.337, 11.343, 12.019, 11.748, 12.011, 11.676, 11.913, 11.407, 11.54, 11.352, 11.877, 11.697, 11.895, 11.817, 11.769, 12.019, 11.901, 11.752, 11.952, 11.755, 12.049, 11.787, 12.118, 11.332], "latencyP95": [15.687, 11.99, 12.442, 12.374, 12.156, 14.225, 12.51, 14.98, 12.408, 14.963, 12.826, 12.451, 13.914, 14.662, 12.464, 14.036, 11.782, 12.058, 15.758, 12.244, 12.64, 12.705, 12.409, 15.662, 12.433, 12.271, 12.604, 14.069, 13.785, 12.456, 13.002, 14.285, 12.9, 12.292, 12.785, 12.719, 12.646, 12.017, 12.729, 11.777]}, "hitsFull": 387, "latencyFull": {"count": 389, "p50": 11.752, "p95": 13.046, "p99": 16.253, "max": 18.635}, "samples": [], "stacks": [], "x": 0, "y": 0, "root": true}], "edges": [{"from": "n2", "to": "n0", "countPerBucket": [54, 60, 60, 60, 54, 60, 60, 54, 60, 60, 60, 54, 60, 60, 60, 54, 60, 60, 54, 60, 60, 60, 54, 60, 60, 60, 54, 60, 60, 54, 60, 60, 60, 54, 60, 60, 57, 57, 60, 48], "countFull": 2322, "fanoutFull": 3, "gap": 16, "gapLabel": "11–16", "gapIn": ["sql.ctxDriverQuery", "sql.(*DB).queryDC", "sql.withLock", "sql.(*DB).queryDC", "sql.(*DB).query", "sql.(*DB).QueryContext", "sql.(*DB).retry", "sql.(*DB).QueryContext"], "alert": null}, {"from": "n3", "to": "n1", "countPerBucket": [27, 30, 30, 30, 27, 30, 30, 27, 30, 30, 30, 27, 30, 30, 30, 27, 30, 30, 27, 30, 30, 30, 27, 30, 30, 30, 27, 30, 30, 27, 30, 30, 30, 27, 30, 30, 30, 27, 30, 24], "countFull": 1161, "fanoutFull": 3, "gap": 12, "gapLabel": "8–12", "gapIn": ["sql.ctxDriverExec", "sql.(*DB).execDC", "sql.withLock", "sql.(*DB).execDC", "sql.(*Tx).ExecContext", "callbacks.Update", "gorm.(*processor).Execute", "gorm.(*DB).Save"], "alert": null}, {"from": "n4", "to": "n2", "countPerBucket": [9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 10, 9, 10, 8], "countFull": 387, "fanoutFull": 1, "gap": 1, "gapLabel": "1", "gapIn": ["services.(*ProductService).GetProductByID"], "alert": null}, {"from": "n4", "to": "n3", "countPerBucket": [9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 10, 9, 10, 8], "countFull": 387, "fanoutFull": 1, "gap": 1, "gapLabel": "1", "gapIn": ["services.(*ProductService).UpdateProduct"], "alert": null}], "notes": []}</script>
+<script>(function(){
 
-                    <figure class="article-figure figure-wide">
-                        <a href="https://codebull-dashboard-service.web.app/inventory-observing-runtime-20260726/" target="_blank" rel="noopener noreferrer">
-                            <img src="asset/inventory-runtime-dashboard-metrics.webp" alt="CodeBull 面板 Metrics 分頁：FindAll 的累積線在中段折上去，Create 的累積線維持同一個斜率" loading="lazy">
-                        </a>
-                        <figcaption><strong>Metrics</strong> 分頁：<code>FindAll</code>（左上）在分頁被打開的那一刻折上去，<code>Create</code>（右上）的斜率完全沒變——一個裸計數換成累積來看，就把「讀取負載改變的那一秒」自己標了出來。 <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/inventory-observing-runtime-20260726/" target="_blank" rel="noopener noreferrer">打開線上面板 →</a></span></figcaption>
-                    </figure>
+const D = JSON.parse(document.getElementById("cbg-data").textContent);
+const NB = D.window.buckets, STEP = D.window.stepMs, T0 = D.window.startMs;
+const N = Object.fromEntries(D.nodes.map(n => [n.id, n]));
+const TONE = { entry:"--cbg-entry", good:"--cbg-good", money:"--cbg-money", bad:"--cbg-bad" };
+const css = v => getComputedStyle(document.querySelector(".cbg-root")).getPropertyValue(v).trim();
+const sum = (a,f,t) => a.slice(f,t).reduce((x,y)=>x+y,0);
+const fmt = n => Math.round(n).toLocaleString("en-US");
+const ms = (v) => (v >= 10 ? v.toFixed(0) : v >= 1 ? v.toFixed(1) : v.toFixed(2));
+const clock = b => new Date(T0 + b*STEP).toISOString().slice(11,16);
+// github.com/gin-gonic/gin.(*Engine).ServeHTTP → ServeHTTP. Taking the last
+// dot-segment alone leaves "func1" for every closure, and taking the last path
+// segment alone leaves the whole package prefix.
+const shortFn = (s) => {
+  // Generic type arguments carry dots of their own — NewCache[...].gowrap1 —
+  // so they come off before anything splits on ".".
+  const noGeneric = s.replace(/\[[^\]]*\]/g, "");
+  const noRecv = noGeneric.split("/").pop().replace(/\(\*?[^)]*\)\./g, "");
+  const parts = noRecv.split(".").filter(Boolean);
+  // A closure carries the name of the function it was written in, and can carry
+  // several suffixes at once: serveStreams.func2.1, NewFIFOScheduler.gowrap1.
+  while (parts.length > 1 && /^(func\d+|gowrap\d+|\d+)$/.test(parts[parts.length - 1])) parts.pop();
+  return parts[parts.length - 1];
+};
+let sel = { from:0, to:NB };
 
-                    <p>順帶對照一下服務自己的 log。Gin 的 access log 沒有瞎——這四分鐘它記了 <strong>1,698 行</strong>，每一行都是 <code>200</code> / <code>201</code> / <code>204</code>，該有的一行都沒漏：</p>
-                    <pre class="code-block"><code>GET /api/v1/products    335
-GET /api/v1/categories  330
-GET /api/v1/suppliers   330
-GET /api/v1/stats       215</code></pre>
-                    <p>但 1,698 行 HTTP，底下是 <strong>3,138 條 SQL</strong>。access log 告訴你「請求成功了」，不會告訴你這些成功底下發了幾條查詢——<strong>HTTP 層的日誌天生就看不到扇出</strong>。那個把 1 變成 9 的倍率，只有站到驅動門口才數得出來。</p>
-                    <p>（這份 access log 還幫我把更新鏈補完了：前四分鐘它記到 <strong>67 次 <code>PUT</code></strong>，而面板上那條 <code>FindByID</code> 的 SELECT 剛好也是 67、後面五條卻是 66——那第 67 次的後半段跨過了窗口邊界。兩邊的數字連誤差都對得起來。）</p>
+/* children of an edge target = what the timeline stacks */
+const hasOut = new Set(D.edges.map(e => e.from));
+/* The ends of the graph: nodes nothing leads away from. Stacking those counts
+   each piece of work once, and an island — a step reached on its own goroutine,
+   with no edge at all — is an end like any other, so it stays on the timeline. */
+const leaves = D.nodes.filter(n => !hasOut.has(n.id)).map(n => n.id);
 
-                    <h2>收尾</h2>
-                    <p>我沒有改一行 code、沒有重啟服務、沒有先接一套 APM。就只是挑了驅動的兩個門口掛觀測點、在應用層放三個計數，然後認真看了八分鐘。</p>
-                    <p>換來的是：我看到一次列表查詢是 3 條 SQL 而不是 N+1、看到這個服務的 <code>Delete</code> 是真刪不是軟刪、看到一次「改數量」在底下變成六條語句並且寫了三張表、看到 <code>Save</code> 會把 <code>created_at</code> 一起寫回去、最後看到一個沒人在操作的頁面每秒替我發 8 條查詢。</p>
-                    <p>這些東西沒有一件是 bug 報告會告訴你的，也沒有一件需要重現步驟——<strong>它們一直都在跑，只是預設看不見</strong>。挑對位置站，它們自己就會現形。</p>
+{ const _e = document.getElementById("cbg-title"); if (_e) _e.textContent = D.title; }
+{ const _e = document.getElementById("cbg-lede"); if (_e) _e.textContent = D.lede; }
+{ const _e = document.getElementById("cbg-src"); if (_e) _e.textContent = D.source ?? ""; }
+{ const _e = document.getElementById("cbg-eyebrow"); if (_e) _e.textContent = "Behavior Graph · " + D.nodes.length + " 個節點 · " +
+  D.nodes.reduce((a,n)=>a+n.probes.length,0) + " 個觀測點"; }
+document.getElementById("cbg-tl-title").textContent =
+  `時間軸 · 每格 ${STEP/1000} 秒 · 共 ${Math.round(NB*STEP/60000)} 分鐘`;
+document.getElementById("cbg-legend").innerHTML =
+  leaves.map(id => `<span><i style="background:var(${TONE[N[id].tone]})"></i>${N[id].name}</span>`).join("") +
+  `<span><i style="background:var(--bad);opacity:.28"></i>選取範圍</span>
+   <span style="color:var(--faint)">在圖上拖曳可選任意一段</span>`;
 
-                    <h3>附：這次的觀測設定（可重現）</h3>
-                    <ul>
-                        <li>觀測點（共五個，全部動態掛載、不改原始碼）：
-                            <ul>
-                                <li><code>mysql.(*mysqlConn).QueryContext</code>（<code>go-sql-driver/mysql@v1.8.1/connection.go:510</code>）—— log，模板 <code>Q={query}</code>，所有讀</li>
-                                <li><code>mysql.(*mysqlConn).ExecContext</code>（同檔 <code>:529</code>）—— log，模板 <code>Q={query}</code>，所有寫</li>
-                                <li><code>repositories.(*ProductRepository).FindAll</code>（<code>product_repository.go:18</code>）—— metric，純計數</li>
-                                <li><code>repositories.(*ProductRepository).Create</code>（<code>product_repository.go:34</code>）—— metric，純計數</li>
-                                <li><code>repositories.(*StatRepository).GetStats</code>（<code>stat_repository.go:18</code>）—— metric，抓回傳值（入口為零值，只能當計數用）</li>
-                            </ul>
-                        </li>
-                        <li>被觀測的服務：inventory-example（Gin 1.9.1 + GORM 1.31.1 + MySQL 8.0），<code>DEMO_MODE=1</code>，內建模擬器每 2 秒經由自己的 HTTP API 做一輪新增／修改／刪除</li>
-                        <li>觀測窗口：2026-07-25 16:19:33.700Z → 16:27:32.249Z（8 分鐘），16:23:31Z 分成兩段——前四分鐘沒開頁面 <strong>1,203 條</strong>（讀 800 / 寫 403），後四分鐘開一個每秒刷新的分頁 <strong>3,138 條</strong>（讀 2,724 / 寫 414）</li>
-                        <li>對帳：<code>FindAll</code> 計數 121 / 333 對上 <code>SELECT * FROM `products`</code> 的 121 / 333；<code>Create</code> 計數 114 / 115 對上 <code>INSERT INTO products</code> 的 114 / 115</li>
-                        <li>更新鏈：六條語句在前四分鐘各 66 次、後四分鐘各 71 次（<code>FindByID</code> 的那條 SELECT 是 67 / 71，多出來的那次的後半段跨過了窗口邊界）</li>
-                        <li>交叉核對：服務自己的 Gin access log 同期記了 631 行（前四分鐘）與 1,698 行（後四分鐘），全是 2xx；<code>PUT</code> 67 / 72 次，對得上面板上的 66 / 71 條更新鏈</li>
-                        <li>失敗的嘗試：先掛在 <code>gorm.(*processor).Execute</code> 出口、用 <code>{string(stmt.SQL.buf)}</code> 取 SQL，面板只拿到 <code>len=67</code> 這種長度資訊（<code>strings.Builder</code> 的內部 buffer 沒展開），所以改站到驅動門口</li>
-                        <li>這一輪<strong>沒有掛 latency</strong>，所以全篇不出現任何毫秒數；驅動門口只看得到帶 <code>?</code> 的語句，<strong>看不到參數值</strong></li>
-                    </ul>
+/* ── stage ─────────────────────────────────────────────── */
+const stage = document.getElementById("cbg-stage");
+D.nodes.forEach(n => {
+  const el = document.createElement("div");
+  el.className = "node " + n.tone; el.id = "cbg-node-" + n.id;
+  el.style.left = n.x + "px"; el.style.top = n.y + "px";
+  stage.appendChild(el);
+});
+stage.style.minWidth = (Math.max(...D.nodes.map(n=>n.x)) + 320) + "px";
 
-                    <figure class="article-figure figure-wide">
-                        <a href="https://codebull-dashboard-service.web.app/inventory-observing-runtime-20260726/" target="_blank" rel="noopener noreferrer">
-                            <img src="asset/inventory-runtime-dashboard-logs.webp" alt="CodeBull 面板 Logs 分頁：每一列都是一條逐字的 MySQL 語句，標著 QueryContext 或 ExecContext 與時間戳" loading="lazy">
-                        </a>
-                        <figcaption><strong>Logs</strong> 分頁：一列就是一條真的送到 MySQL 的語句，標著來源是 <code>QueryContext:510</code>（讀）還是 <code>ExecContext:529</code>（寫）。文中引用的每一條語句都能在這裡讀回來。 <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/inventory-observing-runtime-20260726/" target="_blank" rel="noopener noreferrer">打開線上面板 →</a></span></figcaption>
-                    </figure>
+/* ── timeline ──────────────────────────────────────────── */
+const cv = document.getElementById("cbg-tl"), ctx = cv.getContext("2d");
+function drawTimeline(){
+  const dpr = devicePixelRatio||1, w = cv.clientWidth, h = cv.clientHeight;
+  cv.width = w*dpr; cv.height = h*dpr; ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,h);
+  const stacks = leaves.map(id => N[id].series.hits);
+  const peak = Math.max(...Array.from({length:NB}, (_,i) => stacks.reduce((a,s)=>a+s[i],0))) * 1.1;
+  const bw = w/NB;
+  D.phases.forEach((p,i) => { if (i%2) { ctx.fillStyle = css("--cbg-sunk");
+    ctx.fillRect(p.fromBucket*bw, 0, (p.toBucket-p.fromBucket)*bw, h); } });
+  for (let i=0;i<NB;i++){
+    let acc = 0;
+    stacks.forEach((s,si) => {
+      const hh = (s[i]/peak)*h;
+      ctx.fillStyle = css(TONE[N[leaves[si]].tone]); ctx.globalAlpha = .88;
+      ctx.fillRect(i*bw, h-acc-hh, Math.max(bw-.4,.6), hh); acc += hh;
+    });
+  }
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = css("--cbg-bad"); ctx.globalAlpha = .15;
+  ctx.fillRect(sel.from*bw, 0, (sel.to-sel.from)*bw, h); ctx.globalAlpha = 1;
+  ctx.strokeStyle = css("--cbg-bad"); ctx.lineWidth = 1.5; ctx.beginPath();
+  ctx.moveTo(sel.from*bw,0); ctx.lineTo(sel.from*bw,h);
+  ctx.moveTo(sel.to*bw,0); ctx.lineTo(sel.to*bw,h); ctx.stroke();
+  ctx.font = '500 10px "JetBrains Mono", monospace'; ctx.fillStyle = css("--cbg-faint");
+  D.phases.forEach(p => ctx.fillText(p.label, p.fromBucket*bw+5, 12));
+}
+let dragging = false, anchor = 0;
+const bucketAt = ev => { const r = cv.getBoundingClientRect();
+  return Math.max(0, Math.min(NB, Math.round(((ev.clientX-r.left)/r.width)*NB))); };
+cv.addEventListener("pointerdown", e => { dragging = true; anchor = bucketAt(e); cv.setPointerCapture(e.pointerId); });
+cv.addEventListener("pointermove", e => { if(!dragging) return;
+  const b = bucketAt(e); sel = { from:Math.min(anchor,b), to:Math.max(anchor,b) };
+  if (sel.to - sel.from < 2) sel.to = Math.min(NB, sel.from+2); render(); });
+addEventListener("pointerup", () => { if(dragging){ dragging = false; syncPresets(); } });
 
-                    <div class="article-callout">
-                        <p>📊 <strong>本文的遠端觀測面板</strong>（實測數據，可線上檢視）：<a href="https://codebull-dashboard-service.web.app/inventory-observing-runtime-20260726/" target="_blank" rel="noopener noreferrer">inventory-observing-runtime-20260726</a></p>
-                        <p>上面每一條 SQL 與每一個次數，都能在這個面板的 <strong>Logs</strong> 分頁逐字對帳（那六條連號的更新鏈在 #4293–#4298）；<strong>Metrics</strong> 分頁則是 <code>FindAll</code> / <code>Create</code> 的累積計數線，以及 16:23:31 那個斜率轉折。</p>
-                    </div>
+// A real window arrives without authored phases. Thirds are not a claim about
+// the run — they are a fast way to ask "did this move", which is the only
+// reason the timeline is here.
+const PRESETS = D.phases.length
+  ? [{label:"全部",from:0,to:NB}, ...D.phases.map(p=>({label:p.label,from:p.fromBucket,to:p.toBucket}))]
+  : [{label:"全部",from:0,to:NB},
+     {label:"前三分之一",from:0,to:Math.round(NB/3)},
+     {label:"中段",from:Math.round(NB/3),to:Math.round(2*NB/3)},
+     {label:"後三分之一",from:Math.round(2*NB/3),to:NB}];
+const pbox = document.getElementById("cbg-presets");
+PRESETS.forEach((p,i) => { const b = document.createElement("button"); b.textContent = p.label;
+  b.onclick = () => { sel = {from:p.from,to:p.to}; render(); syncPresets(); }; pbox.appendChild(b); });
+const syncPresets = () => [...pbox.children].forEach((b,i) =>
+  b.setAttribute("aria-pressed", String(PRESETS[i].from===sel.from && PRESETS[i].to===sel.to)));
 
-                    <div class="article-footnote">
-                        <p>這篇裡「不改 code、對執行中的 process 掛觀測點、然後盯著看」用的是 <strong>CodeBull</strong> —— 一個 VS Code extension，能對正在跑的 Go 服務動態插入 Metric / Log / Latency 觀測點，不改原始碼、不重編譯、不重啟。那條把兩張關聯表一起寫進去的更新鏈，就是這樣被我當場看到的。</p>
-                        <p><em>文中每一條 SQL、每一個數字均出自 CodeBull 對 inventory-example 執行中服務的實測證據，並可在上方面板連結線上對帳。</em></p>
-                        <p><a class="btn" href="https://marketplace.visualstudio.com/items?itemName=0xbu11.codebull" target="_blank" rel="noopener noreferrer">安裝 CodeBull</a></p>
-                    </div>
+/* ── node cards ────────────────────────────────────────── */
+function spark(series, cvar, hi){
+  const w = 274, h = 34, max = Math.max(...series, 1);
+  const pts = series.map((v,i) => `${(i/(series.length-1))*w},${h-(v/max)*(h-3)-1.5}`).join(" ");
+  const x1 = (sel.from/series.length)*w, x2 = (sel.to/series.length)*w;
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
+    <rect x="${x1}" y="0" width="${Math.max(x2-x1,1)}" height="${h}" fill="var(${hi||cvar})" opacity=".14"/>
+    <polyline points="${pts}" fill="none" stroke="var(${cvar})" stroke-width="1.4" stroke-linejoin="round"/></svg>`;
+}
+function renderNode(n){
+  const cvar = TONE[n.tone];
+  const whole = sel.from === 0 && sel.to === NB;
+  const total = whole && n.hitsFull != null ? n.hitsFull : sum(n.series.hits, 0, NB);
+  const hits = whole && n.hitsFull != null ? n.hitsFull : sum(n.series.hits, sel.from, sel.to);
+  const mins = ((sel.to-sel.from)*STEP)/60000;
+  let lat = "";
+  if (n.series.latencyP50){
+    const win = a => a.slice(sel.from, sel.to);
+    const avg = a => { const v = a.filter(x => x > 0); return v.length ? v.reduce((x,y)=>x+y,0)/v.length : 0; };
+    // Over the whole window the reservoir's own percentiles are the honest
+    // answer. Over a sub-range there is no reservoir, so the per-bucket
+    // percentiles are averaged — which is not a percentile of the range, and
+    // the caption says so rather than letting the number pass as one.
+    const whole = sel.from === 0 && sel.to === NB && n.latencyFull;
+    const p50 = whole ? n.latencyFull.p50 : avg(win(n.series.latencyP50));
+    const p95 = whole ? n.latencyFull.p95 : avg(win(n.series.latencyP95));
+    const worst = Math.max(...n.series.latencyP95);
+    lat = `<div class="slot"><div class="slot-h"><span>延遲 · latency 點</span><span>${whole ? "全窗百分位" : "各桶百分位的平均"}</span></div>
+      <div class="lat"><div><span class="k">p50</span><span class="v">${ms(p50)}<span class="unit">ms</span></span></div>
+      <div><span class="k">p95</span><span class="v" style="color:${p95>worst*.6?"var(--bad)":"inherit"}">${ms(p95)}<span class="unit">ms</span></span></div></div>
+      ${spark(n.series.latencyP95, cvar, "--cbg-bad")}</div>`;
+  }
+  const shapeAll = n.samples.reduce((a,s)=>a+sum(s.perBucket,sel.from,sel.to),0) || 1;
+  const shapes = n.samples.map(s => {
+    const v = sum(s.perBucket, sel.from, sel.to);
+    if (v === 0) return "";
+    const pct = v/shapeAll*100;
+    // a shape absent from the first tenth of the window is new behaviour, not background
+    const isNew = sum(s.perBucket, 0, Math.floor(NB/10)) === 0;
+    return `<div class="shape"><div class="shape-row ${isNew?"new":""}">
+        <span class="t" title="${s.text}">${isNew?"▲ ":""}${s.text}</span><span class="n">${pct.toFixed(0)}% · ${fmt(v)}</span></div>
+      <div class="bar"><i style="width:${pct}%;background:var(${isNew?"--cbg-bad":cvar})"></i></div></div>`;
+  }).join("") || `<p class="why" style="margin-top:6px">這一段沒有抓到內容</p>`;
+
+  const chainAll = n.stacks.reduce((a,s)=>a+sum(s.perBucket,sel.from,sel.to),0) || 1;
+  const flame = n.stacks.map(s => {
+    const v = sum(s.perBucket, sel.from, sel.to); if (!v) return "";
+    const share = v/chainAll*100;
+    const MAX_FRAMES = 5;
+    // The outermost frames are where the goroutine started, and that is what
+    // tells two islands apart — so the head stays visible and the middle folds.
+    const head = s.frames.length > MAX_FRAMES ? s.frames.slice(0, 2) : [];
+    const tail = s.frames.slice(head.length ? head.length - MAX_FRAMES : 0);
+    const hidden = s.frames.length - head.length - tail.length;
+    const chip = (f, i) =>
+      `<span style="flex:1;background:color-mix(in srgb, var(${cvar}) ${90-i*12}%, #000 10%)" title="${f}">${shortFn(f)}</span>`;
+    const cells =
+      head.map(chip).join("") +
+      (hidden > 0
+        ? `<span style="flex:0 0 auto;background:var(--line);color:var(--dim)" title="${s.frames.slice(head.length, head.length + hidden).join(" < ")}">+${hidden}</span>`
+        : "") +
+      tail.map((f, i) => chip(f, i + head.length)).join("");
+    return `<div><div class="chain" style="width:${Math.max(share,55)}%">${cells}</div>
+      <div class="chain-meta"><span>${share.toFixed(0)}% 走這條</span><span>${fmt(v)}</span></div></div>`;
+  }).join("");
+
+  document.getElementById("cbg-node-"+n.id).innerHTML = `
+    <div class="nhead"><h3>${n.name}</h3><div class="why">${n.purpose}</div>
+      <div class="probes">${n.probes.map(p=>`<span class="probe ${p.kind}">${p.kind}</span>`).join("")}
+        <span class="probe">${n.probes.length} probe</span>
+        ${n.root ? '<span class="probe" title="堆疊上沒有任何有掛點的呼叫者">root</span>' : ""}</div></div>
+    <div class="slot"><div class="slot-h"><span>命中次數 · metric</span><span>${(hits/total*100).toFixed(0)}% of ${fmt(total)}</span></div>
+      <div class="big">${fmt(hits)}<span class="unit">次 · ${(hits/mins).toFixed(0)}/分鐘</span></div>${spark(n.series.hits, cvar)}</div>
+    ${lat}
+    <div class="slot"><div class="slot-h"><span>抓到的內容 · log</span><span>${n.samples.length} 種形狀</span></div>${shapes}</div>
+    <div class="slot"><div class="slot-h"><span>走到這裡的路徑 · stacks</span><span>${n.stacks.length} 條</span></div>
+      <div class="flame">${flame}</div></div>`;
+}
+
+/* ── edges ─────────────────────────────────────────────── */
+function edgeFacts(e){
+  const whole = sel.from === 0 && sel.to === NB;
+  const parent = sum(N[e.from].series.hits, sel.from, sel.to);
+  const series = sum(e.countPerBucket, sel.from, sel.to);
+  const n = whole && e.countFull != null ? e.countFull : series;
+  const f = whole && e.fanoutFull != null ? e.fanoutFull : (parent ? series/parent : 0);
+  const approx = !whole;
+  return { n, f, parent, approx, alert: e.alert != null && f > e.alert,
+    sub: e.gap > 0
+      ? `${e.gapLabel ?? e.gap} 層未觀測 · ${e.gapIn.map(shortFn).join(" · ") || "（未記錄名稱）"}`
+      : "直接呼叫，沒有漏看" };
+}
+function renderEdges(){
+  document.getElementById("cbg-edge-list").innerHTML = D.edges.map(e => { const f = edgeFacts(e);
+    return `<div class="echip ${f.alert?"alert":(e.gap===0?"calm":"")}"><b>${N[e.from].name} → ${N[e.to].name}</b>
+      <b style="color:${f.alert?"var(--bad)":"var(--ink)"}">${f.approx?"≈":""}×${f.f.toFixed(2)}</b>
+      <span class="sub">${fmt(f.n)} ÷ ${fmt(f.parent)}</span><span class="sub">${f.sub}</span></div>`; }).join("");
+
+  const svg = document.getElementById("cbg-wires");
+  if (getComputedStyle(svg).display === "none") return;
+  const s = stage.getBoundingClientRect();
+  const box = id => { const r = document.getElementById("cbg-node-"+id).getBoundingClientRect();
+    return { x:r.left-s.left, y:r.top-s.top, w:r.width, h:r.height }; };
+  let out = ["","alert","calm"].map(k => `<marker id="ah${k}" viewBox="0 0 10 10" refX="9" refY="5"
+      markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"
+      fill="var(${k==="alert"?"--cbg-bad":k==="calm"?"--cbg-good":"--cbg-dim"})"/></marker>`).join("");
+  out = `<defs>${out}</defs>`;
+  D.edges.forEach(e => {
+    const a = box(e.from), b = box(e.to);
+    const x1 = a.x+a.w, y1 = a.y+70, x2 = b.x-9, y2 = b.y+70, mx = (x1+x2)/2, ty = (y1+y2)/2;
+    const f = edgeFacts(e);
+    const kind = f.alert ? "alert" : (e.gap === 0 ? "calm" : "");
+    out += `<path class="wire ${kind}" marker-end="url(#ah${kind})"
+      d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}" ${e.gap>0?'stroke-dasharray="6 5"':""}/>`;
+    const w = Math.min(Math.max(f.sub.length*6.2+20, 160), x2-x1-10);
+    out += `<rect class="wbox" x="${mx-w/2}" y="${ty-20}" width="${w}" height="40" rx="3"/>
+      <text class="wlabel" x="${mx}" y="${ty-3}" text-anchor="middle" fill="${f.alert?"var(--bad)":"var(--ink)"}">${f.approx?"≈":""}×${f.f.toFixed(2)} · ${fmt(f.n)} 次</text>
+      <text class="wsub" x="${mx}" y="${ty+12}" text-anchor="middle">${f.sub}</text>`;
+  });
+  svg.innerHTML = out;
+  stage.style.height = (Math.max(...D.nodes.map(n => box(n.id).y + box(n.id).h)) + 8) + "px";
+}
+
+/* ── readout ───────────────────────────────────────────── */
+function renderReadout(){
+  const val = (name) => {
+    const n = D.nodes.find((x) => x.name === name);
+    if (!n) return 0;
+    return sel.from === 0 && sel.to === NB && n.hitsFull != null
+      ? n.hitsFull
+      : sum(n.series.hits, sel.from, sel.to);
+  };
+  const a = D.nodes[0];
+  const parts = [`<span>選取 <b>${clock(sel.from)}–${clock(sel.to)}</b>（${((sel.to-sel.from)*STEP/60000).toFixed(1)} 分鐘）</span>`,
+    `<span>${a.name} <b>${fmt(val(a.name))}</b></span>`];
+  D.readout.ratios.forEach(r => {
+    const v = val(r.den) ? val(r.num)/val(r.den)*100 : 0;
+    parts.push(`<span>${r.label} <b style="color:var(${r.tone==="good"?"--cbg-good":"--cbg-money"})">${v.toFixed(0)}%</b></span>`);
+  });
+  const lnode = D.nodes.find(n => n.series.latencyP95);
+  if (lnode){ const whole = sel.from === 0 && sel.to === NB;
+    const w = lnode.series.latencyP95.slice(sel.from, sel.to).filter(v => v > 0);
+    const p95 = whole && lnode.latencyFull ? lnode.latencyFull.p95 : w.reduce((x,y)=>x+y,0)/(w.length||1);
+    const worst = Math.max(...lnode.series.latencyP95);
+    parts.push(`<span>${lnode.name} p95 <b style="color:${p95>worst*.6?"var(--bad)":"inherit"}">${ms(p95)} ms</b></span>`); }
+  parts.push(`<span style="color:var(--faint)">${D.readout.check}</span>`);
+  document.getElementById("cbg-readout").innerHTML = parts.join("");
+}
+
+const notesEl = document.getElementById("cbg-notes");
+if (notesEl) notesEl.innerHTML = (D.notes||[]).map(n =>
+  `<div class="note"><h4>${n.h}</h4><p>${n.p}</p></div>`).join("");
+
+function render(){ drawTimeline(); D.nodes.forEach(renderNode); renderReadout();
+  requestAnimationFrame(renderEdges); }
+addEventListener("resize", render);
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
+render(); syncPresets();
+
+})();</script>
+</div>
+                    <h2>×3：一次 Save，三張表</h2>
+                    <p>窗口內 387 次 PUT，每次各呼叫一次 <code>Save()</code>。離開行程的寫語句卻是 <strong>1,161 句</strong>。節點把三句都照出來了：<code>products</code> 的 UPDATE，加上 <code>categories</code> 與 <code>suppliers</code> 兩句 <code>ON DUPLICATE KEY UPDATE</code> 的 upsert。改的是數量，寫的是三張表——關聯自動存回是 ORM 的預設行為，而預設行為只有數過才看得見。</p>
+                    <h2>讀出來的那一次，也是三句</h2>
+                    <p>改之前要先把商品讀出來，兩個 <code>Preload</code> 各自展開成一句 SELECT：<code>×3</code>，2,322 句。一次 PUT 在 handler 裡花 <strong>12ms</strong>（p95 13ms），底下跑了六句 SQL。</p>
+                    <h2>中間十六層沒被觀測，但圖不留白</h2>
+                    <p>兩條虛線分別標著 11–16 層與 8–12 層未觀測，並把名字列出來：<code>database/sql</code> 的 <code>QueryContext</code>、<code>retry</code>、<code>queryDC</code>、<code>withLock</code>⋯⋯ 那一段沒人掛點，圖就把它畫成一條有名字的虛線。</p>
                 </article>
             </div>
         </section>

@@ -4,21 +4,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CodeBull - I Stood at the MySQL Driver's Door for Eight Minutes</title>
-    <meta name="description" content="No code changes: two observation points at a running Go service's MySQL driver, and one quantity change turned out to write to three tables.">
+    <title>One quantity change on the front end, three writes at the database | CodeBull</title>
+    <meta name="description" content="Probes on a running Gin + GORM + MySQL service, from the HTTP handler down to the driver&#x27;s doorstep — no code change, six minutes forty.">
     <meta property="og:type" content="article">
     <meta property="og:site_name" content="CodeBull">
     <meta property="og:locale" content="en_US">
-    <meta property="og:title" content="I stood at the MySQL driver's door for eight minutes, and watched one quantity change write to three tables">
-    <meta property="og:description" content="Two observation points at the driver, three counters in the app: a list query is 3 statements and not N+1, one PUT expands into six, and a browser tab nobody touches costs 8 queries a second.">
+    <meta property="og:title" content="One quantity change on the front end, three writes at the database">
+    <meta property="og:description" content="Probes on a running Gin + GORM + MySQL service, from the HTTP handler down to the driver&#x27;s doorstep — no code change, six minutes forty.">
     <meta property="og:url" content="https://0xbu11.github.io/codebull-extension/article-inventory-fanout.html">
     <meta property="og:image" content="https://0xbu11.github.io/codebull-extension/asset/og-inventory-fanout.png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="627">
     <meta property="og:image:alt" content="I stood at the MySQL driver's door for eight minutes, and watched one quantity change write to three tables">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="I stood at the MySQL driver's door for eight minutes, and watched one quantity change write to three tables">
-    <meta name="twitter:description" content="Two observation points at the driver, three counters in the app: a list query is 3 statements and not N+1, one PUT expands into six, and a browser tab nobody touches costs 8 queries a second.">
+    <meta name="twitter:title" content="One quantity change on the front end, three writes at the database">
+    <meta name="twitter:description" content="Probes on a running Gin + GORM + MySQL service, from the HTTP handler down to the driver&#x27;s doorstep — no code change, six minutes forty.">
     <meta name="twitter:image" content="https://0xbu11.github.io/codebull-extension/asset/og-inventory-fanout.png">
     <link rel="stylesheet" href="style.css?v=17">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -61,195 +61,333 @@
             <div class="container">
                 <a class="article-back" href="index.html#articles">← Back to articles</a>
                 <span class="article-card-source">Gin + GORM + MySQL · Field Notes</span>
-                <h1>I stood at the MySQL driver's door for eight minutes, and watched one quantity change write to three tables</h1>
-                <div class="article-meta">
-                    <span>2026-07-26</span>
-                    <span>8 min window / 4,341 statements</span>
-                    <span>inventory-example + MySQL 8.0</span>
-                </div>
-                <p class="article-lede">Without changing a single line of code, I attached a handful of observation points to a <strong>running</strong> inventory service (Gin + GORM + MySQL) and sat there for eight minutes.</p>
+                <h1>One quantity change on the front end, three writes at the database</h1>
+                <div class="article-meta"><span>2026-08-28</span><span>6m40s window / 387 edits / 6 probes</span><span>Gin + GORM + MySQL 8.0</span></div>
+                <p class="article-lede">Probes on a running Gin + GORM + MySQL service, from the HTTP handler down to the driver&#x27;s doorstep — no code change, six minutes forty.</p>
             </div>
         </section>
 
         <section class="article-section">
             <div class="container">
                 <article class="article-body">
-                    <p>In those eight minutes I saw something that still bothers me a little: <strong>the frontend only changed a product's quantity, but the database received six statements — two of which were INSERTs into <code>categories</code> and <code>suppliers</code>, two tables I never intended to touch.</strong></p>
-                    <p>This piece isn't about a tool. It's about what happens when you stand in the right place and watch everything a CRUD service actually does underneath.</p>
+                    <div class="article-graph-embed"><!-- interactive behaviour graph -->
+<style>.cbg-root{
+  --cbg-bg:#EEF0F2; --cbg-panel:#FFFFFF; --cbg-sunk:#F5F6F8; --cbg-ink:#151B21; --cbg-dim:#5D6B77; --cbg-faint:#8A97A2;
+  --cbg-line:#D8DDE2; --cbg-line-soft:#E7EAEE; --cbg-accent:#2D5C7F; --cbg-accent-soft:#DCE7EF;
+  --cbg-entry:#54646F; --cbg-good:#2F8570; --cbg-money:#A9752A; --cbg-bad:#AE4630;
+  --cbg-shadow:0 1px 2px rgba(21,27,33,.05), 0 10px 26px -16px rgba(21,27,33,.35);
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --cbg-bg:#0E1317; --cbg-panel:#171E24; --cbg-sunk:#121920; --cbg-ink:#E2E8ED; --cbg-dim:#93A2AE; --cbg-faint:#6E7E8A;
+  --cbg-line:#28323A; --cbg-line-soft:#1F272E; --cbg-accent:#6FA5CE; --cbg-accent-soft:#16303F;
+  --cbg-entry:#8898A4; --cbg-good:#4FB79B; --cbg-money:#D7A44F; --cbg-bad:#DC7657;
+  --cbg-shadow:0 1px 2px rgba(0,0,0,.5), 0 12px 30px -18px rgba(0,0,0,.9);
+}}.cbg-root[data-theme="dark"]{
+  --cbg-bg:#0E1317; --cbg-panel:#171E24; --cbg-sunk:#121920; --cbg-ink:#E2E8ED; --cbg-dim:#93A2AE; --cbg-faint:#6E7E8A;
+  --cbg-line:#28323A; --cbg-line-soft:#1F272E; --cbg-accent:#6FA5CE; --cbg-accent-soft:#16303F;
+  --cbg-entry:#8898A4; --cbg-good:#4FB79B; --cbg-money:#D7A44F; --cbg-bad:#DC7657;
+  --cbg-shadow:0 1px 2px rgba(0,0,0,.5), 0 12px 30px -18px rgba(0,0,0,.9);
+}.cbg-root *{box-sizing:border-box}.cbg-root{margin:0;background:var(--cbg-bg);color:var(--cbg-ink);font-family:Archivo,system-ui,"Noto Sans TC",sans-serif;font-size:15px;line-height:1.6}.cbg-root .mono{font-family:"JetBrains Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}.cbg-root .shell{max-width:1300px;margin:0 auto;padding:34px 22px 70px;display:flex;flex-direction:column;gap:20px}.cbg-root header.top{display:flex;flex-direction:column;gap:9px}.cbg-root .tagline{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.cbg-root .badge{font-family:"JetBrains Mono",monospace;font-size:.66rem;letter-spacing:.14em;text-transform:uppercase;padding:3px 8px;border-radius:2px;background:var(--cbg-good);color:#fff}.cbg-root .src{font-family:"JetBrains Mono",monospace;font-size:.72rem;color:var(--cbg-faint)}.cbg-root .eyebrow{font-family:"JetBrains Mono",monospace;font-size:.68rem;letter-spacing:.15em;text-transform:uppercase;color:var(--cbg-faint)}.cbg-root h1{margin:0;font-size:clamp(1.6rem,3.4vw,2.3rem);line-height:1.15;letter-spacing:-.02em;font-weight:700;text-wrap:balance}.cbg-root .sub{color:var(--cbg-dim);max-width:64ch;margin:0}.cbg-root .panel{background:var(--cbg-panel);border:1px solid var(--cbg-line);border-radius:4px;box-shadow:var(--cbg-shadow)}.cbg-root .panel-head{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:11px 16px;border-bottom:1px solid var(--cbg-line-soft)}.cbg-root .panel-title{font-family:"JetBrains Mono",monospace;font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cbg-faint)}.cbg-root .presets{display:flex;gap:6px;flex-wrap:wrap}.cbg-root button{font:inherit;font-size:.8rem;color:var(--cbg-dim);background:var(--cbg-sunk);border:1px solid var(--cbg-line);border-radius:3px;padding:4px 11px;cursor:pointer;transition:background .15s,color .15s,border-color .15s}.cbg-root button:hover{color:var(--cbg-ink);border-color:var(--cbg-accent)}.cbg-root button[aria-pressed="true"]{background:var(--cbg-accent);border-color:var(--cbg-accent);color:#fff}.cbg-root :focus-visible{outline:2px solid var(--cbg-accent);outline-offset:2px}.cbg-root #cbg-timeline{padding:14px 16px 10px}.cbg-root #cbg-tl{display:block;width:100%;height:104px;cursor:crosshair;touch-action:none;user-select:none}.cbg-root .tl-legend{display:flex;gap:18px;flex-wrap:wrap;margin-top:8px;font-size:.78rem;color:var(--cbg-dim)}.cbg-root .tl-legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}.cbg-root .readout{display:flex;gap:22px;flex-wrap:wrap;align-items:baseline;padding:10px 16px;border-top:1px solid var(--cbg-line-soft);font-size:.85rem;color:var(--cbg-dim)}.cbg-root .readout b{color:var(--cbg-ink);font-family:"JetBrains Mono",monospace;font-weight:500}.cbg-root #cbg-graph{position:relative;padding:22px 16px 18px;overflow-x:auto}.cbg-root #cbg-stage{position:relative}.cbg-root #cbg-wires{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none}.cbg-root .node{position:absolute;width:300px;background:var(--cbg-panel);border:1px solid var(--cbg-line);border-radius:4px;box-shadow:var(--cbg-shadow);overflow:hidden}.cbg-root .node.entry{border-top:3px solid var(--cbg-entry)}.cbg-root .node.good{border-top:3px solid var(--cbg-good)}.cbg-root .node.money{border-top:3px solid var(--cbg-money)}.cbg-root .node.bad{border-top:3px solid var(--cbg-bad)}.cbg-root .nhead{padding:10px 13px 8px;border-bottom:1px solid var(--cbg-line-soft)}.cbg-root .nhead h3{margin:0;font-size:1.02rem;font-weight:600;letter-spacing:-.01em}.cbg-root .why{font-size:.78rem;color:var(--cbg-dim);line-height:1.4}.cbg-root .probes{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}.cbg-root .probe{font-family:"JetBrains Mono",monospace;font-size:.6rem;letter-spacing:.06em;text-transform:uppercase;padding:2px 6px;border-radius:2px;border:1px solid var(--cbg-line);color:var(--cbg-dim);background:var(--cbg-sunk)}.cbg-root .probe.log{color:var(--cbg-accent);border-color:var(--cbg-accent-soft);background:var(--cbg-accent-soft)}.cbg-root .probe.latency{color:var(--cbg-money)}.cbg-root .slot{padding:9px 13px;border-top:1px solid var(--cbg-line-soft)}.cbg-root .slot-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-family:"JetBrains Mono",monospace;font-size:.6rem;letter-spacing:.13em;text-transform:uppercase;color:var(--cbg-faint)}.cbg-root .big{font-family:"JetBrains Mono",monospace;font-size:1.5rem;font-weight:500;line-height:1.1;font-variant-numeric:tabular-nums}.cbg-root .unit{font-size:.72rem;color:var(--cbg-dim);font-family:Archivo,sans-serif;margin-left:4px}.cbg-root .spark{display:block;width:100%;height:34px;margin-top:5px}.cbg-root .lat{display:flex;gap:16px;align-items:baseline;margin-top:3px}.cbg-root .lat div{display:flex;gap:5px;align-items:baseline}.cbg-root .lat .k{font-family:"JetBrains Mono",monospace;font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:var(--cbg-faint)}.cbg-root .lat .v{font-family:"JetBrains Mono",monospace;font-size:1.02rem;font-variant-numeric:tabular-nums}.cbg-root .shape{margin-top:7px}.cbg-root .shape-row{display:flex;justify-content:space-between;gap:8px;font-size:.74rem;margin-bottom:2px}.cbg-root .shape-row .t{font-family:"JetBrains Mono",monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.cbg-root .shape-row .n{font-family:"JetBrains Mono",monospace;color:var(--cbg-dim);white-space:nowrap}.cbg-root .shape-row.new .t{color:var(--cbg-bad);font-weight:500}.cbg-root .bar{height:5px;border-radius:2px;background:var(--cbg-line-soft);overflow:hidden;margin-bottom:8px}.cbg-root .bar i{display:block;height:100%;border-radius:2px}.cbg-root .flame{display:flex;flex-direction:column;gap:5px;margin-top:7px}.cbg-root .chain{display:flex;height:17px;border-radius:2px;overflow:hidden;background:var(--cbg-line-soft)}.cbg-root .chain span{display:flex;align-items:center;padding:0 5px;font-family:"JetBrains Mono",monospace;font-size:.58rem;color:#fff;white-space:nowrap;overflow:hidden;border-right:1px solid rgba(255,255,255,.28)}.cbg-root .chain span:last-child{border-right:0}.cbg-root .chain-meta{display:flex;justify-content:space-between;font-size:.68rem;color:var(--cbg-dim);font-family:"JetBrains Mono",monospace}.cbg-root .wire{fill:none;stroke:var(--cbg-dim);stroke-width:2}.cbg-root .wire.alert{stroke:var(--cbg-bad);stroke-width:2.8}.cbg-root .wire.calm{stroke:var(--cbg-good);stroke-width:2.4}.cbg-root .wlabel{font-family:"JetBrains Mono",monospace;font-size:11.5px;fill:var(--cbg-ink)}.cbg-root .wsub{font-family:"JetBrains Mono",monospace;font-size:9.5px;fill:var(--cbg-faint)}.cbg-root .wbox{fill:var(--cbg-panel);stroke:var(--cbg-line)}.cbg-root #cbg-edge-list{display:none;flex-direction:column;gap:8px;padding:0 16px 16px}.cbg-root .echip{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;padding:9px 12px;border:1px solid var(--cbg-line);border-left:3px solid var(--cbg-dim);border-radius:3px;background:var(--cbg-sunk);font-size:.82rem}.cbg-root .echip.calm{border-left-color:var(--cbg-good)}.cbg-root .echip.alert{border-left-color:var(--cbg-bad)}.cbg-root .echip b{font-family:"JetBrains Mono",monospace;font-weight:500}.cbg-root .echip .sub{color:var(--cbg-dim);font-size:.76rem;font-family:"JetBrains Mono",monospace}.cbg-root .prose{max-width:40rem;margin:0 auto;padding:6px 22px 26px;font-size:16px;line-height:1.8}.cbg-root .prose h2{font-family:Archivo,sans-serif;font-size:1.35rem;font-weight:700;letter-spacing:-.01em;margin:0 0 14px}.cbg-root .prose h3{font-size:1.02rem;font-weight:600;margin:26px 0 6px}.cbg-root .prose p{margin:0 0 14px;color:var(--cbg-ink)}.cbg-root .prose code{font-family:"JetBrains Mono",monospace;font-size:.86em;background:var(--cbg-sunk);
+  border:1px solid var(--cbg-line);padding:.08em .3em;border-radius:2px}.cbg-root .notes{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));padding:16px}.cbg-root .note h4{margin:0 0 4px;font-size:.9rem}.cbg-root .note p{margin:0;font-size:.84rem;color:var(--cbg-dim)}.cbg-root footer{color:var(--cbg-faint);font-size:.78rem;border-top:1px solid var(--cbg-line);padding-top:14px}
+@media (max-width:900px){ #cbg-stage{min-width:0!important;height:auto!important;display:flex;flex-direction:column;gap:14px}
+.cbg-root .node{position:static!important;width:100%} #cbg-wires{display:none} #cbg-edge-list{display:flex} }.cbg-root{max-width:100%;overflow:hidden}.cbg-root #cbg-graph{max-width:100%;overflow-x:auto}.cbg-root #cbg-timeline,.cbg-root #cbg-readout{max-width:100%}</style>
 
-                    <h2>First decide where to stand</h2>
-                    <p>This service is the textbook three-layer app: Gin handler → service → repository → GORM → MySQL. You write <code>db.Save(product)</code>; what reaches MySQL is two layers away.</p>
-                    <p>My first choice was GORM's internal convergence point, <code>gorm.(*processor).Execute</code> — the same place I stood the last time I watched a service like this. I copied the template over: <code>SQL={string(stmt.SQL.buf)}</code>.</p>
-                    <p><strong>Here's what the dashboard gave me:</strong></p>
-                    <pre class="code-block"><code>SQL=len=67 | rows=6
-SQL=len=63 | rows=5</code></pre>
-                    <p><code>stmt.SQL</code> is a <code>strings.Builder</code>, and its internal buffer never got expanded into a string — I only got the length. On this GORM version, under this build, that road was closed.</p>
-                    <p>So I stepped down one layer, to the <strong>driver's door</strong>:</p>
-                    <pre class="code-block"><code>func (mc *mysqlConn) QueryContext(
-        ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error)
 
-func (mc *mysqlConn) ExecContext(
-        ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error)</code></pre>
-                    <p>Here <code>query</code> is <strong>an honest <code>string</code> parameter</strong> — it is the statement about to go on the wire. Reads go through <code>QueryContext</code>, writes through <code>ExecContext</code>, so two points cut everything the service does to its database into two clean halves.</p>
-                    <p>That gave me this setup:</p>
-                    <ul>
-                        <li><strong>Reads</strong> (<code>connection.go:510</code>): <code>Q={query}</code></li>
-                        <li><strong>Writes</strong> (<code>connection.go:529</code>): <code>Q={query}</code></li>
-                        <li>Plus three plain counters up in the application itself: <code>ProductRepository.FindAll</code>, <code>ProductRepository.Create</code>, <code>StatRepository.GetStats</code> — there to <strong>reconcile</strong> against what happens below.</li>
-                    </ul>
-                    <p>The top counts "one API call," the bottom counts "how many SQL statements." The ratio between those two numbers is what this whole piece is about.</p>
+<div class="cbg-root">
 
-                    <h2>The first four minutes: a service nobody is looking at</h2>
-                    <p>For the first window (2026-07-25 16:19:31Z → 16:23:31Z) I did nothing at all. Only the service's built-in demo simulator was running, every two seconds: fetch the product list, then randomly create / update / delete one. Four minutes, <strong>1,203 SQL statements</strong> underneath (800 reads, 403 writes).</p>
-                    <p>Deduplicated, they look like this (transcribed verbatim from the dashboard):</p>
-                    <div class="article-table-wrap">
-                        <table>
-                            <thead>
-                                <tr><th>The Go I wrote</th><th>What actually reached MySQL</th><th>Count</th></tr>
-                            </thead>
-                            <tbody>
-                                <tr><td><code>repo.FindAll("")</code>, first trip</td><td><code>SELECT * FROM `products`</code></td><td>121</td></tr>
-                                <tr><td>(same line, <code>Preload("Category")</code>)</td><td><code>SELECT * FROM `categories` WHERE `categories`.`id` IN (?,?,?,?,?,?)</code></td><td>121</td></tr>
-                                <tr><td>(same line, <code>Preload("Supplier")</code>)</td><td><code>SELECT * FROM `suppliers` WHERE `suppliers`.`id` IN (?,?,?,?,?)</code></td><td>121</td></tr>
-                                <tr><td><code>db.Create(product)</code></td><td><code>INSERT INTO `products` (`name`,…,`created_at`,`updated_at`) VALUES (?,?,?,?,?,?,?,?)</code></td><td>114</td></tr>
-                                <tr><td><code>db.Delete(&amp;Product{}, id)</code></td><td><code>DELETE FROM `products` WHERE `products`.`id` = ?</code></td><td>91</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    <p>First thing that lines up: <strong>the <code>FindAll</code> counter fired exactly 121 times in those four minutes</strong> — and the dashboard shows <code>SELECT * FROM `products`</code> exactly 121 times too. One call up top, one main query below, to the digit. Same for <code>Create</code>: counter 114, <code>INSERT INTO products</code> 114. <strong>The two layers reconcile, which is what everything after this rests on.</strong></p>
-                    <p>Second thing — the one I expected and didn't get: <strong>N+1</strong>. One <code>Preload</code> across two related tables, and I sat waiting for a SELECT per product row. Instead the dashboard showed two batched <code>IN (?,?,…)</code> queries. GORM had already folded it up, so <strong>a list query is 1 + 2 = 3 statements, not 1 + N</strong>. That's the first "I knew that, but I'd never actually watched it."</p>
-                    <p>Third thing, and it's the opposite of the last service I watched: <strong>here <code>Delete</code> really is a <code>DELETE</code></strong>. That service embedded <code>gorm.Model</code>, so <code>db.Delete()</code> underneath was a soft-delete <code>UPDATE</code>; this <code>Product</code> has no <code>DeletedAt</code> field, so a delete is a delete, and no query gets a silent <code>deleted_at IS NULL</code> bolted on. <strong>Same ORM, same API call, and the shape depends entirely on what your model looks like</strong> — which you only see once the SQL is laid out.</p>
-                    <p>All of that is interesting but not surprising. What made me sit up was underneath that table: six statements, all with exactly the same count — <strong>66</strong>.</p>
 
-                    <h2>Six statements, all exactly 66</h2>
-                    <p>In the same four minutes, the dashboard also held these:</p>
-                    <div class="article-table-wrap">
-                        <table>
-                            <thead>
-                                <tr><th>SQL</th><th>Count</th></tr>
-                            </thead>
-                            <tbody>
-                                <tr><td><code>SELECT * FROM `products` WHERE `products`.`id` = ? ORDER BY `products`.`id` LIMIT ?</code></td><td>67</td></tr>
-                                <tr><td><code>SELECT * FROM `categories` WHERE `categories`.`id` = ?</code></td><td>66</td></tr>
-                                <tr><td><code>SELECT * FROM `suppliers` WHERE `suppliers`.`id` = ?</code></td><td>66</td></tr>
-                                <tr><td><code>INSERT INTO `categories` (`name`,`created_at`,`updated_at`,`id`) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE `id`=`id`</code></td><td><strong>66</strong></td></tr>
-                                <tr><td><code>INSERT INTO `suppliers` (`name`,`contact`,`created_at`,`updated_at`,`id`) VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE `id`=`id`</code></td><td><strong>66</strong></td></tr>
-                                <tr><td><code>UPDATE `products` SET `name`=?,`description`=?,`price`=?,`quantity`=?,`category_id`=?,`supplier_id`=?,`created_at`=?,`updated_at`=? WHERE `id` = ?</code></td><td>66</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    <p>Six different statements, one identical count. That kind of tidiness is never a coincidence — <strong>they are six nodes on the same causal chain</strong>. And on the dashboard's Logs tab they sit as six consecutive rows (#4293 through #4298), in order.</p>
+<section class="panel">
+  <div class="panel-head"><span class="panel-title" id="cbg-tl-title"></span><div class="presets" id="cbg-presets"></div></div>
+  <div id="cbg-timeline">
+    <canvas id="cbg-tl"></canvas>
+    <div class="tl-legend" id="cbg-legend"></div>
+  </div>
+  <div class="readout" id="cbg-readout"></div>
+</section>
 
-                    <figure class="article-figure figure-wide">
-                        <a href="https://codebull-dashboard-service.web.app/inventory-observing-runtime-20260726/" target="_blank" rel="noopener noreferrer">
-                            <img src="asset/inventory-runtime-dashboard-update-chain.webp" alt="Six consecutive dashboard log rows: three SELECTs, two INSERT ... ON DUPLICATE KEY UPDATE, then UPDATE products" loading="lazy">
-                        </a>
-                        <figcaption>Rows #4293–#4298 on the <strong>Logs</strong> tab: one <code>PUT /products/:id</code>, rendered as three <code>QueryContext</code> SELECTs, two <code>ExecContext</code> upserts into <code>categories</code> and <code>suppliers</code>, and only then the <code>UPDATE products</code>. <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/inventory-observing-runtime-20260726/" target="_blank" rel="noopener noreferrer">Open the live dashboard →</a></span></figcaption>
-                    </figure>
+<section class="panel" id="cbg-graph">
+  <div id="cbg-stage"><svg id="cbg-wires"></svg></div>
+  <div id="cbg-edge-list"></div>
+</section>
 
-                    <p>Here's the chain, for one <code>PUT /api/v1/products/:id</code> that means "the user changed a product's quantity":</p>
-                    <ol class="causal-chain">
-                        <li><span>The controller reads the product back by id (<code>FindByID</code>, with two <code>Preload</code>s)</span><span class="count">3 SELECTs</span></li>
-                        <li><span><code>ShouldBindJSON</code> binds the request body onto that struct — which already carries a Category and a Supplier object</span><span class="count">—</span></li>
-                        <li><span><code>db.Save(product)</code>: GORM sees two associated objects hanging off the struct and upserts each one first</span><span class="count">2 INSERTs</span></li>
-                        <li><span>Only then the actual <code>UPDATE products</code></span><span class="count">1 UPDATE</span></li>
-                    </ol>
-                    <p>And the frontend was doing the most natural thing in the world: the JSON from <code>GET /products</code> already contains nested <code>category</code> and <code>supplier</code> objects, so after changing the quantity it <code>PUT</code>s the whole thing back. <strong>Send back what you read, and GORM concludes you want the associations saved too.</strong></p>
-                    <p>And that <code>UPDATE</code>: it <code>SET</code>s <strong>every column</strong>, <code>created_at</code> included. <code>Save</code> is a full-column write-back — not "update the two fields you changed."</p>
 
-                    <h2>Honestly: how bad is this?</h2>
-                    <p>I'm not going to write it up as a disaster, because the evidence on the dashboard doesn't support that:</p>
-                    <ul>
-                        <li>Those two <code>INSERT … ON DUPLICATE KEY UPDATE `id`=`id`</code> statements are <strong>side-effect free</strong>. On a primary-key collision they set <code>id</code> to <code>id</code> — nothing changes. This path cannot corrupt <code>categories</code> or <code>suppliers</code>.</li>
-                        <li><strong>But it is still a write.</strong> MySQL takes the write path, takes a row lock, goes into the binlog. That's 132 of them (66 + 66) in four minutes, purely because the frontend echoed back the object it had read.</li>
-                        <li>The full-column <code>UPDATE</code> that sets <code>created_at</code> is what I'd actually worry about: it means <strong>any field not sent back gets rewritten with whatever was read a moment ago</strong>. I did <strong>not</strong> observe any data loss from this in this run — what I didn't measure I don't write — so all I'm doing is putting the shape of that statement on the table.</li>
-                    </ul>
-                    <p>The observation points have blind spots too, so here they are:</p>
-                    <ul>
-                        <li>This round attached <strong>Metric + Log only, no latency</strong>, so no millisecond figures appear anywhere in this piece.</li>
-                        <li>At the driver's door you see the statement <strong>with its <code>?</code> placeholders</strong>; the arguments travel separately. So the dashboard shows which columns were written, <strong>not what they were written to</strong>. Seeing values would mean standing one layer lower, which I didn't do this time.</li>
-                        <li>The counter on <code>GetStats</code> captures the return value, which at function entry is still zero — so on the dashboard it's <strong>five all-zero series</strong>, usable as "how many times was this called" and nothing else. That's the price of where I put the point, not a fact about the data.</li>
-                    </ul>
-                    <p><strong>What you can see, you can see; what you can't, you mark as unseen.</strong></p>
 
-                    <h2>Then I opened the page</h2>
-                    <p>For the second four minutes (16:23:31Z → 16:27:32Z) I changed no code. I did exactly one thing: <strong>opened a browser tab on the inventory admin page</strong>. Its <code>refreshAll()</code> runs once a second, hitting <code>/categories</code>, <code>/suppliers</code>, <code>/products</code> and <code>/stats</code> together.</p>
-                    <p>Same four minutes: the SQL underneath went from <strong>1,203 to 3,138</strong>.</p>
-                    <p>Who are those extra 1,935? Break the dashboard counts apart and it's obvious:</p>
-                    <div class="article-table-wrap">
-                        <table>
-                            <thead>
-                                <tr><th>The four API calls in that one second</th><th>SQL underneath</th><th>Statements</th></tr>
-                            </thead>
-                            <tbody>
-                                <tr><td><code>GET /categories</code></td><td><code>SELECT * FROM `categories`</code></td><td>1</td></tr>
-                                <tr><td><code>GET /suppliers</code></td><td><code>SELECT * FROM `suppliers`</code></td><td>1</td></tr>
-                                <tr><td><code>GET /products</code></td><td>main query + two <code>IN</code> preloads</td><td>3</td></tr>
-                                <tr><td><code>GET /stats</code></td><td><code>count(*)</code> × 3 + one <code>SUM(quantity), SUM(quantity*price)</code></td><td>4</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    <p><strong>One screen refresh = 9 SQL statements.</strong> Each of those four <code>/stats</code> statements appears <strong>214</strong> times in this window, so the page refreshed 214 times: <strong>9 × 214 = 1,926</strong>, against a measured delta of 1,935 — nine statements apart, which is exactly one more refresh. The numbers close on themselves.</p>
-                    <p>A page nobody is touching, just sitting open, makes MySQL run 8 queries a second. And one of them, <code>SELECT * FROM `products`</code>, is <strong>a full-table read with no WHERE and no LIMIT</strong> — once per second.</p>
-                    <p>It looks even better on the Metrics tab: the cumulative <code>FindAll</code> line has <strong>a visible bend at 16:23:31</strong>, going from once every two seconds to a bit over once a second. The <code>Create</code> line next to it stays straight, same slope throughout. <strong>The tab I opened changed the read behaviour and not the write behaviour</strong>, and you can see which is which at a glance.</p>
+</div>
+<script id="cbg-data" type="application/json">{"mock": false, "title": "What one edit expands into", "lede": "387 PUTs, six minutes forty.", "source": "article/inventory-example/graph.json · 03:25–03:31 UTC", "window": {"startMs": 1787887500000, "stepMs": 10000, "buckets": 40}, "phases": [], "readout": {"ratios": [{"label": "write statements / save", "num": "Write statement out", "den": "Save it back", "tone": "bad"}, {"label": "read statements / read", "num": "Read statement out", "den": "Read it first", "tone": "warn"}], "check": "one quantity change = three writes"}, "nodes": [{"id": "n0", "name": "Read statement out", "tone": "entry", "purpose": "What read statement actually leaves the process?", "probes": [{"traceKey": "mysql.(*mysqlConn).QueryContext:510", "kind": "log"}], "series": {"hits": [54, 60, 60, 60, 54, 60, 60, 54, 60, 60, 60, 54, 60, 60, 60, 54, 60, 60, 54, 60, 60, 60, 54, 60, 60, 60, 54, 60, 60, 54, 60, 60, 60, 54, 60, 60, 57, 57, 60, 48]}, "hitsFull": 2322, "latencyFull": null, "samples": [{"text": "SELECT * FROM `categories` WHERE `categories`.`id` = ?", "perBucket": [18, 20, 20, 20, 18, 20, 20, 18, 20, 20, 20, 18, 20, 20, 20, 18, 20, 20, 18, 20, 20, 20, 18, 20, 20, 20, 18, 20, 20, 18, 20, 20, 20, 18, 20, 20, 19, 19, 20, 16]}, {"text": "SELECT * FROM `suppliers` WHERE `suppliers`.`id` = ?", "perBucket": [18, 20, 20, 20, 18, 20, 20, 18, 20, 20, 20, 18, 20, 20, 20, 18, 20, 20, 18, 20, 20, 20, 18, 20, 20, 20, 18, 20, 20, 18, 20, 20, 20, 18, 20, 20, 19, 19, 20, 16]}, {"text": "SELECT * FROM `products` WHERE `products`.`id` = ? ORDER BY `products`.`id` LIMIT ?", "perBucket": [18, 20, 20, 20, 18, 20, 20, 18, 20, 20, 20, 18, 20, 20, 20, 18, 20, 20, 18, 20, 20, 20, 18, 20, 20, 20, 18, 20, 20, 18, 20, 20, 20, 18, 20, 20, 19, 19, 20, 16]}], "stacks": [{"frames": ["runtime.goexit", "net/http.(*Server).Serve.gowrap3", "net/http.(*conn).serve", "net/http.serverHandler.ServeHTTP", "github.com/gin-gonic/gin.(*Engine).ServeHTTP", "github.com/gin-gonic/gin.(*Engine).handleHTTPRequest", "github.com/gin-gonic/gin.(*Context).Next", "github.com/gin-gonic/gin.LoggerWithConfig.func1", "github.com/gin-gonic/gin.(*Context).Next", "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1", "github.com/gin-gonic/gin.(*Context).Next", "shadow-inventory/controllers.UpdateProduct", "inventory/services.(*ProductService).GetProductByID", "shadow-inventory/repositories.(*ProductRepository).FindByID", "gorm.io/gorm.(*DB).First", "gorm.io/gorm.(*processor).Execute", "gorm.io/gorm/callbacks.Preload", "gorm.io/gorm/callbacks.preloadEntryPoint", "gorm.io/gorm/callbacks.preload", "gorm.io/gorm.(*DB).Find", "gorm.io/gorm.(*processor).Execute", "gorm.io/gorm/callbacks.Query", "database/sql.(*DB).QueryContext", "database/sql.(*DB).retry", "database/sql.(*DB).QueryContext.func1", "database/sql.(*DB).query", "database/sql.(*DB).queryDC", "database/sql.withLock", "database/sql.(*DB).queryDC.func1", "database/sql.ctxDriverQuery", "github.com/go-sql-driver/mysql.(*mysqlConn).QueryContext"], "perBucket": [18, 20, 20, 20, 18, 20, 20, 18, 20, 20, 20, 18, 20, 20, 20, 18, 20, 20, 18, 20, 20, 20, 18, 20, 20, 20, 18, 20, 20, 18, 20, 20, 20, 18, 20, 20, 19, 19, 20, 16]}], "x": 1040, "y": 0, "root": false}, {"id": "n1", "name": "Write statement out", "tone": "good", "purpose": "What write statement actually leaves the process?", "probes": [{"traceKey": "mysql.(*mysqlConn).ExecContext:529", "kind": "log"}], "series": {"hits": [27, 30, 30, 30, 27, 30, 30, 27, 30, 30, 30, 27, 30, 30, 30, 27, 30, 30, 27, 30, 30, 30, 27, 30, 30, 30, 27, 30, 30, 27, 30, 30, 30, 27, 30, 30, 30, 27, 30, 24]}, "hitsFull": 1161, "latencyFull": null, "samples": [{"text": "INSERT INTO `suppliers` (`name`,`contact`,`created_at`,`updated_at`,`id`) VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE `id`=`id`", "perBucket": [9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 10, 9, 10, 8]}, {"text": "UPDATE `products` SET `name`=?,`description`=?,`price`=?,`quantity`=?,`category_id`=?,`supplier_id`=?,`created_at`=?,`updated_at`=? WHERE `id` = ?", "perBucket": [9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 10, 9, 10, 8]}, {"text": "INSERT INTO `categories` (`name`,`created_at`,`updated_at`,`id`) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE `id`=`id`", "perBucket": [9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 10, 9, 10, 8]}], "stacks": [{"frames": ["runtime.goexit", "net/http.(*Server).Serve.gowrap3", "net/http.(*conn).serve", "net/http.serverHandler.ServeHTTP", "github.com/gin-gonic/gin.(*Engine).ServeHTTP", "github.com/gin-gonic/gin.(*Engine).handleHTTPRequest", "github.com/gin-gonic/gin.(*Context).Next", "github.com/gin-gonic/gin.LoggerWithConfig.func1", "github.com/gin-gonic/gin.(*Context).Next", "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1", "github.com/gin-gonic/gin.(*Context).Next", "shadow-inventory/controllers.UpdateProduct", "inventory/services.(*ProductService).UpdateProduct", "shadow-inventory/repositories.(*ProductRepository).Save", "gorm.io/gorm.(*DB).Save", "gorm.io/gorm.(*processor).Execute", "gorm.io/gorm/callbacks.SaveBeforeAssociations.func1", "gorm.io/gorm/callbacks.saveAssociations", "gorm.io/gorm.(*DB).Create", "gorm.io/gorm.(*processor).Execute", "gorm.io/gorm/callbacks.Create.func1", "database/sql.(*Tx).ExecContext", "database/sql.(*DB).execDC", "database/sql.withLock", "database/sql.(*DB).execDC.func2", "database/sql.ctxDriverExec", "github.com/go-sql-driver/mysql.(*mysqlConn).ExecContext"], "perBucket": [18, 20, 20, 20, 18, 20, 20, 18, 20, 20, 20, 18, 20, 20, 20, 18, 20, 20, 18, 20, 20, 20, 18, 20, 20, 20, 18, 20, 20, 18, 20, 20, 20, 18, 20, 20, 19, 19, 20, 16]}], "x": 1040, "y": 470, "root": false}, {"id": "n2", "name": "Read it first", "tone": "money", "purpose": "How many reads before the write?", "probes": [{"traceKey": "repositories.(*ProductRepository).FindByID:28", "kind": "metric"}], "series": {"hits": [18, 20, 20, 20, 18, 20, 20, 18, 20, 20, 20, 18, 20, 20, 20, 18, 20, 20, 18, 20, 20, 20, 18, 20, 20, 20, 18, 20, 20, 18, 20, 20, 20, 18, 20, 20, 19, 19, 20, 16]}, "hitsFull": 774, "latencyFull": null, "samples": [], "stacks": [], "x": 520, "y": 0, "root": true}, {"id": "n3", "name": "Save it back", "tone": "bad", "purpose": "How many writes does one Save become?", "probes": [{"traceKey": "repositories.(*ProductRepository).Save:38", "kind": "metric"}], "series": {"hits": [9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 10, 9, 10, 8]}, "hitsFull": 387, "latencyFull": null, "samples": [], "stacks": [], "x": 520, "y": 470, "root": false}, {"id": "n4", "name": "Edit a product", "tone": "entry", "purpose": "What happens underneath one quantity change? How long does it take?", "probes": [{"traceKey": "controllers.UpdateProduct:46", "kind": "metric"}, {"traceKey": "controllers.UpdateProduct:47", "kind": "latency"}], "series": {"hits": [9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 10, 9, 10, 8], "latencyP50": [12.161, 11.716, 11.347, 11.699, 11.623, 11.573, 11.812, 12.349, 11.869, 12.062, 12.188, 11.613, 10.969, 10.874, 11.864, 12.026, 11.337, 11.343, 12.019, 11.748, 12.011, 11.676, 11.913, 11.407, 11.54, 11.352, 11.877, 11.697, 11.895, 11.817, 11.769, 12.019, 11.901, 11.752, 11.952, 11.755, 12.049, 11.787, 12.118, 11.332], "latencyP95": [15.687, 11.99, 12.442, 12.374, 12.156, 14.225, 12.51, 14.98, 12.408, 14.963, 12.826, 12.451, 13.914, 14.662, 12.464, 14.036, 11.782, 12.058, 15.758, 12.244, 12.64, 12.705, 12.409, 15.662, 12.433, 12.271, 12.604, 14.069, 13.785, 12.456, 13.002, 14.285, 12.9, 12.292, 12.785, 12.719, 12.646, 12.017, 12.729, 11.777]}, "hitsFull": 387, "latencyFull": {"count": 389, "p50": 11.752, "p95": 13.046, "p99": 16.253, "max": 18.635}, "samples": [], "stacks": [], "x": 0, "y": 0, "root": true}], "edges": [{"from": "n2", "to": "n0", "countPerBucket": [54, 60, 60, 60, 54, 60, 60, 54, 60, 60, 60, 54, 60, 60, 60, 54, 60, 60, 54, 60, 60, 60, 54, 60, 60, 60, 54, 60, 60, 54, 60, 60, 60, 54, 60, 60, 57, 57, 60, 48], "countFull": 2322, "fanoutFull": 3, "gap": 16, "gapLabel": "11–16", "gapIn": ["sql.ctxDriverQuery", "sql.(*DB).queryDC", "sql.withLock", "sql.(*DB).queryDC", "sql.(*DB).query", "sql.(*DB).QueryContext", "sql.(*DB).retry", "sql.(*DB).QueryContext"], "alert": null}, {"from": "n3", "to": "n1", "countPerBucket": [27, 30, 30, 30, 27, 30, 30, 27, 30, 30, 30, 27, 30, 30, 30, 27, 30, 30, 27, 30, 30, 30, 27, 30, 30, 30, 27, 30, 30, 27, 30, 30, 30, 27, 30, 30, 30, 27, 30, 24], "countFull": 1161, "fanoutFull": 3, "gap": 12, "gapLabel": "8–12", "gapIn": ["sql.ctxDriverExec", "sql.(*DB).execDC", "sql.withLock", "sql.(*DB).execDC", "sql.(*Tx).ExecContext", "callbacks.Update", "gorm.(*processor).Execute", "gorm.(*DB).Save"], "alert": null}, {"from": "n4", "to": "n2", "countPerBucket": [9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 10, 9, 10, 8], "countFull": 387, "fanoutFull": 1, "gap": 1, "gapLabel": "1", "gapIn": ["services.(*ProductService).GetProductByID"], "alert": null}, {"from": "n4", "to": "n3", "countPerBucket": [9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 10, 9, 10, 10, 9, 10, 10, 10, 9, 10, 10, 10, 9, 10, 8], "countFull": 387, "fanoutFull": 1, "gap": 1, "gapLabel": "1", "gapIn": ["services.(*ProductService).UpdateProduct"], "alert": null}], "notes": []}</script>
+<script>(function(){
 
-                    <figure class="article-figure figure-wide">
-                        <a href="https://codebull-dashboard-service.web.app/inventory-observing-runtime-20260726/" target="_blank" rel="noopener noreferrer">
-                            <img src="asset/inventory-runtime-dashboard-metrics.webp" alt="CodeBull dashboard Metrics tab: the FindAll cumulative line bends upward mid-window while the Create line keeps the same slope" loading="lazy">
-                        </a>
-                        <figcaption>The <strong>Metrics</strong> tab: <code>FindAll</code> (top left) bends upward the moment the browser tab opens, while <code>Create</code> (top right) keeps its slope — a bare hit counter, viewed cumulatively, marks the exact second the read load changed. <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/inventory-observing-runtime-20260726/" target="_blank" rel="noopener noreferrer">Open the live dashboard →</a></span></figcaption>
-                    </figure>
+const D = JSON.parse(document.getElementById("cbg-data").textContent);
+const NB = D.window.buckets, STEP = D.window.stepMs, T0 = D.window.startMs;
+const N = Object.fromEntries(D.nodes.map(n => [n.id, n]));
+const TONE = { entry:"--cbg-entry", good:"--cbg-good", money:"--cbg-money", bad:"--cbg-bad" };
+const css = v => getComputedStyle(document.querySelector(".cbg-root")).getPropertyValue(v).trim();
+const sum = (a,f,t) => a.slice(f,t).reduce((x,y)=>x+y,0);
+const fmt = n => Math.round(n).toLocaleString("en-US");
+const ms = (v) => (v >= 10 ? v.toFixed(0) : v >= 1 ? v.toFixed(1) : v.toFixed(2));
+const clock = b => new Date(T0 + b*STEP).toISOString().slice(11,16);
+// github.com/gin-gonic/gin.(*Engine).ServeHTTP → ServeHTTP. Taking the last
+// dot-segment alone leaves "func1" for every closure, and taking the last path
+// segment alone leaves the whole package prefix.
+const shortFn = (s) => {
+  // Generic type arguments carry dots of their own — NewCache[...].gowrap1 —
+  // so they come off before anything splits on ".".
+  const noGeneric = s.replace(/\[[^\]]*\]/g, "");
+  const noRecv = noGeneric.split("/").pop().replace(/\(\*?[^)]*\)\./g, "");
+  const parts = noRecv.split(".").filter(Boolean);
+  // A closure carries the name of the function it was written in, and can carry
+  // several suffixes at once: serveStreams.func2.1, NewFIFOScheduler.gowrap1.
+  while (parts.length > 1 && /^(func\d+|gowrap\d+|\d+)$/.test(parts[parts.length - 1])) parts.pop();
+  return parts[parts.length - 1];
+};
+let sel = { from:0, to:NB };
 
-                    <p>For fairness, I checked the service's own log. Gin's access log isn't blind — it recorded <strong>1,698 lines</strong> in those four minutes, every one of them a <code>200</code> / <code>201</code> / <code>204</code>, nothing missing:</p>
-                    <pre class="code-block"><code>GET /api/v1/products    335
-GET /api/v1/categories  330
-GET /api/v1/suppliers   330
-GET /api/v1/stats       215</code></pre>
-                    <p>But 1,698 lines of HTTP sit on top of <strong>3,138 SQL statements</strong>. An access log tells you the request succeeded; it will never tell you how many queries that success took. <strong>HTTP-level logging is structurally blind to fan-out.</strong> The multiplier that turns 1 into 9 only gets counted at the driver's door.</p>
-                    <p>(That access log also finished the update chain for me: in the first four minutes it recorded <strong>67 <code>PUT</code>s</strong>, and the <code>FindByID</code> SELECT on the dashboard is 67 while the five statements behind it are 66 — the back half of that 67th call fell outside the window. Even the discrepancies reconcile.)</p>
+/* children of an edge target = what the timeline stacks */
+const hasOut = new Set(D.edges.map(e => e.from));
+/* The ends of the graph: nodes nothing leads away from. Stacking those counts
+   each piece of work once, and an island — a step reached on its own goroutine,
+   with no edge at all — is an end like any other, so it stays on the timeline. */
+const leaves = D.nodes.filter(n => !hasOut.has(n.id)).map(n => n.id);
 
-                    <h2>Wrapping up</h2>
-                    <p>I didn't change a line of code, didn't restart the service, didn't wire up an APM first. I picked two doors in the driver, put three counters in the application, and watched carefully for eight minutes.</p>
-                    <p>What I got: a list query is 3 statements and not N+1; this service's <code>Delete</code> is a real delete, not a soft one; one "change the quantity" becomes six statements and writes three tables; <code>Save</code> writes <code>created_at</code> back along with everything else; and a page nobody is touching issues 8 queries a second on my behalf.</p>
-                    <p>None of this would show up in a bug report, and none of it needs reproduction steps — <strong>it was all running the whole time, just invisible by default</strong>. Stand in the right place and it surfaces on its own.</p>
+{ const _e = document.getElementById("cbg-title"); if (_e) _e.textContent = D.title; }
+{ const _e = document.getElementById("cbg-lede"); if (_e) _e.textContent = D.lede; }
+{ const _e = document.getElementById("cbg-src"); if (_e) _e.textContent = D.source ?? ""; }
+{ const _e = document.getElementById("cbg-eyebrow"); if (_e) _e.textContent = "Behavior Graph · " + D.nodes.length + " nodes · " +
+  D.nodes.reduce((a,n)=>a+n.probes.length,0) + " probes"; }
+document.getElementById("cbg-tl-title").textContent =
+  `Timeline · ${STEP/1000}s per bucket · ${Math.round(NB*STEP/60000)} minutes`;
+document.getElementById("cbg-legend").innerHTML =
+  leaves.map(id => `<span><i style="background:var(${TONE[N[id].tone]})"></i>${N[id].name}</span>`).join("") +
+  `<span><i style="background:var(--bad);opacity:.28"></i>selection</span>
+   <span style="color:var(--faint)">drag on the chart to select any span</span>`;
 
-                    <h3>Appendix: this round's setup (reproducible)</h3>
-                    <ul>
-                        <li>Observation points (five, all attached dynamically, no source changes):
-                            <ul>
-                                <li><code>mysql.(*mysqlConn).QueryContext</code> (<code>go-sql-driver/mysql@v1.8.1/connection.go:510</code>) — log, template <code>Q={query}</code>, every read</li>
-                                <li><code>mysql.(*mysqlConn).ExecContext</code> (same file, <code>:529</code>) — log, template <code>Q={query}</code>, every write</li>
-                                <li><code>repositories.(*ProductRepository).FindAll</code> (<code>product_repository.go:18</code>) — metric, plain count</li>
-                                <li><code>repositories.(*ProductRepository).Create</code> (<code>product_repository.go:34</code>) — metric, plain count</li>
-                                <li><code>repositories.(*StatRepository).GetStats</code> (<code>stat_repository.go:18</code>) — metric on the return value (zero-valued at entry, usable as a call count only)</li>
-                            </ul>
-                        </li>
-                        <li>Observed service: inventory-example (Gin 1.9.1 + GORM 1.31.1 + MySQL 8.0) with <code>DEMO_MODE=1</code>; the built-in simulator runs one create / update / delete round every 2 seconds through the service's own HTTP API</li>
-                        <li>Observation window: 2026-07-25 16:19:33.700Z → 16:27:32.249Z (8 minutes), split at 16:23:31Z — first half <strong>1,203</strong> statements (800 reads / 403 writes) with no page open, second half <strong>3,138</strong> (2,724 / 414) with one tab refreshing every second</li>
-                        <li>Reconciliation: <code>FindAll</code> counter 121 / 333 against <code>SELECT * FROM `products`</code> 121 / 333; <code>Create</code> counter 114 / 115 against <code>INSERT INTO products</code> 114 / 115</li>
-                        <li>Update chain: six statements at 66 each in the first half, 71 each in the second (the <code>FindByID</code> SELECT is 67 / 71 — the back half of one call crossed the window boundary)</li>
-                        <li>Cross-check: the service's own Gin access log recorded 631 lines (first half) and 1,698 lines (second half), all 2xx, with 67 / 72 <code>PUT</code>s — matching the 66 / 71 update chains on the dashboard</li>
-                        <li>Failed attempt: I first attached to <code>gorm.(*processor).Execute</code> and pulled the SQL with <code>{string(stmt.SQL.buf)}</code>; the dashboard only ever showed length information like <code>len=67</code> (the <code>strings.Builder</code> buffer never expanded), which is why I moved down to the driver's door</li>
-                        <li>No latency was attached this round, so no millisecond figures appear anywhere; and at the driver's door the statements carry <code>?</code> placeholders, so <strong>argument values are not visible</strong></li>
-                    </ul>
+/* ── stage ─────────────────────────────────────────────── */
+const stage = document.getElementById("cbg-stage");
+D.nodes.forEach(n => {
+  const el = document.createElement("div");
+  el.className = "node " + n.tone; el.id = "cbg-node-" + n.id;
+  el.style.left = n.x + "px"; el.style.top = n.y + "px";
+  stage.appendChild(el);
+});
+stage.style.minWidth = (Math.max(...D.nodes.map(n=>n.x)) + 320) + "px";
 
-                    <figure class="article-figure figure-wide">
-                        <a href="https://codebull-dashboard-service.web.app/inventory-observing-runtime-20260726/" target="_blank" rel="noopener noreferrer">
-                            <img src="asset/inventory-runtime-dashboard-logs.webp" alt="CodeBull dashboard Logs tab: every row a verbatim MySQL statement tagged QueryContext or ExecContext with a timestamp" loading="lazy">
-                        </a>
-                        <figcaption>The <strong>Logs</strong> tab: one row per statement that reached MySQL, tagged with <code>QueryContext:510</code> (reads) or <code>ExecContext:529</code> (writes). Every statement quoted in this piece can be read back here. <span class="figure-open"><a href="https://codebull-dashboard-service.web.app/inventory-observing-runtime-20260726/" target="_blank" rel="noopener noreferrer">Open the live dashboard →</a></span></figcaption>
-                    </figure>
+/* ── timeline ──────────────────────────────────────────── */
+const cv = document.getElementById("cbg-tl"), ctx = cv.getContext("2d");
+function drawTimeline(){
+  const dpr = devicePixelRatio||1, w = cv.clientWidth, h = cv.clientHeight;
+  cv.width = w*dpr; cv.height = h*dpr; ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,h);
+  const stacks = leaves.map(id => N[id].series.hits);
+  const peak = Math.max(...Array.from({length:NB}, (_,i) => stacks.reduce((a,s)=>a+s[i],0))) * 1.1;
+  const bw = w/NB;
+  D.phases.forEach((p,i) => { if (i%2) { ctx.fillStyle = css("--cbg-sunk");
+    ctx.fillRect(p.fromBucket*bw, 0, (p.toBucket-p.fromBucket)*bw, h); } });
+  for (let i=0;i<NB;i++){
+    let acc = 0;
+    stacks.forEach((s,si) => {
+      const hh = (s[i]/peak)*h;
+      ctx.fillStyle = css(TONE[N[leaves[si]].tone]); ctx.globalAlpha = .88;
+      ctx.fillRect(i*bw, h-acc-hh, Math.max(bw-.4,.6), hh); acc += hh;
+    });
+  }
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = css("--cbg-bad"); ctx.globalAlpha = .15;
+  ctx.fillRect(sel.from*bw, 0, (sel.to-sel.from)*bw, h); ctx.globalAlpha = 1;
+  ctx.strokeStyle = css("--cbg-bad"); ctx.lineWidth = 1.5; ctx.beginPath();
+  ctx.moveTo(sel.from*bw,0); ctx.lineTo(sel.from*bw,h);
+  ctx.moveTo(sel.to*bw,0); ctx.lineTo(sel.to*bw,h); ctx.stroke();
+  ctx.font = '500 10px "JetBrains Mono", monospace'; ctx.fillStyle = css("--cbg-faint");
+  D.phases.forEach(p => ctx.fillText(p.label, p.fromBucket*bw+5, 12));
+}
+let dragging = false, anchor = 0;
+const bucketAt = ev => { const r = cv.getBoundingClientRect();
+  return Math.max(0, Math.min(NB, Math.round(((ev.clientX-r.left)/r.width)*NB))); };
+cv.addEventListener("pointerdown", e => { dragging = true; anchor = bucketAt(e); cv.setPointerCapture(e.pointerId); });
+cv.addEventListener("pointermove", e => { if(!dragging) return;
+  const b = bucketAt(e); sel = { from:Math.min(anchor,b), to:Math.max(anchor,b) };
+  if (sel.to - sel.from < 2) sel.to = Math.min(NB, sel.from+2); render(); });
+addEventListener("pointerup", () => { if(dragging){ dragging = false; syncPresets(); } });
 
-                    <div class="article-callout">
-                        <p>📊 <strong>Remote dashboard for this article</strong> (real measured data, viewable online): <a href="https://codebull-dashboard-service.web.app/inventory-observing-runtime-20260726/" target="_blank" rel="noopener noreferrer">inventory-observing-runtime-20260726</a></p>
-                        <p>Every statement and every count above can be reconciled verbatim on the <strong>Logs</strong> tab (the six-row update chain is at #4293–#4298); the <strong>Metrics</strong> tab holds the cumulative <code>FindAll</code> / <code>Create</code> counters and the slope change at 16:23:31.</p>
-                    </div>
+// A real window arrives without authored phases. Thirds are not a claim about
+// the run — they are a fast way to ask "did this move", which is the only
+// reason the timeline is here.
+const PRESETS = D.phases.length
+  ? [{label:"All",from:0,to:NB}, ...D.phases.map(p=>({label:p.label,from:p.fromBucket,to:p.toBucket}))]
+  : [{label:"All",from:0,to:NB},
+     {label:"First third",from:0,to:Math.round(NB/3)},
+     {label:"Middle",from:Math.round(NB/3),to:Math.round(2*NB/3)},
+     {label:"Last third",from:Math.round(2*NB/3),to:NB}];
+const pbox = document.getElementById("cbg-presets");
+PRESETS.forEach((p,i) => { const b = document.createElement("button"); b.textContent = p.label;
+  b.onclick = () => { sel = {from:p.from,to:p.to}; render(); syncPresets(); }; pbox.appendChild(b); });
+const syncPresets = () => [...pbox.children].forEach((b,i) =>
+  b.setAttribute("aria-pressed", String(PRESETS[i].from===sel.from && PRESETS[i].to===sel.to)));
 
-                    <div class="article-footnote">
-                        <p>The "no code changes, attach observation points to a running process, then watch" part of this piece was done with <strong>CodeBull</strong> — a VS Code extension that dynamically injects Metric / Log / Latency observation points into running Go services: no source edits, no recompile, no restart. That update chain writing two association tables is exactly how I caught it live.</p>
-                        <p><em>Every SQL statement and every number here comes from CodeBull's measurements against the running inventory-example service, and can be reconciled online via the dashboard link above.</em></p>
-                        <p><a class="btn" href="https://marketplace.visualstudio.com/items?itemName=0xbu11.codebull" target="_blank" rel="noopener noreferrer">Install CodeBull</a></p>
-                    </div>
+/* ── node cards ────────────────────────────────────────── */
+function spark(series, cvar, hi){
+  const w = 274, h = 34, max = Math.max(...series, 1);
+  const pts = series.map((v,i) => `${(i/(series.length-1))*w},${h-(v/max)*(h-3)-1.5}`).join(" ");
+  const x1 = (sel.from/series.length)*w, x2 = (sel.to/series.length)*w;
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
+    <rect x="${x1}" y="0" width="${Math.max(x2-x1,1)}" height="${h}" fill="var(${hi||cvar})" opacity=".14"/>
+    <polyline points="${pts}" fill="none" stroke="var(${cvar})" stroke-width="1.4" stroke-linejoin="round"/></svg>`;
+}
+function renderNode(n){
+  const cvar = TONE[n.tone];
+  const whole = sel.from === 0 && sel.to === NB;
+  const total = whole && n.hitsFull != null ? n.hitsFull : sum(n.series.hits, 0, NB);
+  const hits = whole && n.hitsFull != null ? n.hitsFull : sum(n.series.hits, sel.from, sel.to);
+  const mins = ((sel.to-sel.from)*STEP)/60000;
+  let lat = "";
+  if (n.series.latencyP50){
+    const win = a => a.slice(sel.from, sel.to);
+    const avg = a => { const v = a.filter(x => x > 0); return v.length ? v.reduce((x,y)=>x+y,0)/v.length : 0; };
+    // Over the whole window the reservoir's own percentiles are the honest
+    // answer. Over a sub-range there is no reservoir, so the per-bucket
+    // percentiles are averaged — which is not a percentile of the range, and
+    // the caption says so rather than letting the number pass as one.
+    const whole = sel.from === 0 && sel.to === NB && n.latencyFull;
+    const p50 = whole ? n.latencyFull.p50 : avg(win(n.series.latencyP50));
+    const p95 = whole ? n.latencyFull.p95 : avg(win(n.series.latencyP95));
+    const worst = Math.max(...n.series.latencyP95);
+    lat = `<div class="slot"><div class="slot-h"><span>latency · latency probe</span><span>${whole ? "whole-window percentiles" : "mean of per-bucket percentiles"}</span></div>
+      <div class="lat"><div><span class="k">p50</span><span class="v">${ms(p50)}<span class="unit">ms</span></span></div>
+      <div><span class="k">p95</span><span class="v" style="color:${p95>worst*.6?"var(--bad)":"inherit"}">${ms(p95)}<span class="unit">ms</span></span></div></div>
+      ${spark(n.series.latencyP95, cvar, "--cbg-bad")}</div>`;
+  }
+  const shapeAll = n.samples.reduce((a,s)=>a+sum(s.perBucket,sel.from,sel.to),0) || 1;
+  const shapes = n.samples.map(s => {
+    const v = sum(s.perBucket, sel.from, sel.to);
+    if (v === 0) return "";
+    const pct = v/shapeAll*100;
+    // a shape absent from the first tenth of the window is new behaviour, not background
+    const isNew = sum(s.perBucket, 0, Math.floor(NB/10)) === 0;
+    return `<div class="shape"><div class="shape-row ${isNew?"new":""}">
+        <span class="t" title="${s.text}">${isNew?"▲ ":""}${s.text}</span><span class="n">${pct.toFixed(0)}% · ${fmt(v)}</span></div>
+      <div class="bar"><i style="width:${pct}%;background:var(${isNew?"--cbg-bad":cvar})"></i></div></div>`;
+  }).join("") || `<p class="why" style="margin-top:6px">nothing captured in this span</p>`;
+
+  const chainAll = n.stacks.reduce((a,s)=>a+sum(s.perBucket,sel.from,sel.to),0) || 1;
+  const flame = n.stacks.map(s => {
+    const v = sum(s.perBucket, sel.from, sel.to); if (!v) return "";
+    const share = v/chainAll*100;
+    const MAX_FRAMES = 5;
+    // The outermost frames are where the goroutine started, and that is what
+    // tells two islands apart — so the head stays visible and the middle folds.
+    const head = s.frames.length > MAX_FRAMES ? s.frames.slice(0, 2) : [];
+    const tail = s.frames.slice(head.length ? head.length - MAX_FRAMES : 0);
+    const hidden = s.frames.length - head.length - tail.length;
+    const chip = (f, i) =>
+      `<span style="flex:1;background:color-mix(in srgb, var(${cvar}) ${90-i*12}%, #000 10%)" title="${f}">${shortFn(f)}</span>`;
+    const cells =
+      head.map(chip).join("") +
+      (hidden > 0
+        ? `<span style="flex:0 0 auto;background:var(--line);color:var(--dim)" title="${s.frames.slice(head.length, head.length + hidden).join(" < ")}">+${hidden}</span>`
+        : "") +
+      tail.map((f, i) => chip(f, i + head.length)).join("");
+    return `<div><div class="chain" style="width:${Math.max(share,55)}%">${cells}</div>
+      <div class="chain-meta"><span>${share.toFixed(0)}% take this path</span><span>${fmt(v)}</span></div></div>`;
+  }).join("");
+
+  document.getElementById("cbg-node-"+n.id).innerHTML = `
+    <div class="nhead"><h3>${n.name}</h3><div class="why">${n.purpose}</div>
+      <div class="probes">${n.probes.map(p=>`<span class="probe ${p.kind}">${p.kind}</span>`).join("")}
+        <span class="probe">${n.probes.length} probe</span>
+        ${n.root ? '<span class="probe" title="no instrumented caller on the stack">root</span>' : ""}</div></div>
+    <div class="slot"><div class="slot-h"><span>hits · metric</span><span>${(hits/total*100).toFixed(0)}% of ${fmt(total)}</span></div>
+      <div class="big">${fmt(hits)}<span class="unit"> · ${(hits/mins).toFixed(0)}/min</span></div>${spark(n.series.hits, cvar)}</div>
+    ${lat}
+    <div class="slot"><div class="slot-h"><span>captured · log</span><span>${n.samples.length} shapes</span></div>${shapes}</div>
+    <div class="slot"><div class="slot-h"><span>paths here · stacks</span><span>${n.stacks.length} chains</span></div>
+      <div class="flame">${flame}</div></div>`;
+}
+
+/* ── edges ─────────────────────────────────────────────── */
+function edgeFacts(e){
+  const whole = sel.from === 0 && sel.to === NB;
+  const parent = sum(N[e.from].series.hits, sel.from, sel.to);
+  const series = sum(e.countPerBucket, sel.from, sel.to);
+  const n = whole && e.countFull != null ? e.countFull : series;
+  const f = whole && e.fanoutFull != null ? e.fanoutFull : (parent ? series/parent : 0);
+  const approx = !whole;
+  return { n, f, parent, approx, alert: e.alert != null && f > e.alert,
+    sub: e.gap > 0
+      ? `${e.gapLabel ?? e.gap} unobserved · ${e.gapIn.map(shortFn).join(" · ") || "(names not recorded)"}`
+      : "direct call, nothing skipped" };
+}
+function renderEdges(){
+  document.getElementById("cbg-edge-list").innerHTML = D.edges.map(e => { const f = edgeFacts(e);
+    return `<div class="echip ${f.alert?"alert":(e.gap===0?"calm":"")}"><b>${N[e.from].name} → ${N[e.to].name}</b>
+      <b style="color:${f.alert?"var(--bad)":"var(--ink)"}">${f.approx?"≈":""}×${f.f.toFixed(2)}</b>
+      <span class="sub">${fmt(f.n)} ÷ ${fmt(f.parent)}</span><span class="sub">${f.sub}</span></div>`; }).join("");
+
+  const svg = document.getElementById("cbg-wires");
+  if (getComputedStyle(svg).display === "none") return;
+  const s = stage.getBoundingClientRect();
+  const box = id => { const r = document.getElementById("cbg-node-"+id).getBoundingClientRect();
+    return { x:r.left-s.left, y:r.top-s.top, w:r.width, h:r.height }; };
+  let out = ["","alert","calm"].map(k => `<marker id="ah${k}" viewBox="0 0 10 10" refX="9" refY="5"
+      markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"
+      fill="var(${k==="alert"?"--cbg-bad":k==="calm"?"--cbg-good":"--cbg-dim"})"/></marker>`).join("");
+  out = `<defs>${out}</defs>`;
+  D.edges.forEach(e => {
+    const a = box(e.from), b = box(e.to);
+    const x1 = a.x+a.w, y1 = a.y+70, x2 = b.x-9, y2 = b.y+70, mx = (x1+x2)/2, ty = (y1+y2)/2;
+    const f = edgeFacts(e);
+    const kind = f.alert ? "alert" : (e.gap === 0 ? "calm" : "");
+    out += `<path class="wire ${kind}" marker-end="url(#ah${kind})"
+      d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}" ${e.gap>0?'stroke-dasharray="6 5"':""}/>`;
+    const w = Math.min(Math.max(f.sub.length*6.2+20, 160), x2-x1-10);
+    out += `<rect class="wbox" x="${mx-w/2}" y="${ty-20}" width="${w}" height="40" rx="3"/>
+      <text class="wlabel" x="${mx}" y="${ty-3}" text-anchor="middle" fill="${f.alert?"var(--bad)":"var(--ink)"}">${f.approx?"≈":""}×${f.f.toFixed(2)} · ${fmt(f.n)} calls</text>
+      <text class="wsub" x="${mx}" y="${ty+12}" text-anchor="middle">${f.sub}</text>`;
+  });
+  svg.innerHTML = out;
+  stage.style.height = (Math.max(...D.nodes.map(n => box(n.id).y + box(n.id).h)) + 8) + "px";
+}
+
+/* ── readout ───────────────────────────────────────────── */
+function renderReadout(){
+  const val = (name) => {
+    const n = D.nodes.find((x) => x.name === name);
+    if (!n) return 0;
+    return sel.from === 0 && sel.to === NB && n.hitsFull != null
+      ? n.hitsFull
+      : sum(n.series.hits, sel.from, sel.to);
+  };
+  const a = D.nodes[0];
+  const parts = [`<span>Selected <b>${clock(sel.from)}–${clock(sel.to)}</b> (${((sel.to-sel.from)*STEP/60000).toFixed(1)} min)</span>`,
+    `<span>${a.name} <b>${fmt(val(a.name))}</b></span>`];
+  D.readout.ratios.forEach(r => {
+    const v = val(r.den) ? val(r.num)/val(r.den)*100 : 0;
+    parts.push(`<span>${r.label} <b style="color:var(${r.tone==="good"?"--cbg-good":"--cbg-money"})">${v.toFixed(0)}%</b></span>`);
+  });
+  const lnode = D.nodes.find(n => n.series.latencyP95);
+  if (lnode){ const whole = sel.from === 0 && sel.to === NB;
+    const w = lnode.series.latencyP95.slice(sel.from, sel.to).filter(v => v > 0);
+    const p95 = whole && lnode.latencyFull ? lnode.latencyFull.p95 : w.reduce((x,y)=>x+y,0)/(w.length||1);
+    const worst = Math.max(...lnode.series.latencyP95);
+    parts.push(`<span>${lnode.name} p95 <b style="color:${p95>worst*.6?"var(--bad)":"inherit"}">${ms(p95)} ms</b></span>`); }
+  parts.push(`<span style="color:var(--faint)">${D.readout.check}</span>`);
+  document.getElementById("cbg-readout").innerHTML = parts.join("");
+}
+
+const notesEl = document.getElementById("cbg-notes");
+if (notesEl) notesEl.innerHTML = (D.notes||[]).map(n =>
+  `<div class="note"><h4>${n.h}</h4><p>${n.p}</p></div>`).join("");
+
+function render(){ drawTimeline(); D.nodes.forEach(renderNode); renderReadout();
+  requestAnimationFrame(renderEdges); }
+addEventListener("resize", render);
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
+render(); syncPresets();
+
+})();</script>
+</div>
+                    <h2>×3: one Save, three tables</h2>
+                    <p>387 PUTs over the window, one <code>Save()</code> each. <strong>1,161</strong> write statements left the process. The node shows all three: an UPDATE on <code>products</code>, plus two <code>ON DUPLICATE KEY UPDATE</code> upserts on <code>categories</code> and <code>suppliers</code>. The edit was a quantity; the write was three tables — saving associations is the ORM&#x27;s default, and a default only becomes visible once you count it.</p>
+                    <h2>The read is three as well</h2>
+                    <p>Before the write the product is read back, and the two <code>Preload</code>s each expand into their own SELECT: <code>×3</code>, 2,322 statements. One PUT spends <strong>12ms</strong> inside the handler (p95 13ms) and runs six SQL statements underneath.</p>
+                    <h2>Sixteen frames unobserved, and the graph leaves no blank</h2>
+                    <p>The two dashed edges are labelled 11–16 and 8–12 unobserved, and they name what is in there: <code>database/sql</code>&#x27;s <code>QueryContext</code>, <code>retry</code>, <code>queryDC</code>, <code>withLock</code>. Nobody put a probe on that stretch, so the graph draws it as a dashed edge with names on it rather than as nothing at all.</p>
                 </article>
             </div>
         </section>
