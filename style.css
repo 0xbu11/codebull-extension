@@ -294,6 +294,7 @@ nav a.active {
 }
 
 .article-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
@@ -304,6 +305,23 @@ nav a.active {
   text-decoration: none;
   color: inherit;
   transition: border-color 0.2s, transform 0.2s;
+}
+
+.article-card-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.6rem;
+  text-decoration: none;
+  color: inherit;
+}
+
+/* The whole card stays clickable; the dashboard link below sits above the overlay. */
+.article-card-main::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 18px;
 }
 
 .article-card:hover {
@@ -342,6 +360,28 @@ nav a.active {
   font-size: 0.9rem;
   font-weight: 600;
   color: var(--color-accent);
+}
+
+.article-card-dash {
+  position: relative;
+  z-index: 1;
+  align-self: flex-start;
+  margin-top: 0.9rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  width: 100%;
+  font-size: 0.82rem;
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.article-card-dash:hover {
+  color: var(--color-accent);
+}
+
+[data-theme="light"] .article-card-dash {
+  border-top-color: rgba(26, 26, 26, 0.08);
 }
 
 .section-kicker {
@@ -1135,6 +1175,23 @@ article {
   gap: 0.6rem 1.25rem;
   color: var(--color-text-secondary);
   font-size: 0.9rem;
+}
+
+.article-dashboard-link {
+  margin: 0.9rem 0 0;
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+}
+
+.article-dashboard-link a {
+  color: var(--color-accent);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  overflow-wrap: anywhere;
+}
+
+.article-dashboard-link a:hover {
+  border-bottom-color: currentColor;
 }
 
 .article-lede {

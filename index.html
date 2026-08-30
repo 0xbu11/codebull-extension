@@ -75,48 +75,69 @@
                     <p>Write-ups from real instrumentation runs against live Go services — every SQL statement, token, and percentile comes from measured data, with the remote dashboard linked for reconciliation.</p>
                 </div>
                 <div class="article-grid">
-                    <a class="article-card" href="article-ristretto-admission.html">
-                        <span class="article-card-source">Ristretto · Field Notes</span>
-                        <h3>I watched a running cache for eighteen minutes and saw it throw away 86% of my writes, returning true every single time</h3>
-                        <p>Eight observation points through an admission policy: the cost=1 I passed became 57 by the time the policy weighed it, a capacity of 1,000 held only 17 of my items, and 95,879 of 110,814 true responses were discarded on the spot — 85% of those rejections lost to a 4-bit counter already pinned at its ceiling.</p>
-                        <span class="article-card-link">Read article →</span>
-                    </a>
-                    <a class="article-card" href="article-gin-middleware.html">
-                        <span class="article-card-source">gin · Field Notes</span>
-                        <h3>I counted a running gin for ten minutes, and for two of them my middleware was never called</h3>
-                        <p>One path driven to five endings: the chain is re-entered 4, 4, 4, 3 and 0 times per request. That last zero is 120 requests that never reached the chain, with nothing in the service's own access log for those two minutes — and the cost differences I thought I had measured turned out to be 77–94% my own probes.</p>
-                        <span class="article-card-link">Read article →</span>
-                    </a>
-                    <a class="article-card" href="article-etcd-write-path.html">
-                        <span class="article-card-source">etcd · Field Notes</span>
-                        <h3>I watched a running etcd for nine minutes, and its fsync was fourteen times faster when busy than when idle</h3>
-                        <p>Twenty observation points covering the whole write path, from gRPC to fdatasync: one put leaves twenty-three footprints, a flush carrying sixteen operations costs the same as one carrying three — and the fsync everyone assumes gets slower under load ran 5.9 ms when quiet and 0.4 ms when busy.</p>
-                        <span class="article-card-link">Read article →</span>
-                    </a>
-                    <a class="article-card" href="article-gorm-runtime.html">
-                        <span class="article-card-source">GORM · Field Notes</span>
-                        <h3>I watched a running GORM for eight minutes, and saw it lose the primary key</h3>
-                        <p>Two observation points inside GORM, no code changes: soft deletes rewriting DELETE into UPDATE, one Preload becoming two SELECTs, and an UPDATE degenerating into a full-table shape — caught live.</p>
-                        <span class="article-card-link">Read article →</span>
-                    </a>
-                    <a class="article-card" href="article-redis-tokens.html">
-                        <span class="article-card-source">Redis · Field Notes</span>
-                        <h3>I watched every token my Redis client put on the wire</h3>
-                        <p>One line of HSet turns out to be six ordered tokens on the wire — and a plain time.Time stored via SET carried Go's monotonic clock reading straight into Redis.</p>
-                        <span class="article-card-link">Read article →</span>
-                    </a>
-                    <a class="article-card" href="article-inventory-fanout.html">
-                        <span class="article-card-source">Gin + GORM + MySQL · Field Notes</span>
-                        <h3>I stood at the MySQL driver's door for eight minutes, and watched one quantity change write to three tables</h3>
-                        <p>Two observation points at the driver, three counters in the app: a list query is 3 statements and not N+1, one PUT expands into six, and a browser tab nobody touches costs 8 queries a second.</p>
-                        <span class="article-card-link">Read article →</span>
-                    </a>
-                    <a class="article-card" href="article-gorm-three-signals.html">
-                        <span class="article-card-source">GORM · Metric + Log + Latency</span>
-                        <h3>One convergence point, three truths: how often, what, and how long</h3>
-                        <p>Metric, Log, and Latency attached to the same function in GORM: 947 entry hits, 8 verbatim SQL shapes, and a p95 tail ten times the median — all from one five-minute window.</p>
-                        <span class="article-card-link">Read article →</span>
-                    </a>
+                    <article class="article-card">
+                        <a class="article-card-main" href="article-ristretto-admission.html">
+                            <span class="article-card-source">Ristretto · Field Notes</span>
+                            <h3>I watched a running cache for eighteen minutes and saw it throw away 86% of my writes, returning true every single time</h3>
+                            <p>Eight observation points through an admission policy: the cost=1 I passed became 57 by the time the policy weighed it, a capacity of 1,000 held only 17 of my items, and 95,879 of 110,814 true responses were discarded on the spot — 85% of those rejections lost to a 4-bit counter already pinned at its ceiling.</p>
+                            <span class="article-card-link">Read article →</span>
+                        </a>
+                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/ristretto-admission-20260801/" target="_blank" rel="noopener noreferrer">📊 Reconcile on the dashboard · ristretto-admission-20260801</a>
+                    </article>
+                    <article class="article-card">
+                        <a class="article-card-main" href="article-gin-middleware.html">
+                            <span class="article-card-source">gin · Field Notes</span>
+                            <h3>I counted a running gin for ten minutes, and for two of them my middleware was never called</h3>
+                            <p>One path driven to five endings: the chain is re-entered 4, 4, 4, 3 and 0 times per request. That last zero is 120 requests that never reached the chain, with nothing in the service's own access log for those two minutes — and the cost differences I thought I had measured turned out to be 77–94% my own probes.</p>
+                            <span class="article-card-link">Read article →</span>
+                        </a>
+                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/gin-middleware-20260728/" target="_blank" rel="noopener noreferrer">📊 Reconcile on the dashboard · gin-middleware-20260728</a>
+                    </article>
+                    <article class="article-card">
+                        <a class="article-card-main" href="article-etcd-write-path.html">
+                            <span class="article-card-source">etcd · Field Notes</span>
+                            <h3>I watched a running etcd for nine minutes, and its fsync was fourteen times faster when busy than when idle</h3>
+                            <p>Twenty observation points covering the whole write path, from gRPC to fdatasync: one put leaves twenty-three footprints, a flush carrying sixteen operations costs the same as one carrying three — and the fsync everyone assumes gets slower under load ran 5.9 ms when quiet and 0.4 ms when busy.</p>
+                            <span class="article-card-link">Read article →</span>
+                        </a>
+                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/etcd-write-path-20260728/" target="_blank" rel="noopener noreferrer">📊 Reconcile on the dashboard · etcd-write-path-20260728</a>
+                    </article>
+                    <article class="article-card">
+                        <a class="article-card-main" href="article-gorm-runtime.html">
+                            <span class="article-card-source">GORM · Field Notes</span>
+                            <h3>I watched a running GORM for eight minutes, and saw it lose the primary key</h3>
+                            <p>Two observation points inside GORM, no code changes: soft deletes rewriting DELETE into UPDATE, one Preload becoming two SELECTs, and an UPDATE degenerating into a full-table shape — caught live.</p>
+                            <span class="article-card-link">Read article →</span>
+                        </a>
+                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/gorm-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">📊 Reconcile on the dashboard · gorm-observing-runtime-20260724</a>
+                    </article>
+                    <article class="article-card">
+                        <a class="article-card-main" href="article-redis-tokens.html">
+                            <span class="article-card-source">Redis · Field Notes</span>
+                            <h3>I watched every token my Redis client put on the wire</h3>
+                            <p>One line of HSet turns out to be six ordered tokens on the wire — and a plain time.Time stored via SET carried Go's monotonic clock reading straight into Redis.</p>
+                            <span class="article-card-link">Read article →</span>
+                        </a>
+                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/redis-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">📊 Reconcile on the dashboard · redis-observing-runtime-20260724</a>
+                    </article>
+                    <article class="article-card">
+                        <a class="article-card-main" href="article-inventory-fanout.html">
+                            <span class="article-card-source">Gin + GORM + MySQL · Field Notes</span>
+                            <h3>I stood at the MySQL driver's door for eight minutes, and watched one quantity change write to three tables</h3>
+                            <p>Two observation points at the driver, three counters in the app: a list query is 3 statements and not N+1, one PUT expands into six, and a browser tab nobody touches costs 8 queries a second.</p>
+                            <span class="article-card-link">Read article →</span>
+                        </a>
+                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/inventory-observing-runtime-20260726/" target="_blank" rel="noopener noreferrer">📊 Reconcile on the dashboard · inventory-observing-runtime-20260726</a>
+                    </article>
+                    <article class="article-card">
+                        <a class="article-card-main" href="article-gorm-three-signals.html">
+                            <span class="article-card-source">GORM · Metric + Log + Latency</span>
+                            <h3>One convergence point, three truths: how often, what, and how long</h3>
+                            <p>Metric, Log, and Latency attached to the same function in GORM: 947 entry hits, 8 verbatim SQL shapes, and a p95 tail ten times the median — all from one five-minute window.</p>
+                            <span class="article-card-link">Read article →</span>
+                        </a>
+                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/gorm-demo-mcp-article-20260723-latency/" target="_blank" rel="noopener noreferrer">📊 Reconcile on the dashboard · gorm-demo-mcp-article-20260723-latency</a>
+                    </article>
                 </div>
             </div>
         </section>
