@@ -393,6 +393,11 @@ render(); syncPresets();
                     <h2>What came out</h2>
                     <p><code>3,400 ÷ 1,000 = ×3.4</code>. That number appears in no line of code, because it is the average argument count — <strong>a property of the data, not of the program</strong>. Change the keys, add one field to the HSET, and it moves.</p>
                     <p>The edge from Borrow a connection to Encode the command is labelled 3 unobserved and lists <code>_process.func1</code>, <code>pool.(*Conn).WithWriter</code>, <code>_process.func1.1</code> — the acquire-and-release path. Nobody probed it, so the graph draws a dashed edge with names on it rather than pretending to see.</p>
+                    <div class="article-callout">
+                        <p>📊 <strong>Remote dashboard for this article</strong> (real measured data, viewable online): <a href="https://codebull-dashboard-service.web.app/redis-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">redis-observing-runtime-20260724</a></p>
+                        <p>Every token and every count above can be reconciled verbatim on the <strong>Logs</strong> tab of that dashboard; the <strong>Metrics</strong> tab holds the hit counter for the command convergence point.</p>
+                    </div>
+
                 </article>
             </div>
         </section>

@@ -393,6 +393,11 @@ render(); syncPresets();
                     <h2>結果</h2>
                     <p><code>3,400 ÷ 1,000 = ×3.4</code>。這個數字在任何一行程式碼裡都找不到，因為它是「平均一個命令帶幾個參數」——<strong>屬於資料的性質，不是程式的</strong>。換一批 key、把 HSET 的欄位加一個，它就變了。</p>
                     <p>「借一條連線 → 組成一個命令」那條邊標著 3 層未觀測，並列出 <code>_process.func1</code>、<code>pool.(*Conn).WithWriter</code>、<code>_process.func1.1</code>。那三層是連線的取得與歸還，沒掛點，圖就用有名字的虛線標著，不假裝看得見。</p>
+                    <div class="article-callout">
+                        <p>📊 <strong>本文的遠端觀測面板</strong>（實測數據，可線上檢視）：<a href="https://codebull-dashboard-service.web.app/redis-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">redis-observing-runtime-20260724</a></p>
+                        <p>上面每一個 token、每一個次數，都能在這個面板的 <strong>Logs</strong> 分頁逐字對帳；<strong>Metrics</strong> 分頁則是命令收斂點的命中計數。</p>
+                    </div>
+
                 </article>
             </div>
         </section>

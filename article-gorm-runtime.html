@@ -395,6 +395,11 @@ render(); syncPresets();
                     <p><strong>Called 274 times, executed 411.</strong> The extra 137 come from <code>Preload(&quot;User&quot;)</code> — one chained call expanding into a second query at run time. That ratio is written in no line of code; you only get it by counting.</p>
                     <p>The edge is labelled <strong>0–4 unobserved</strong> and names them: <code>Find</code>, <code>preload</code>, <code>preloadEntryPoint</code>, <code>Preload</code> — the extra query is emitted from inside those four frames.</p>
                     <p>One more gap is worth reading: <strong>137 of the 1,096 executions have no upstream.</strong> That is <code>Delete()</code>, the one call this round with no probe on it. With the caller off the graph, its executions appear as a second starting point rather than being attached to somebody else.</p>
+                    <div class="article-callout">
+                        <p>📊 <strong>Remote dashboard for this article</strong> (real measured data, viewable online): <a href="https://codebull-dashboard-service.web.app/gorm-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">gorm-observing-runtime-20260724</a></p>
+                        <p>Every SQL statement, every <code>rows</code> value, and every count above can be reconciled verbatim on the <strong>Logs</strong> tab of that dashboard; the <strong>Metrics</strong> tab holds the entry hit counter for <code>Execute</code>.</p>
+                    </div>
+
                 </article>
             </div>
         </section>

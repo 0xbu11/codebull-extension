@@ -399,6 +399,11 @@ goexit · Serve · +8 · Next · auth · Next</code></pre>
                     <h2>結果</h2>
                     <p><code>4,536 ÷ 1,512 = 3</code>，整整三次，鏈<strong>沒有在任何一個請求上被中斷</strong>。而 <code>×0.25</code>（378 次）在框架內部就被 301 轉走，連 handler 都沒進去。</p>
                     <p>「決定路由 → 跑中介層」那條邊標著 <strong>0–3 層未觀測</strong>，並把名字列出來：<code>requestID</code>、<code>accessLog</code>、<code>auth</code>。中介層鏈本身就是那個沒被觀測的層。範圍不是雜訊，是因為 <code>Next()</code> 在鏈的不同深度被呼叫——這一點上面那四條堆疊已經先說過一次了。</p>
+                    <div class="article-callout">
+                        <p>📊 <strong>本文的遠端觀測面板</strong>（實測數據，可線上檢視）：<a href="https://codebull-dashboard-service.web.app/gin-middleware-20260728/" target="_blank" rel="noopener noreferrer">gin-middleware-20260728</a></p>
+                        <p><strong>Metrics</strong> 分頁三格：<code>Next</code> 那條爬到 1808 並在 17:02 結束的累積線、<code>gin_serve_latency</code> 的散點、只有兩分鐘寬的 <code>redirectTrailingSlash</code>；<strong>Logs</strong> 分頁可以把 <code>M=…P=…</code> 與 <code>status=…</code> 逐字對帳，<code>ROWS: 842</code> 就是 602 + 240。對照輪另有一個面板：<a href="https://codebull-dashboard-service.web.app/gin-middleware-control-20260728/" target="_blank" rel="noopener noreferrer">gin-middleware-control-20260728</a>（只有一條延遲散點，而且圖被三根 45 毫秒的孤兒樣本壓扁了，結構在數字裡不在圖裡）。面板時間軸是本地時間 UTC+8，16:53–17:04 對應內文的 UTC 窗口。</p>
+                    </div>
+
                 </article>
             </div>
         </section>

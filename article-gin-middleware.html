@@ -399,6 +399,11 @@ goexit · Serve · +8 · Next · auth · Next</code></pre>
                     <h2>What came out</h2>
                     <p><code>4,536 ÷ 1,512 = 3</code>, exactly three, and the chain was <strong>never cut short on any request</strong>. Meanwhile <code>×0.25</code> (378 requests) turned around on a 301 inside the framework without reaching a handler at all.</p>
                     <p>The edge from Match the route to Advance the chain is labelled <strong>0–3 unobserved</strong>, and it names them: <code>requestID</code>, <code>accessLog</code>, <code>auth</code>. The middleware chain is itself the unmeasured layer. The range is not noise — <code>Next()</code> is called at different depths, which is the same thing those four stacks already said.</p>
+                    <div class="article-callout">
+                        <p>📊 <strong>Remote dashboard for this article</strong> (real measured data, viewable online): <a href="https://codebull-dashboard-service.web.app/gin-middleware-20260728/" target="_blank" rel="noopener noreferrer">gin-middleware-20260728</a></p>
+                        <p>The <strong>Metrics</strong> tab has three panels: the <code>Next</code> curve climbing to 1,808 and ending at 17:02, the <code>gin_serve_latency</code> scatter, and the two-minute-wide <code>redirectTrailingSlash</code>. The <strong>Logs</strong> tab lets you reconcile the <code>M=…P=…</code> and <code>status=…</code> rows verbatim; <code>ROWS: 842</code> is 602 + 240. The control round has its own dashboard: <a href="https://codebull-dashboard-service.web.app/gin-middleware-control-20260728/" target="_blank" rel="noopener noreferrer">gin-middleware-control-20260728</a> (a single latency scatter, flattened by three 45 ms orphan samples — that round's structure is in the numbers, not the picture). The panel's time axis is local time, UTC+8: 16:53–17:04 there is the UTC window quoted in the text.</p>
+                    </div>
+
                 </article>
             </div>
         </section>

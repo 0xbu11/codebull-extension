@@ -394,6 +394,11 @@ render(); syncPresets();
                     <h2>What came out</h2>
                     <p><strong>387 PUTs, 1,161 write statements.</strong> <code>Save()</code> writes associations back with the row — that is the ORM&#x27;s default, and <strong>a default only becomes visible once you count it.</strong> Reads are <code>×3</code> for the same reason: two <code>Preload</code>s, two extra SELECTs.</p>
                     <p>The two dashed edges are labelled 11–16 and 8–12 unobserved, and they name what is in there: <code>database/sql</code>&#x27;s <code>QueryContext</code>, <code>retry</code>, <code>queryDC</code>, <code>withLock</code>. Nobody probed that stretch, so the graph draws a dashed edge with names rather than drawing nothing.</p>
+                    <div class="article-callout">
+                        <p>📊 <strong>Remote dashboard for this article</strong> (real measured data, viewable online): <a href="https://codebull-dashboard-service.web.app/inventory-observing-runtime-20260726/" target="_blank" rel="noopener noreferrer">inventory-observing-runtime-20260726</a></p>
+                        <p>Every statement and every count above can be reconciled verbatim on the <strong>Logs</strong> tab (the six-row update chain is at #4293–#4298); the <strong>Metrics</strong> tab holds the cumulative <code>FindAll</code> / <code>Create</code> counters and the slope change at 16:23:31.</p>
+                    </div>
+
                 </article>
             </div>
         </section>

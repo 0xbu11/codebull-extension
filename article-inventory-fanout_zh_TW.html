@@ -394,6 +394,11 @@ render(); syncPresets();
                     <h2>結果</h2>
                     <p><strong>387 次 PUT，1,161 句寫入。</strong> <code>Save()</code> 會把關聯一起存回去，那是 ORM 的預設行為——而<strong>預設行為只有數過才看得見</strong>。讀也是 <code>×3</code>：兩個 <code>Preload</code> 各展開成一句 SELECT。</p>
                     <p>兩條虛線分別標著 11–16 層與 8–12 層未觀測，並把名字列出來：<code>database/sql</code> 的 <code>QueryContext</code>、<code>retry</code>、<code>queryDC</code>、<code>withLock</code>。那一段沒人掛點，圖就畫成一條有名字的虛線，而不是什麼都不畫。</p>
+                    <div class="article-callout">
+                        <p>📊 <strong>本文的遠端觀測面板</strong>（實測數據，可線上檢視）：<a href="https://codebull-dashboard-service.web.app/inventory-observing-runtime-20260726/" target="_blank" rel="noopener noreferrer">inventory-observing-runtime-20260726</a></p>
+                        <p>上面每一條 SQL 與每一個次數，都能在這個面板的 <strong>Logs</strong> 分頁逐字對帳（那六條連號的更新鏈在 #4293–#4298）；<strong>Metrics</strong> 分頁則是 <code>FindAll</code> / <code>Create</code> 的累積計數線，以及 16:23:31 那個斜率轉折。</p>
+                    </div>
+
                 </article>
             </div>
         </section>

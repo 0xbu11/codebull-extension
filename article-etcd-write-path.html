@@ -398,6 +398,11 @@ Apply an entry  goexit · NewFIFOScheduler · fifo.run · +5 · applyEntryNormal
                     <h2>What came out</h2>
                     <p>The three islands are not something the graph missed; they are the shape of the program — and the stack column names all three goroutines, so a reader can verify that sentence instead of having to trust it.</p>
                     <p>As for latency, the up-front expectation that busier means slower was <strong>wrong</strong>. Batching amortises the fsync, so the heavier the load the cheaper each individual save. That is not derivable from the source; it has to be measured.</p>
+                    <div class="article-callout">
+                        <p>📊 <strong>Remote dashboard for this article</strong> (real measured data, viewable online): <a href="https://codebull-dashboard-service.web.app/etcd-write-path-20260728/" target="_blank" rel="noopener noreferrer">etcd-write-path-20260728</a></p>
+                        <p>The <strong>Metrics</strong> tab holds sixteen panels: fourteen cumulative hit curves (seven 1 : 1 lines with identical shapes, four 2 : 1 lines at exactly double the height) plus the two latency scatters — the point where <code>wal_fsync_latency</code> drops at 00:19:08 is the moment I removed the throttle. The <strong>Logs</strong> tab holds the interleaved <code>k=… rev=…</code> and <code>pending=…</code> rows, which is where batching stacks up one line at a time. (The panel's time axis is local time, UTC+8, against the UTC times quoted in the text.)</p>
+                    </div>
+
                 </article>
             </div>
         </section>

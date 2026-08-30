@@ -395,6 +395,11 @@ render(); syncPresets();
                     <p><strong>呼叫 274 次，執行 411 次。</strong> 多出來的 137 次來自 <code>Preload(&quot;User&quot;)</code>：一行鏈式呼叫，在執行期展開成第二次查詢。這個比例不寫在任何一行程式碼裡，只有數過才知道。</p>
                     <p>那條邊標著 <strong>0–4 層未觀測</strong>，並列出名字：<code>Find</code>、<code>preload</code>、<code>preloadEntryPoint</code>、<code>Preload</code>——多出來的查詢就是從那四層裡送出去的。</p>
                     <p>還有一個空隙值得看：1,096 次執行裡有 <strong>137 次沒有上游</strong>。那是這一輪唯一沒掛點的 <code>Delete()</code>。呼叫端不在圖上，它的執行就以第二個起點出現，而不是被硬接到別人身上。</p>
+                    <div class="article-callout">
+                        <p>📊 <strong>本文的遠端觀測面板</strong>（實測數據，可線上檢視）：<a href="https://codebull-dashboard-service.web.app/gorm-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">gorm-observing-runtime-20260724</a></p>
+                        <p>上面每一條 SQL、每一個 <code>rows</code>、每一個次數，都能在這個面板的 <strong>Logs</strong> 分頁逐字對帳；<strong>Metrics</strong> 分頁則是那條 <code>Execute</code> 入口命中的計數。</p>
+                    </div>
+
                 </article>
             </div>
         </section>

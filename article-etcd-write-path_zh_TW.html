@@ -398,6 +398,11 @@ render(); syncPresets();
                     <h2>結果</h2>
                     <p>三座島不是圖漏看了什麼，是這個程式本來的形狀——而堆疊那一欄把三條 goroutine 的名字直接寫出來，讓這句話可以被讀者自己驗證，而不是只能相信。</p>
                     <p>至於延遲，事前那個「忙的時候更慢」的預期是<strong>錯的</strong>。批次寫入讓 fsync 的成本被攤掉，負載越高單次越便宜。這種事沒辦法從原始碼推出來，只能量。</p>
+                    <div class="article-callout">
+                        <p>📊 <strong>本文的遠端觀測面板</strong>（實測數據，可線上檢視）：<a href="https://codebull-dashboard-service.web.app/etcd-write-path-20260728/" target="_blank" rel="noopener noreferrer">etcd-write-path-20260728</a></p>
+                        <p><strong>Metrics</strong> 分頁有十六格：十四條累積命中曲線（七條 1:1 的線形狀完全相同、四條 2:1 的線高度剛好兩倍）加兩條 latency 散點——<code>wal_fsync_latency</code> 那條在 00:19:08 掉下去的地方就是我把節流拿掉的那一刻；<strong>Logs</strong> 分頁是 <code>k=… rev=…</code> 與 <code>pending=…</code> 交錯的逐字紀錄，batching 就是在那裡一行一行疊起來的。（面板時間軸是本地時間 UTC+8，對應內文的 UTC 時間。）</p>
+                    </div>
+
                 </article>
             </div>
         </section>

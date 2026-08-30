@@ -398,6 +398,11 @@ Admit or reject   goexit · NewCache · processItems · Add</code></pre>
                     <h2>What came out</h2>
                     <p><code>Set()</code> returning true means &quot;this request was accepted&quot;, not &quot;this key was kept&quot;. The real trade-off happens later on another goroutine, comparing hash and cost.</p>
                     <p>The two counts differ by 396 — the part not yet processed when the window closed. <strong>That difference is itself the evidence</strong>: if the decision were synchronous, the two sides would always be equal.</p>
+                    <div class="article-callout">
+                        <p>📊 <strong>Remote dashboard for this article</strong> (real measured data, viewable online): <a href="https://codebull-dashboard-service.web.app/ristretto-admission-20260801/" target="_blank" rel="noopener noreferrer">ristretto-admission-20260801</a></p>
+                        <p>The dashboard covers the 3 minutes 30 seconds at the centre of the window (17:16:00Z–17:19:30Z, 292,393 samples), <strong>straddling the phase switch at round 181</strong>. The 20,196 rows on the <strong>Logs</strong> tab are the verbatim record from the rejection point, so you can reconcile <code>cost=57 | incHits=… | minHits=…</code> row by row; the <strong>Metrics</strong> tab shows the pair where <code>SetWithTTL - cost</code> is flat at 1 and <code>Add - cost</code> is flat at 57. (The panel's time axis is local time, UTC+8, corresponding to the UTC times in the text.)</p>
+                    </div>
+
                 </article>
             </div>
         </section>

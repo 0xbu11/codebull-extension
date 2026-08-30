@@ -398,6 +398,11 @@ render(); syncPresets();
                     <h2>結果</h2>
                     <p><code>Set()</code> 回 true 只代表「這個請求被收下了」，不代表「這個 key 被留下來了」。真正的取捨稍後在另一條 goroutine 上發生，比較的是 hash 與 cost。</p>
                     <p>兩個數字差 396——那是窗口結束時還沒被處理完的部分。<strong>這個差額本身就是證據</strong>：如果決定是同步的，兩邊應該永遠相等。</p>
+                    <div class="article-callout">
+                        <p>📊 <strong>本文的遠端觀測面板</strong>（實測數據，可線上檢視）：<a href="https://codebull-dashboard-service.web.app/ristretto-admission-20260801/" target="_blank" rel="noopener noreferrer">ristretto-admission-20260801</a></p>
+                        <p>面板涵蓋窗口中央的 3 分 30 秒（17:16:00Z–17:19:30Z，292,393 筆樣本），<strong>剛好跨過第 181 輪那個相位切換</strong>。<strong>Logs</strong> 分頁的 20,196 列就是拒收那個點的逐字紀錄，可以逐行對帳 <code>cost=57 | incHits=… | minHits=…</code>；<strong>Metrics</strong> 分頁可以看到 <code>SetWithTTL - cost</code> 平在 1、<code>Add - cost</code> 平在 57 的那組對照。（面板時間軸是本地時間 UTC+8，對應內文的 UTC 時間。）</p>
+                    </div>
+
                 </article>
             </div>
         </section>
