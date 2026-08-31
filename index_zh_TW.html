@@ -75,65 +75,65 @@
                     <article class="article-card">
                         <a class="article-card-main" href="article-ristretto-admission_zh_TW.html">
                             <span class="article-card-source">Ristretto · 實測筆記</span>
-                            <h3>我盯著一個跑著的快取看了十八分鐘，然後看到它把我 86% 的寫入丟掉，而且每一次都回我 true</h3>
-                            <p>八個觀測點看穿一個 admission policy：我傳的 cost=1 到了政策手上變成 57、容量 1,000 只塞得下 17 個、110,814 次 true 裡有 95,879 次當場被丟掉——而 85% 的拒收是輸給一個已經頂到上限的 4-bit 計數器。</p>
+                            <h3>我盯著一個跑著的快取看了七分鐘，然後發現 Set() 回我 true 的時候，收不收根本還沒決定</h3>
+                            <p>四個觀測點同時站在呼叫端和入場政策上：我傳的 <code>cost=1</code> 到了政策手上全部變成 57，108,173 次沒中送出 106,916 次寫入——而真正的取捨晚一步發生在另一條 goroutine 上，兩邊差的那 280 次就是證據。</p>
                             <span class="article-card-link">閱讀文章 →</span>
                         </a>
-                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/ristretto-admission-20260801/" target="_blank" rel="noopener noreferrer">📊 對帳面板 · ristretto-admission-20260801</a>
+                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/ristretto-admission-20260830/" target="_blank" rel="noopener noreferrer">📊 對帳面板 · ristretto-admission-20260830</a>
                     </article>
                     <article class="article-card">
                         <a class="article-card-main" href="article-gin-middleware_zh_TW.html">
                             <span class="article-card-source">gin · 實測筆記</span>
-                            <h3>我對一個跑著的 gin 數了十分鐘，然後看到有兩分鐘我的中介層一次都沒被叫到</h3>
-                            <p>同一條路徑餵出五種結局，中介層鏈每請求被重入 4、4、4、3、0 次。最後那個 0 是 120 個請求連鏈的門都沒進去，服務自己的 access log 對那兩分鐘一行都沒有——而我以為順便量到的成本差異，有 77–94% 其實是我自己的觀測點。</p>
+                            <h3>我對一個跑著的 gin 數了十一分鐘，然後看到中介層鏈的八種形狀</h3>
+                            <p>600 個請求、1,800 次推進，平均 ×3；但堆疊上是八條框鏈——401 那個 phase 少掉最後一次，301 那個 phase 連鏈的門都沒進去。順帶量到的：p95 的 54.6 毫秒有 82 個樣本，全部落在會跑鏈的那四段，而只留入口一個點的對照輪是 0.166 毫秒。</p>
                             <span class="article-card-link">閱讀文章 →</span>
                         </a>
-                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/gin-middleware-20260728/" target="_blank" rel="noopener noreferrer">📊 對帳面板 · gin-middleware-20260728</a>
+                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/gin-middleware-20260830/" target="_blank" rel="noopener noreferrer">📊 對帳面板 · gin-middleware-20260830</a>
                     </article>
                     <article class="article-card">
                         <a class="article-card-main" href="article-etcd-write-path_zh_TW.html">
                             <span class="article-card-source">etcd · 實測筆記</span>
-                            <h3>我盯著一個跑著的 etcd 看了九分鐘，然後看到它的 fsync 在忙的時候比閒的時候快十四倍</h3>
-                            <p>整條寫入路徑掛滿二十個觀測點，從 gRPC 到 fdatasync：一次 put 留下二十三個腳印、攤了 16 筆的落盤跟攤 3 筆一樣快——而那個「越忙越慢」的直覺整個是反的，同一行 fsync 閒的時候 5.9 毫秒、忙的時候 0.4 毫秒。</p>
+                            <h3>一個 Put 進來，三條 goroutine 各自把它做完</h3>
+                            <p>整條寫入路徑六個觀測點：收下 Put、伺服器 API、送進 raft 提案、套用單筆，四個數字全部是 9,775，只有 WAL 落碟是 21,759；而流量高了大約一百倍之後，單次 fsync 沒有變慢，反而從 0.0118 毫秒掉到 0.0104 毫秒。</p>
                             <span class="article-card-link">閱讀文章 →</span>
                         </a>
-                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/etcd-write-path-20260728/" target="_blank" rel="noopener noreferrer">📊 對帳面板 · etcd-write-path-20260728</a>
+                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/etcd-write-path-20260830/" target="_blank" rel="noopener noreferrer">📊 對帳面板 · etcd-write-path-20260830</a>
                     </article>
                     <article class="article-card">
                         <a class="article-card-main" href="article-gorm-runtime_zh_TW.html">
                             <span class="article-card-source">GORM · 實測筆記</span>
-                            <h3>我盯著一個跑著的 GORM 看了八分鐘，然後看到它把主鍵弄丟了</h3>
-                            <p>不改一行 code，在 GORM 內部掛兩個觀測點：soft delete 把 DELETE 改寫成 UPDATE、一個 Preload 變成兩條 SELECT，還有一條 UPDATE 退化成全表形狀——全部當場看到。</p>
+                            <h3>一行 Preload，讓讀取路徑多送一次 SQL</h3>
+                            <p>上下兩端夾住 GORM：呼叫 286 次 <code>First</code>，收斂點跑了 429 次，多出來的 143 次是 <code>Preload</code> 在執行期展開的；而 1,144 次執行裡還有 143 次沒有上游，那是這一輪唯一沒掛點的 <code>Delete</code>。</p>
                             <span class="article-card-link">閱讀文章 →</span>
                         </a>
-                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/gorm-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">📊 對帳面板 · gorm-observing-runtime-20260724</a>
+                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/gorm-observing-runtime-20260830/" target="_blank" rel="noopener noreferrer">📊 對帳面板 · gorm-observing-runtime-20260830</a>
                     </article>
                     <article class="article-card">
                         <a class="article-card-main" href="article-redis-tokens_zh_TW.html">
                             <span class="article-card-source">Redis · 實測筆記</span>
-                            <h3>我盯著 Redis client 送上線的每一個 token，然後發現我存了一串不該存的東西</h3>
-                            <p>一行 HSet 在線上是六個有序 token；而一個直接用 SET 存進去的 time.Time，把 Go 的 monotonic clock 讀數一起寫進了 Redis。</p>
+                            <h3>迴圈裡的五行 Go，爬上連線的時候是 3,638 個 token</h3>
+                            <p>四個點沿著同一條路往下，每一層換一次單位：請求 → 連線 → 命令 → token。三個上游都是 1,070，到最後一層才變成 3,638；而 <code>CodeBull</code> 這個 token 出現 657 次，是其他每一個的三倍。</p>
                             <span class="article-card-link">閱讀文章 →</span>
                         </a>
-                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/redis-observing-runtime-20260724/" target="_blank" rel="noopener noreferrer">📊 對帳面板 · redis-observing-runtime-20260724</a>
+                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/redis-observing-runtime-20260830/" target="_blank" rel="noopener noreferrer">📊 對帳面板 · redis-observing-runtime-20260830</a>
                     </article>
                     <article class="article-card">
                         <a class="article-card-main" href="article-inventory-fanout_zh_TW.html">
                             <span class="article-card-source">Gin + GORM + MySQL · 實測筆記</span>
-                            <h3>我在 MySQL driver 的門口站了八分鐘，然後看到一次「改個數量」寫了三張表</h3>
-                            <p>驅動門口兩個點、應用層三個計數：一次列表查詢是 3 條 SQL 而不是 N+1，一次 PUT 在底下展開成六條，而一個沒人操作的分頁每秒要走 8 條查詢。</p>
+                            <h3>前端改一次數量，資料庫收到三句寫入</h3>
+                            <p>在 MySQL driver 的門口掛點：410 次 PUT 到了驅動門口變成 1,230 句讀、1,230 句寫，六種語句每種剛好 410 次——我只改了數量，它連 <code>categories</code> 和 <code>suppliers</code> 兩張關聯表都寫了一次。</p>
                             <span class="article-card-link">閱讀文章 →</span>
                         </a>
-                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/inventory-observing-runtime-20260726/" target="_blank" rel="noopener noreferrer">📊 對帳面板 · inventory-observing-runtime-20260726</a>
+                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/inventory-observing-runtime-20260830/" target="_blank" rel="noopener noreferrer">📊 對帳面板 · inventory-observing-runtime-20260830</a>
                     </article>
                     <article class="article-card">
                         <a class="article-card-main" href="article-gorm-three-signals_zh_TW.html">
                             <span class="article-card-source">GORM · Metric + Log + Latency</span>
-                            <h3>一個收斂點，三種真相：多常、什麼、多久</h3>
-                            <p>Metric、Log、Latency 掛在 GORM 同一個函式上：947 次入口命中、8 種逐字 SQL 形狀，以及 p95 是中位數十倍的尾巴——全部出自同一個五分鐘窗口。</p>
+                            <h3>一個收斂點，三種真相：多常、多久、什麼</h3>
+                            <p>Metric、latency、log 掛在 GORM 同一個函式上：1,144 次執行、8 種逐字 SQL 形狀、p95 是 p50 的十四倍——全部出自同一批事件。而四條邊加起來只有 1,001，缺的 143 次誠實地留成第二個起點。</p>
                             <span class="article-card-link">閱讀文章 →</span>
                         </a>
-                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/gorm-demo-mcp-article-20260723-latency/" target="_blank" rel="noopener noreferrer">📊 對帳面板 · gorm-demo-mcp-article-20260723-latency</a>
+                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/gorm-three-signals-20260830/" target="_blank" rel="noopener noreferrer">📊 對帳面板 · gorm-three-signals-20260830</a>
                     </article>
                 </div>
             </div>
