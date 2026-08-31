@@ -95,6 +95,8 @@ function embedArticleBehaviorDashboard() {
         iframe.contentWindow?.postMessage({ command: 'setActiveTab', tab: 'behaviorgraph' }, dashboardUrl.origin);
     };
     iframe.addEventListener('load', () => {
-        [0, 800, 2500, 6000].forEach((delay) => setTimeout(showBehaviorGraph, delay));
+        [0, 500, 1000, 2000, 4000, 7000, 11000, 16000].forEach((delay) => setTimeout(showBehaviorGraph, delay));
+        const interval = setInterval(showBehaviorGraph, 1000);
+        setTimeout(() => clearInterval(interval), 20000);
     });
 }
