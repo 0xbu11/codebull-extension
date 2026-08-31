@@ -53,4 +53,48 @@ document.addEventListener('DOMContentLoaded', () => {
         const currentTheme = document.documentElement.getAttribute(THEME_ATTR);
         updateToggleButton(currentTheme);
     }
+
+    embedArticleBehaviorDashboard();
 });
+
+function embedArticleBehaviorDashboard() {
+    const graph = document.querySelector('.article-graph-embed');
+    const dashboardLink = document.querySelector('.article-dashboard-link a[href*="codebull-dashboard-service.web.app"]');
+    if (!graph || !dashboardLink) {
+        return;
+    }
+
+    const dashboardUrl = new URL(dashboardLink.href);
+    dashboardUrl.hash = 'behaviorgraph';
+
+    const isZh = (document.documentElement.lang || '').toLowerCase().startsWith('zh');
+    const title = isZh ? '本文 Behavior Graph 遠端面板' : 'Remote dashboard Behavior Graph';
+    const loadingText = isZh ? '正在載入遠端 Behavior Graph…' : 'Loading remote Behavior Graph…';
+    const openText = isZh ? '在新分頁開啟完整面板' : 'Open full dashboard';
+
+    graph.setAttribute('data-dashboard-upgraded', 'true');
+    graph.innerHTML = `
+        <div class="article-dashboard-embed-head">
+            <span>${title}</span>
+            <a href="${dashboardUrl.href}" target="_blank" rel="noopener noreferrer">${openText}</a>
+        </div>
+        <div class="article-dashboard-frame-wrap">
+            <iframe
+                class="article-dashboard-frame"
+                src="${dashboardUrl.href}"
+                title="${title}"
+                loading="lazy"
+                referrerpolicy="no-referrer-when-downgrade"
+                allow="clipboard-read; clipboard-write; fullscreen">
+            </iframe>
+            <div class="article-dashboard-frame-fallback">${loadingText}</div>
+        </div>`;
+
+    const iframe = graph.querySelector('iframe');
+    const showBehaviorGraph = () => {
+        iframe.contentWindow?.postMessage({ command: 'setActiveTab', tab: 'behaviorgraph' }, dashboardUrl.origin);
+    };
+    iframe.addEventListener('load', () => {
+        [0, 800, 2500, 6000].forEach((delay) => setTimeout(showBehaviorGraph, delay));
+    });
+}
