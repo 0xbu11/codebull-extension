@@ -1195,8 +1195,8 @@ article {
 }
 
 .article-graph-embed {
-  width: min(1180px, calc(100vw - 2rem));
-  margin: 2rem calc((100% - min(1180px, calc(100vw - 2rem))) / 2) 2.5rem;
+  width: min(75vw, calc(100vw - 2rem));
+  margin: 2rem calc((100% - min(75vw, calc(100vw - 2rem))) / 2) 2.5rem;
 }
 
 .article-graph-embed[data-dashboard-upgraded="true"] {
