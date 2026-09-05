@@ -78,8 +78,8 @@
                     <article class="article-card">
                         <a class="article-card-main" href="article-ristretto-admission.html">
                             <span class="article-card-source">Ristretto · Field Notes</span>
-                            <h3>It said yes 736,182 times and kept a thousand</h3>
-                            <p>The caller's 736,182 <code>Set</code> calls all returned <code>true</code>, while the cache's own counters say it rejected 684,408 and evicted 49,834 more. On the graph, <code>Admit or reject</code> is a root of its own — that <code>true</code> never meant "kept", only "queued".</p>
+                            <h3>It said yes 527,268 times and kept a thousand</h3>
+                            <p>The caller's 527,268 <code>Set</code> calls all returned <code>true</code>, while the cache's own counters say it rejected 475,921 and evicted 46,927 more. That <code>true</code> only ever meant "it went into the <code>setBuf</code> channel" — the real trade-off happens a beat later on ristretto's own goroutine, a separate root on the graph.</p>
                             <span class="article-card-link">Read article →</span>
                         </a>
                         <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/ristretto-admission-20260905/" target="_blank" rel="noopener noreferrer">📊 Reconcile on the dashboard · ristretto-admission-20260905</a>

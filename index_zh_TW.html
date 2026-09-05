@@ -75,8 +75,8 @@
                     <article class="article-card">
                         <a class="article-card-main" href="article-ristretto-admission_zh_TW.html">
                             <span class="article-card-source">Ristretto · 實測筆記</span>
-                            <h3>它說收下了七十三萬次，實際留下一千個</h3>
-                            <p>呼叫端 736,182 次 <code>Set</code> 全部拿到 <code>true</code>，而快取自己的計數器說它拒收了 684,408 次、又踢掉 49,834 個。圖上「決定收留或拒收」是一個獨立的 root——那個 <code>true</code> 回的不是「收下了」，是「排進去了」。</p>
+                            <h3>它說收下了五十二萬次，實際留下一千個</h3>
+                            <p>呼叫端 527,268 次 <code>Set</code> 全部拿到 <code>true</code>，而快取自己的計數器說它拒收了 475,921 次、又踢掉 46,927 個。那個 <code>true</code> 的意思其實是「排進 <code>setBuf</code> 這個 channel 了」——真正的取捨晚一步發生在 ristretto 自己的 goroutine 上，圖上它是一個獨立的 root。</p>
                             <span class="article-card-link">閱讀文章 →</span>
                         </a>
                         <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/ristretto-admission-20260905/" target="_blank" rel="noopener noreferrer">📊 對帳面板 · ristretto-admission-20260905</a>
