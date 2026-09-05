@@ -4,21 +4,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>一個 Put 進來，三條 goroutine 各自把它做完 | CodeBull</title>
-    <meta name="description" content="不改一行 code，對一個正在跑的 etcd 從 gRPC 入口一路掛到 WAL 落碟與狀態套用，看四分鐘。">
+    <title>一次讀，也會敲一次 WAL | CodeBull</title>
+    <meta name="description" content="不改一行 code，對一個正在跑的 etcd 沿著寫入路徑掛六個點，分五個相位看五分半——然後在只送讀取的那一分鐘裡，看到 WAL 被呼叫了五千次。">
     <meta property="og:type" content="article">
     <meta property="og:site_name" content="CodeBull">
     <meta property="og:locale" content="zh_TW">
-    <meta property="og:title" content="一個 Put 進來，三條 goroutine 各自把它做完">
-    <meta property="og:description" content="不改一行 code，對一個正在跑的 etcd 從 gRPC 入口一路掛到 WAL 落碟與狀態套用，看四分鐘。">
+    <meta property="og:title" content="一次讀，也會敲一次 WAL">
+    <meta property="og:description" content="不改一行 code，對一個正在跑的 etcd 沿著寫入路徑掛六個點，分五個相位看五分半——然後在只送讀取的那一分鐘裡，看到 WAL 被呼叫了五千次。">
     <meta property="og:url" content="https://0xbu11.github.io/codebull-extension/article-etcd-write-path_zh_TW.html">
     <meta property="og:image" content="https://0xbu11.github.io/codebull-extension/asset/og-site.png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="627">
     <meta property="og:image:alt" content="我盯著一個跑著的 etcd 看了九分鐘，然後看到它的 fsync 在忙的時候比閒的時候快十四倍">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="一個 Put 進來，三條 goroutine 各自把它做完">
-    <meta name="twitter:description" content="不改一行 code，對一個正在跑的 etcd 從 gRPC 入口一路掛到 WAL 落碟與狀態套用，看四分鐘。">
+    <meta name="twitter:title" content="一次讀，也會敲一次 WAL">
+    <meta name="twitter:description" content="不改一行 code，對一個正在跑的 etcd 沿著寫入路徑掛六個點，分五個相位看五分半——然後在只送讀取的那一分鐘裡，看到 WAL 被呼叫了五千次。">
     <meta name="twitter:image" content="https://0xbu11.github.io/codebull-extension/asset/og-site.png">
     <link rel="stylesheet" href="style.css?v=17">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -61,10 +61,10 @@
             <div class="container">
                 <a class="article-back" href="index_zh_TW.html#articles">← 回文章列表</a>
                 <span class="article-card-source">etcd · 實測筆記</span>
-                <h1>一個 Put 進來，三條 goroutine 各自把它做完</h1>
-                <div class="article-meta"><span>2026-08-30</span><span>4 分鐘窗口 / 9,775 個 Put / 6 個觀測點</span><span>etcd v3.8 單節點</span></div>
-                <p class="article-dashboard-link">📊 本文的數字出自這次 run 的遠端面板：<a href="https://codebull-dashboard-service.web.app/etcd-write-path-20260830/" target="_blank" rel="noopener noreferrer">etcd-write-path-20260830</a></p>
-                <p class="article-lede">不改一行 code，對一個正在跑的 etcd 從 gRPC 入口一路掛到 WAL 落碟與狀態套用，看四分鐘。</p>
+                <h1>一次讀，也會敲一次 WAL</h1>
+                <div class="article-meta"><span>2026-09-05</span><span>5 分 32 秒窗口 / 9,472 個 Put / 6 個觀測點</span><span>etcd v3.8 單節點</span></div>
+                <p class="article-dashboard-link">📊 本文的數字出自這次 run 的遠端面板：<a href="https://codebull-dashboard-service.web.app/etcd-write-path-20260905/" target="_blank" rel="noopener noreferrer">etcd-write-path-20260905</a></p>
+                <p class="article-lede">不改一行 code，對一個正在跑的 etcd 沿著寫入路徑掛六個點，分五個相位看五分半——然後在只送讀取的那一分鐘裡，看到 WAL 被呼叫了五千次。</p>
             </div>
         </section>
 
@@ -114,7 +114,7 @@
 
 
 </div>
-<script id="cbg-data" type="application/json">{"mock": false, "title": "etcd 的寫入路徑", "lede": "9,775 個 Put、四分鐘。", "source": "article/etcd/graph-2026-08-30.json · 10:01–10:05 UTC", "window": {"startMs": 1788084063415, "stepMs": 10000, "buckets": 24}, "phases": [], "readout": {"ratios": [{"label": "提案 / Put", "num": "送進 raft 提案", "den": "收下 Put", "tone": "good"}, {"label": "WAL / 提案", "num": "寫入 WAL", "den": "送進 raft 提案", "tone": "warn"}], "check": "落碟與套用各在自己的 goroutine 上"}, "nodes": [{"id": "n0", "name": "寫入 WAL", "tone": "entry", "purpose": "一個提案落碟幾次？一次多久？", "probes": [{"traceKey": "wal.(*WAL).Save:959", "kind": "metric"}, {"traceKey": "wal.(*WAL).Save:960", "kind": "latency"}], "series": {"hits": [2, 18, 20, 20, 18, 20, 20, 20, 18, 142, 1762, 1776, 1788, 1780, 2184, 1887, 2054, 1983, 1760, 954, 1010, 1008, 1010, 505], "latencyP50": [0, 0.013, 0.012, 0.012, 0.012, 0.012, 0.012, 0.012, 0.012, 0.012, 0.011, 0.011, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0, 0, 0, 0], "latencyP95": [0, 0.019, 0.036, 0.035, 0.028, 0.029, 0.017, 0.03, 0.015, 0.029, 0.014, 0.014, 0.014, 0.014, 0.014, 0.017, 0.016, 0.016, 0.017, 0.016, 0, 0, 0, 0]}, "hitsFull": 21759, "latencyFull": {"count": 17272, "p50": 0.01, "p95": 0.015, "p99": 0.024, "max": 0.033}, "samples": [], "stacks": [], "x": 0, "y": 470, "root": true}, {"id": "n1", "name": "伺服器 API", "tone": "good", "purpose": "gRPC 那一層下面還隔著什麼？", "probes": [{"traceKey": "etcdserver.(*EtcdServer).Put:296", "kind": "metric"}], "series": {"hits": [1, 9, 10, 10, 9, 10, 10, 10, 9, 71, 881, 888, 894, 890, 1293, 1190, 1244, 1244, 1102, 0, 0, 0, 0, 0]}, "hitsFull": 9775, "latencyFull": null, "samples": [], "stacks": [], "x": 520, "y": 0, "root": false}, {"id": "n2", "name": "套用單筆", "tone": "money", "purpose": "寫入最後怎麼變成狀態？", "probes": [{"traceKey": "etcdserver.(*EtcdServer).applyEntryNormal:1946", "kind": "metric"}], "series": {"hits": [0, 10, 10, 10, 9, 10, 10, 10, 9, 71, 881, 888, 894, 890, 1292, 1189, 1246, 1244, 1102, 0, 0, 0, 0, 0]}, "hitsFull": 9775, "latencyFull": null, "samples": [], "stacks": [], "x": 0, "y": 940, "root": true}, {"id": "n3", "name": "收下 Put", "tone": "bad", "purpose": "一分鐘進來幾個寫入請求？", "probes": [{"traceKey": "v3rpc.(*kvServer).Put:91", "kind": "metric"}], "series": {"hits": [1, 9, 10, 10, 9, 10, 10, 10, 9, 71, 881, 888, 894, 890, 1293, 1190, 1244, 1244, 1102, 0, 0, 0, 0, 0]}, "hitsFull": 9775, "latencyFull": null, "samples": [], "stacks": [], "x": 0, "y": 0, "root": true}, {"id": "n4", "name": "送進 raft 提案", "tone": "entry", "purpose": "一個寫入變成幾個提案？", "probes": [{"traceKey": "etcdserver.(*EtcdServer).processInternalRaftRequestOnce:1059", "kind": "metric"}], "series": {"hits": [1, 9, 10, 10, 9, 10, 10, 10, 9, 71, 881, 888, 894, 890, 1293, 1190, 1244, 1244, 1102, 0, 0, 0, 0, 0]}, "hitsFull": 9775, "latencyFull": null, "samples": [], "stacks": [], "x": 1040, "y": 0, "root": false}], "edges": [{"from": "n1", "to": "n4", "countPerBucket": [1, 9, 10, 10, 9, 10, 10, 10, 9, 71, 881, 888, 894, 890, 1293, 1190, 1244, 1244, 1102, 0, 0, 0, 0, 0], "countFull": 9775, "fanoutFull": 1, "gap": 1, "gapLabel": "1", "gapIn": ["etcdserver.(*EtcdServer).raftRequest"], "alert": null}, {"from": "n3", "to": "n1", "countPerBucket": [1, 9, 10, 10, 9, 10, 10, 10, 9, 71, 881, 888, 894, 890, 1293, 1190, 1244, 1244, 1102, 0, 0, 0, 0, 0], "countFull": 9775, "fanoutFull": 1, "gap": 0, "gapLabel": "0", "gapIn": [], "alert": null}], "notes": []}</script>
+<script id="cbg-data" type="application/json">{"mock": false, "title": "etcd 的寫入路徑", "lede": "9,472 個 Put、五分半、五個相位。", "source": "article/etcd/graph-2026-09-05.json · 15:32–15:36 UTC", "window": {"startMs": 1788622331508, "stepMs": 10000, "buckets": 28}, "phases": [], "readout": {"ratios": [{"label": "提案 / Put", "num": "送進 raft 提案", "den": "收下 Put", "tone": "good"}, {"label": "WAL / 提案", "num": "寫入 WAL", "den": "送進 raft 提案", "tone": "warn"}], "check": "落碟與套用各在自己的 goroutine 上"}, "nodes": [{"id": "n0", "name": "寫入 WAL", "tone": "entry", "purpose": "一個提案落碟幾次？一次多久？", "probes": [{"traceKey": "wal.(*WAL).Save:959", "kind": "metric"}, {"traceKey": "wal.(*WAL).Save:960", "kind": "latency"}], "series": {"hits": [6, 20, 18, 20, 20, 20, 18, 20, 20, 400, 1302, 1376, 1330, 1256, 1288, 1527, 1783, 1402, 1601, 1439, 1522, 1137, 875, 881, 864, 856, 861, 693], "latencyP50": [0, 0.017, 0.015, 0.016, 0.016, 0.016, 0.016, 0.014, 0.015, 0.015, 0.014, 0.014, 0.013, 0.014, 0.015, 0.014, 0.015, 0.016, 0.016, 0.015, 0.016, 0.016, 0.016, 0, 0, 0, 0, 0], "latencyP95": [0, 0.04, 0.028, 0.024, 0.03, 0.029, 0.024, 0.03, 0.033, 0.039, 0.027, 0.028, 0.027, 0.029, 0.029, 0.029, 0.029, 0.032, 0.03, 0.028, 0.031, 0.029, 0.031, 0, 0, 0, 0, 0]}, "hitsFull": 22555, "latencyFull": {"count": 17404, "p50": 0.015, "p95": 0.029, "p99": 0.038, "max": 0.296}, "samples": [], "stacks": [{"frames": ["runtime.goexit", "go.etcd.io/etcd/server/v3/etcdserver.(*raftNode).start.func1", "go.etcd.io/etcd/server/v3/storage.(*storage).Save", "go.etcd.io/etcd/server/v3/storage/wal.(*WAL).Save"], "perBucket": [0, 8, 20, 20, 20, 18, 20, 20, 18, 20, 592, 1312, 1370, 1336, 1250, 1296, 1300, 1370, 1483, 1528, 1493, 1550, 1616, 870, 875, 870, 859, 862]}], "x": 0, "y": 470, "root": true}, {"id": "n1", "name": "伺服器 API", "tone": "good", "purpose": "gRPC 那一層下面還隔著什麼？", "probes": [{"traceKey": "etcdserver.(*EtcdServer).Put:296", "kind": "metric"}], "series": {"hits": [3, 10, 9, 10, 10, 10, 9, 10, 10, 200, 651, 688, 665, 628, 644, 840, 1018, 834, 930, 833, 895, 565, 0, 0, 0, 0, 0, 0]}, "hitsFull": 9472, "latencyFull": null, "samples": [], "stacks": [{"frames": ["runtime.goexit", "google.golang.org/grpc.(*Server).serveStreams.func2.1", "google.golang.org/grpc.(*Server).handleStream", "google.golang.org/grpc.(*Server).processUnaryRPC", "go.etcd.io/etcd/api/v3/etcdserverpb._KV_Put_Handler", "google.golang.org/grpc.chainUnaryInterceptors.func1", "go.etcd.io/etcd/server/v3/etcdserver/api/v3rpc.newLogUnaryInterceptor.func1", "google.golang.org/grpc.getChainUnaryHandler.func1", "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors.UnaryServerInterceptor.func1", "google.golang.org/grpc.getChainUnaryHandler.func1", "go.etcd.io/etcd/server/v3/etcdserver/api/v3rpc.newUnaryInterceptor.func1", "go.etcd.io/etcd/api/v3/etcdserverpb._KV_Put_Handler.func1", "go.etcd.io/etcd/server/v3/etcdserver/api/v3rpc.(*quotaKVServer).Put", "shadow-go.etcd.io/etcd/server/v3/etcdserver/api/v3rpc.(*kvServer).Put", "go.etcd.io/etcd/server/v3/etcdserver.(*EtcdServer).Put"], "perBucket": [0, 4, 10, 10, 10, 9, 10, 10, 9, 10, 296, 657, 685, 667, 626, 647, 725, 794, 860, 921, 841, 913, 758, 0, 0, 0, 0, 0]}], "x": 520, "y": 0, "root": false}, {"id": "n2", "name": "套用單筆", "tone": "money", "purpose": "寫入最後怎麼變成狀態？", "probes": [{"traceKey": "etcdserver.(*EtcdServer).applyEntryNormal:1946", "kind": "metric"}], "series": {"hits": [3, 10, 9, 10, 10, 10, 9, 10, 10, 200, 651, 688, 665, 628, 644, 840, 1018, 834, 930, 833, 895, 565, 0, 0, 0, 0, 0, 0]}, "hitsFull": 9472, "latencyFull": null, "samples": [], "stacks": [{"frames": ["runtime.goexit", "go.etcd.io/etcd/pkg/v3/schedule.NewFIFOScheduler.gowrap1", "go.etcd.io/etcd/pkg/v3/schedule.(*fifo).run", "go.etcd.io/etcd/pkg/v3/schedule.(*fifo).executeJob", "go.etcd.io/etcd/pkg/v3/schedule.(*job).Do", "go.etcd.io/etcd/pkg/v3/schedule.job.Do", "go.etcd.io/etcd/server/v3/etcdserver.(*EtcdServer).run.func6", "go.etcd.io/etcd/server/v3/etcdserver.(*EtcdServer).applyAll", "go.etcd.io/etcd/server/v3/etcdserver.(*EtcdServer).applyEntries", "go.etcd.io/etcd/server/v3/etcdserver.(*EtcdServer).apply", "go.etcd.io/etcd/server/v3/etcdserver.(*EtcdServer).applyEntryNormal"], "perBucket": [0, 4, 10, 10, 10, 9, 10, 10, 9, 10, 295, 657, 685, 668, 625, 648, 723, 795, 859, 923, 840, 914, 758, 0, 0, 0, 0, 0]}], "x": 0, "y": 940, "root": true}, {"id": "n3", "name": "收下 Put", "tone": "bad", "purpose": "一分鐘進來幾個寫入請求？", "probes": [{"traceKey": "v3rpc.(*kvServer).Put:91", "kind": "metric"}], "series": {"hits": [3, 10, 9, 10, 10, 10, 9, 10, 10, 200, 651, 688, 665, 628, 644, 840, 1020, 832, 930, 833, 896, 564, 0, 0, 0, 0, 0, 0]}, "hitsFull": 9472, "latencyFull": null, "samples": [], "stacks": [{"frames": ["runtime.goexit", "google.golang.org/grpc.(*Server).serveStreams.func2.1", "google.golang.org/grpc.(*Server).handleStream", "google.golang.org/grpc.(*Server).processUnaryRPC", "go.etcd.io/etcd/api/v3/etcdserverpb._KV_Put_Handler", "google.golang.org/grpc.chainUnaryInterceptors.func1", "go.etcd.io/etcd/server/v3/etcdserver/api/v3rpc.newLogUnaryInterceptor.func1", "google.golang.org/grpc.getChainUnaryHandler.func1", "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors.UnaryServerInterceptor.func1", "google.golang.org/grpc.getChainUnaryHandler.func1", "go.etcd.io/etcd/server/v3/etcdserver/api/v3rpc.newUnaryInterceptor.func1", "go.etcd.io/etcd/api/v3/etcdserverpb._KV_Put_Handler.func1", "go.etcd.io/etcd/server/v3/etcdserver/api/v3rpc.(*quotaKVServer).Put", "go.etcd.io/etcd/server/v3/etcdserver/api/v3rpc.(*kvServer).Put"], "perBucket": [0, 4, 10, 10, 10, 9, 10, 10, 10, 9, 296, 657, 685, 667, 626, 647, 725, 794, 860, 921, 841, 913, 758, 0, 0, 0, 0, 0]}], "x": 0, "y": 0, "root": true}, {"id": "n4", "name": "送進 raft 提案", "tone": "entry", "purpose": "一個寫入變成幾個提案？", "probes": [{"traceKey": "etcdserver.(*EtcdServer).processInternalRaftRequestOnce:1059", "kind": "metric"}], "series": {"hits": [3, 10, 9, 10, 10, 10, 9, 10, 10, 200, 651, 688, 665, 628, 644, 840, 1018, 834, 930, 833, 895, 565, 0, 0, 0, 0, 0, 0]}, "hitsFull": 9472, "latencyFull": null, "samples": [], "stacks": [{"frames": ["runtime.goexit", "google.golang.org/grpc.(*Server).serveStreams.func2.1", "google.golang.org/grpc.(*Server).handleStream", "google.golang.org/grpc.(*Server).processUnaryRPC", "go.etcd.io/etcd/api/v3/etcdserverpb._KV_Put_Handler", "google.golang.org/grpc.chainUnaryInterceptors.func1", "go.etcd.io/etcd/server/v3/etcdserver/api/v3rpc.newLogUnaryInterceptor.func1", "google.golang.org/grpc.getChainUnaryHandler.func1", "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors.UnaryServerInterceptor.func1", "google.golang.org/grpc.getChainUnaryHandler.func1", "go.etcd.io/etcd/server/v3/etcdserver/api/v3rpc.newUnaryInterceptor.func1", "go.etcd.io/etcd/api/v3/etcdserverpb._KV_Put_Handler.func1", "go.etcd.io/etcd/server/v3/etcdserver/api/v3rpc.(*quotaKVServer).Put", "shadow-go.etcd.io/etcd/server/v3/etcdserver/api/v3rpc.(*kvServer).Put", "shadow-go.etcd.io/etcd/server/v3/etcdserver.(*EtcdServer).Put", "go.etcd.io/etcd/server/v3/etcdserver.(*EtcdServer).raftRequest", "go.etcd.io/etcd/server/v3/etcdserver.(*EtcdServer).processInternalRaftRequestOnce"], "perBucket": [0, 4, 10, 10, 10, 9, 10, 10, 9, 10, 296, 657, 685, 667, 625, 648, 724, 795, 858, 923, 841, 913, 758, 0, 0, 0, 0, 0]}], "x": 1040, "y": 0, "root": false}], "edges": [{"from": "n1", "to": "n4", "countPerBucket": [3, 10, 9, 10, 10, 10, 9, 10, 10, 200, 651, 688, 665, 628, 644, 840, 1018, 834, 930, 833, 895, 565, 0, 0, 0, 0, 0, 0], "countFull": 9472, "fanoutFull": 1, "gap": 1, "gapLabel": "1", "gapIn": ["etcdserver.(*EtcdServer).raftRequest"], "alert": null}, {"from": "n3", "to": "n1", "countPerBucket": [3, 10, 9, 10, 10, 10, 9, 10, 10, 200, 651, 688, 665, 628, 644, 840, 1018, 834, 930, 833, 895, 565, 0, 0, 0, 0, 0, 0], "countFull": 9472, "fanoutFull": 1, "gap": 0, "gapLabel": "0", "gapIn": [], "alert": null}], "notes": []}</script>
 <script>(function(){
 
 const D = JSON.parse(document.getElementById("cbg-data").textContent);
@@ -385,25 +385,36 @@ render(); syncPresets();
 </div>
                     <h2>為什麼掛在這裡</h2>
                     <p>etcd 的寫入不是一條直線走完的：gRPC 收下請求、轉成 raft 提案、落碟、套用成狀態——<strong>這四段各自可能在不同的 goroutine 上</strong>。原始碼讀得出來有 <code>go func()</code>，但讀不出來「一個 Put 對應幾次落碟」。</p>
-                    <p>所以六個點沿著整條寫入路徑鋪開：<code>kvServer.Put</code>（收下 Put）、<code>EtcdServer.Put</code>（伺服器 API）、<code>processInternalRaftRequestOnce</code>（送進 raft 提案）、<code>wal.Save</code>（寫入 WAL）、<code>applyEntryNormal</code>（套用單筆）。</p>
-                    <p>而且<strong>流量是刻意分兩段的</strong>：前半一秒一個寫入、單一 client；後半八個 client 同時全速。同樣的請求，兩種到達方式——用來看比例和延遲會不會跟著變。事前的預期很直覺：<strong>忙的時候應該更慢。</strong></p>
-                    <h2>三種訊號各自在說什麼</h2>
-                    <p><strong>metric（多常）</strong>——請求線一路 <code>×1</code>：收下 Put、伺服器 API、送進 raft 提案、套用單筆，四個點<strong>全部都是 9,775</strong>，一個不多一個不少。但落碟是 <strong>21,759</strong>，是提案的 <code>×2.23</code>。<strong>唯一對不上的那個數字，就是唯一不同步的那一段。</strong></p>
-                    <p><strong>latency（多久）</strong>——掛在 <code>wal.Save</code> 的落碟區間，這是整篇的主角。前半（一秒一個寫入）p50 <strong>0.0118ms</strong>，後半（八個 client 全速、流量高了大約一百倍）p50 <strong>0.0104ms</strong>。<strong>請求多了兩個數量級，單次落碟沒有變慢，反而略快</strong>——因為多個提案被合進同一次 fsync。把時間軸拖到任一半，數字就換成那一半的。</p>
-                    <p>這裡還有一個訊號在 metric 與 latency 的<strong>差額</strong>裡：計數說進了 21,759 次，延遲只量到 17,272 次。差的 4,487 次是空的 <code>HardState</code>——進了函式，但在 fsync 之前就短路返回了。<strong>兩種訊號量的不是同一件事</strong>：一個數「進來幾次」，一個數「真的做完幾次」。</p>
-                    <p><strong>flamegraph（從哪來）</strong>——面板 <strong>Call stack</strong> 分頁上的框鏈，直接回答了「為什麼圖上是三座島」：</p>
-                    <pre class="code-block"><code>收下 Put    goexit · serveStreams · handleStream · processUnaryRPC · _KV_Put_Handler · … · Put
-寫入 WAL    goexit · raftNode.start.func1 · storage.Save · wal.Save
-套用單筆    goexit · NewFIFOScheduler.gowrap1 · fifo.run · executeJob · … · applyEntryNormal</code></pre>
-                    <p><strong>三個不同的 <code>runtime.goexit</code></strong>，三條路。<code>go func()</code> 之後的堆疊不帶呼叫端，所以圖不畫那條它沒量到的邊。</p>
+                    <p>所以六個點沿著整條寫入路徑鋪開：<code>kvServer.Put</code>（收下 Put）、<code>EtcdServer.Put</code>（伺服器 API）、<code>processInternalRaftRequestOnce</code>（送進 raft 提案）、<code>wal.Save</code>（寫入 WAL，計數與計時各一個）、<code>applyEntryNormal</code>（套用單筆）。</p>
+                    <p>流量分成五個相位：<strong>一分鐘完全沒有客戶端流量</strong>、每秒一寫、單客戶端全速、兩客戶端全速、<strong>只送讀取</strong>。第一個和最後一個相位是對照組——它們告訴你，哪些數字根本不是你的請求造成的。</p>
+                    <h2>請求那一側：五個來源，同一個數字</h2>
+                    <p><code>收下 Put</code>、<code>伺服器 API</code>、<code>送進 raft 提案</code>、<code>套用單筆</code> 四個點，全部 <strong>9,472</strong>，一個不多一個不少。而 etcd 自己的 <code>/metrics</code> 說 <code>grpc_put_ok</code> 9,472、<code>mvcc_puts</code> 9,472、<code>proposals_committed</code> 9,472；我的客戶端腳本也數到 9,472。</p>
+                    <p><strong>五個獨立來源，沒有一個需要相信另一個。</strong> 這件事本身不有趣，但它是後面所有數字的地基：當某一個數字對不上時，你才知道那是真的對不上，不是量錯了。</p>
+                    <h2>「WAL 寫了幾次」有三個答案，而且都對</h2>
+                    <p>落碟那一側就不一樣了。同一段 WAL 工作，手上有三個數字：</p>
+                    <pre class="code-block"><code>wal.Save 這個函式被進入幾次（探針，959 行）        22,555
+進去之後真的走到底幾次（計時區間，960 行起）        17,404
+etcd 自己數的 fsync 次數（etcd_disk_wal_fsync…）    9,421</code></pre>
+                    <p>三個都是對的，因為它們數的是三件不同的事。而分相位看，它們在哪裡分岔就看得見了：</p>
+                    <pre class="code-block"><code>相位              客戶端寫入   Save 進入   每次寫入幾次 Save   每次寫入幾次 fsync
+每秒一寫                 87        174            2.000              1.00
+單客戶端全速          3,867      7,734            2.000              1.00
+兩客戶端全速          5,518      9,496            1.721             0.991</code></pre>
+                    <p><strong><code>2.000</code> 是結構，<code>1.721</code> 是流量。</strong> 閒的時候，一次寫入固定進兩次 <code>Save</code>——那是 raft 的 Ready 迴圈的形狀，跟負載無關，兩位小數都不差。多個客戶端同時打進來之後才掉下來：多個提案被合進同一個 Ready 回合，一起寫下去。</p>
+                    <p><strong>批次化不是「忙的時候才啟動的最佳化」，是「忙的時候才有東西可以合併」。</strong> 這句話不是從原始碼推出來的，是三個相位的比值自己排出來的。</p>
+                    <p>而且它重現了。同一天稍早用四個客戶端跑過一輪：<code>2.000 / 2.000 / 1.691</code>。前兩個相位一模一樣，第三個隨並行度移動。</p>
+                    <h2>然後是最後一個相位</h2>
+                    <p>最後一分鐘只送讀取，不寫。照理說寫入路徑上的點應該全部靜止。</p>
+                    <p><code>收下 Put</code> 確實停在 9,472 沒有再動，<code>套用單筆</code> 也是。<strong>但 <code>wal.Save</code> 從 17,404 跳到 22,555——多了 5,151 次。</strong></p>
+                    <p>而那個相位客戶端送出的讀取，正好是 <strong>5,151</strong> 次。</p>
+                    <p><strong>一次讀，就是一次 <code>wal.Save</code> 呼叫。</strong> 而且那 5,151 次一次都沒讓計時區間關起來——960 行的計數停在 17,404 不動。回原始碼看，<code>Save</code> 的第一件事就是：</p>
+                    <pre class="code-block"><code>if raft.IsEmptyHardState(st) &amp;&amp; len(ents) == 0 { return nil }</code></pre>
+                    <p>線性讀走 raft 的 ReadIndex，產生一個沒有 entry、HardState 也沒變的 Ready 回合，<code>Save</code> 進去、判斷、返回——<strong>沒有碰磁碟</strong>。</p>
+                    <p>這件事在稍早那一輪也一樣：讀取 4,480 次，<code>Save</code> 多 4,480 次。兩輪都分毫不差。</p>
                     <h2>結果</h2>
-                    <p>三座島不是圖漏看了什麼，是這個程式本來的形狀——而堆疊那一欄把三條 goroutine 的名字直接寫出來，讓這句話可以被讀者自己驗證，而不是只能相信。</p>
-                    <p>至於延遲，事前那個「忙的時候更慢」的預期是<strong>錯的</strong>。流量高了大約一百倍，單次落碟的中位數卻從 0.0118ms 掉到 0.0104ms——批次寫入把 fsync 的成本攤掉了。幅度不大，但方向跟直覺相反，而這種事沒辦法從原始碼推出來，只能量。</p>
-                    <div class="article-callout">
-                        <p>📊 <strong>本文的遠端觀測面板</strong>（實測數據，可線上檢視）：<a href="https://codebull-dashboard-service.web.app/etcd-write-path-20260830/" target="_blank" rel="noopener noreferrer">etcd-write-path-20260830</a></p>
-                        <p>面板收的是這次 run 的完整上傳（10:01:19Z–10:05:05Z，722,342 列）。<strong>Metrics</strong> 分頁六格累積命中曲線——四條 9,775 的線形狀完全相同，<code>wal.Save</code> 那條高出一倍多；流量在 10:02:40 前後從一秒一個跳到八個 client 全速，那個斜率轉折在每一條線上都看得到。<strong>Behavior Graph</strong> 分頁是文章開頭那張圖的互動版，<strong>Call stack</strong> 分頁則是上面那三條分屬不同 goroutine 的框鏈。（面板時間軸是本地時間 UTC+8，對應內文的 UTC 時間。）</p>
-                    </div>
-
+                    <p>如果只看「<code>wal.Save</code> 被呼叫 22,555 次」這一個數字，你會以為這五分半裡有兩萬多次落碟。實際落碟是 9,421 次，而其中有 5,151 次呼叫<strong>來自從來不寫入的請求</strong>。</p>
+                    <p>一個計數點告訴你某段程式跑了幾次，這是它唯一保證的事。<strong>它跑了幾次，和它做了幾次事，是兩個問題</strong>——而分辨這兩者的方法不是讀原始碼，是讓流量停下來，看哪些數字跟著停。</p>
+                    <p>📊 <strong>本文的遠端觀測面板</strong>（實測數據，可線上檢視）：https://codebull-dashboard-service.web.app/etcd-write-path-20260905/ 面板收的是這次 run 的完整上傳。<code>Metrics</code> 分頁看得到五個相位的斜率轉折；<code>Behavior Graph</code> 分頁是文章開頭那張圖的互動版，把時間軸拖到最後一分鐘，<code>寫入 WAL</code> 還在動而 <code>收下 Put</code> 已經停了。（面板時間軸是本地時間 UTC+8，對應內文的 UTC 時間。）</p>
                 </article>
             </div>
         </section>

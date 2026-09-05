@@ -75,11 +75,11 @@
                     <article class="article-card">
                         <a class="article-card-main" href="article-ristretto-admission_zh_TW.html">
                             <span class="article-card-source">Ristretto · 實測筆記</span>
-                            <h3>我盯著一個跑著的快取看了七分鐘，然後發現 Set() 回我 true 的時候，收不收根本還沒決定</h3>
-                            <p>四個觀測點同時站在呼叫端和入場政策上：我傳的 <code>cost=1</code> 到了政策手上全部變成 57，108,173 次沒中送出 106,916 次寫入——而真正的取捨晚一步發生在另一條 goroutine 上，兩邊差的那 280 次就是證據。</p>
+                            <h3>它說收下了七十三萬次，實際留下一千個</h3>
+                            <p>呼叫端 736,182 次 <code>Set</code> 全部拿到 <code>true</code>，而快取自己的計數器說它拒收了 684,408 次、又踢掉 49,834 個。圖上「決定收留或拒收」是一個獨立的 root——那個 <code>true</code> 回的不是「收下了」，是「排進去了」。</p>
                             <span class="article-card-link">閱讀文章 →</span>
                         </a>
-                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/ristretto-admission-20260830/" target="_blank" rel="noopener noreferrer">📊 對帳面板 · ristretto-admission-20260830</a>
+                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/ristretto-admission-20260905/" target="_blank" rel="noopener noreferrer">📊 對帳面板 · ristretto-admission-20260905</a>
                     </article>
                     <article class="article-card">
                         <a class="article-card-main" href="article-gin-middleware_zh_TW.html">
@@ -93,11 +93,11 @@
                     <article class="article-card">
                         <a class="article-card-main" href="article-etcd-write-path_zh_TW.html">
                             <span class="article-card-source">etcd · 實測筆記</span>
-                            <h3>一個 Put 進來，三條 goroutine 各自把它做完</h3>
-                            <p>整條寫入路徑六個觀測點：收下 Put、伺服器 API、送進 raft 提案、套用單筆，四個數字全部是 9,775，只有 WAL 落碟是 21,759；而流量高了大約一百倍之後，單次 fsync 沒有變慢，反而從 0.0118 毫秒掉到 0.0104 毫秒。</p>
+                            <h3>一次讀，也會敲一次 WAL</h3>
+                            <p>六個點沿著整條寫入路徑，流量分五個相位。請求側四個點全部 9,472，而 <code>wal.Save</code> 被進入 22,555 次、真正走到底 17,404 次、etcd 自己數的 fsync 只有 9,421。而最後那個只送讀取的相位裡，<code>Save</code> 又多了 5,151 次——正好等於客戶端送出的讀取數。</p>
                             <span class="article-card-link">閱讀文章 →</span>
                         </a>
-                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/etcd-write-path-20260830/" target="_blank" rel="noopener noreferrer">📊 對帳面板 · etcd-write-path-20260830</a>
+                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/etcd-write-path-20260905/" target="_blank" rel="noopener noreferrer">📊 對帳面板 · etcd-write-path-20260905</a>
                     </article>
                     <article class="article-card">
                         <a class="article-card-main" href="article-gorm-runtime_zh_TW.html">
@@ -111,11 +111,11 @@
                     <article class="article-card">
                         <a class="article-card-main" href="article-redis-tokens_zh_TW.html">
                             <span class="article-card-source">Redis · 實測筆記</span>
-                            <h3>迴圈裡的五行 Go，爬上連線的時候是 3,638 個 token</h3>
-                            <p>四個點沿著同一條路往下，每一層換一次單位：請求 → 連線 → 命令 → token。三個上游都是 1,070，到最後一層才變成 3,638；而 <code>CodeBull</code> 這個 token 出現 657 次，是其他每一個的三倍。</p>
+                            <h3>我差點寫出一個很漂亮的錯結論</h3>
+                            <p>五個點看七分鐘，token 一個不剩地兜起來：<code>648 + 13 × 216 = 3,456</code>，加上每輪一個的 <code>last_run</code> 值，正好是 3,672。然後為了知道延遲裡有多少是觀測本身，我做了對照組——第一次 +28.1%，第二次 −1.2%，方向相反。</p>
                             <span class="article-card-link">閱讀文章 →</span>
                         </a>
-                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/redis-observing-runtime-20260830/" target="_blank" rel="noopener noreferrer">📊 對帳面板 · redis-observing-runtime-20260830</a>
+                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/redis-tokens-20260905/" target="_blank" rel="noopener noreferrer">📊 對帳面板 · redis-tokens-20260905</a>
                     </article>
                     <article class="article-card">
                         <a class="article-card-main" href="article-inventory-fanout_zh_TW.html">

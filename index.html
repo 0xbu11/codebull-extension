@@ -78,11 +78,11 @@
                     <article class="article-card">
                         <a class="article-card-main" href="article-ristretto-admission.html">
                             <span class="article-card-source">Ristretto · Field Notes</span>
-                            <h3>I watched a running cache for seven minutes and found that when Set() returns true, nothing has been decided yet</h3>
-                            <p>Four probes standing on the caller and the admission policy at once: the <code>cost=1</code> I passed was 57 by the time the policy weighed it, and 108,173 misses issued 106,916 writes — while the real trade-off happened a beat later on another goroutine. The 280 the two sides differ by is the evidence.</p>
+                            <h3>It said yes 736,182 times and kept a thousand</h3>
+                            <p>The caller's 736,182 <code>Set</code> calls all returned <code>true</code>, while the cache's own counters say it rejected 684,408 and evicted 49,834 more. On the graph, <code>Admit or reject</code> is a root of its own — that <code>true</code> never meant "kept", only "queued".</p>
                             <span class="article-card-link">Read article →</span>
                         </a>
-                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/ristretto-admission-20260830/" target="_blank" rel="noopener noreferrer">📊 Reconcile on the dashboard · ristretto-admission-20260830</a>
+                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/ristretto-admission-20260905/" target="_blank" rel="noopener noreferrer">📊 Reconcile on the dashboard · ristretto-admission-20260905</a>
                     </article>
                     <article class="article-card">
                         <a class="article-card-main" href="article-gin-middleware.html">
@@ -96,11 +96,11 @@
                     <article class="article-card">
                         <a class="article-card-main" href="article-etcd-write-path.html">
                             <span class="article-card-source">etcd · Field Notes</span>
-                            <h3>One Put arrives, three goroutines each finish part of it</h3>
-                            <p>Six probes along the whole write path: take the Put, the server API, the raft proposal and the apply all read exactly 9,775, and only the WAL save differs at 21,759. Then traffic went up roughly a hundredfold and a single fsync did not get slower — it fell from 0.0118 ms to 0.0104 ms.</p>
+                            <h3>A read also knocks on the WAL</h3>
+                            <p>Six probes along the whole write path, traffic in five phases. The four request-side probes all read 9,472, while <code>wal.Save</code> was entered 22,555 times, ran to the end 17,404 times, and etcd counted only 9,421 fsyncs. In the last phase, which sent reads only, <code>Save</code> gained 5,151 more — exactly the number of reads the client sent.</p>
                             <span class="article-card-link">Read article →</span>
                         </a>
-                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/etcd-write-path-20260830/" target="_blank" rel="noopener noreferrer">📊 Reconcile on the dashboard · etcd-write-path-20260830</a>
+                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/etcd-write-path-20260905/" target="_blank" rel="noopener noreferrer">📊 Reconcile on the dashboard · etcd-write-path-20260905</a>
                     </article>
                     <article class="article-card">
                         <a class="article-card-main" href="article-gorm-runtime.html">
@@ -114,11 +114,11 @@
                     <article class="article-card">
                         <a class="article-card-main" href="article-redis-tokens.html">
                             <span class="article-card-source">Redis · Field Notes</span>
-                            <h3>Five lines of Go in a loop, 3,638 tokens on the wire</h3>
-                            <p>Four probes down one path, and the unit changes at every step: request → connection → command → token. The three upstream nodes are all 1,070; only at the last layer does it become 3,638 — and the token <code>CodeBull</code> appears 657 times, three times any other.</p>
+                            <h3>I almost published a very tidy wrong conclusion</h3>
+                            <p>Five probes over seven minutes, and every token accounted for: <code>648 + 13 × 216 = 3,456</code>, plus one <code>last_run</code> value per round, making exactly 3,672. Then, to find how much of the latency was the observation itself, I ran a control — +28.1% the first time, −1.2% the second, in opposite directions.</p>
                             <span class="article-card-link">Read article →</span>
                         </a>
-                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/redis-observing-runtime-20260830/" target="_blank" rel="noopener noreferrer">📊 Reconcile on the dashboard · redis-observing-runtime-20260830</a>
+                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/redis-tokens-20260905/" target="_blank" rel="noopener noreferrer">📊 Reconcile on the dashboard · redis-tokens-20260905</a>
                     </article>
                     <article class="article-card">
                         <a class="article-card-main" href="article-inventory-fanout.html">
