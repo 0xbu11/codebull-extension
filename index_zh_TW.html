@@ -75,8 +75,8 @@
                     <article class="article-card">
                         <a class="article-card-main" href="article-ristretto-admission_zh_TW.html">
                             <span class="article-card-source">Ristretto · 實測筆記</span>
-                            <h3>它說收下了五十二萬次，實際留下一千個</h3>
-                            <p>呼叫端 527,268 次 <code>Set</code> 全部拿到 <code>true</code>，而快取自己的計數器說它拒收了 475,921 次、又踢掉 46,927 個。那個 <code>true</code> 的意思其實是「排進 <code>setBuf</code> 這個 channel 了」——真正的取捨晚一步發生在 ristretto 自己的 goroutine 上，圖上它是一個獨立的 root。</p>
+                            <h3>它說收下了五十二萬次，實際留下十七個</h3>
+                            <p>呼叫端 527,268 次 <code>Set</code> 全部拿到 <code>true</code>——那個 <code>true</code> 的意思其實是「排進 <code>setBuf</code> 這個 channel 了」。而 <code>MaxCost: 1000</code> 也不是一千個項目：每個項目被加上簿記開銷後要 57 個單位，<code>1000 ÷ 57 ≈ 17</code>，而帳本上 <code>46,944 − 46,927</code> 正好是 17。</p>
                             <span class="article-card-link">閱讀文章 →</span>
                         </a>
                         <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/ristretto-admission-20260905/" target="_blank" rel="noopener noreferrer">📊 對帳面板 · ristretto-admission-20260905</a>
@@ -84,11 +84,11 @@
                     <article class="article-card">
                         <a class="article-card-main" href="article-gin-middleware_zh_TW.html">
                             <span class="article-card-source">gin · 實測筆記</span>
-                            <h3>我對一個跑著的 gin 數了十一分鐘，然後看到中介層鏈的八種形狀</h3>
-                            <p>600 個請求、1,800 次推進，平均 ×3；但堆疊上是八條框鏈——401 那個 phase 少掉最後一次，301 那個 phase 連鏈的門都沒進去。順帶量到的：p95 的 54.6 毫秒有 82 個樣本，全部落在會跑鏈的那四段，而只留入口一個點的對照輪是 0.166 毫秒。</p>
+                            <h3>我拆掉自己的觀測點，那條 55 毫秒的尾巴一動也不動</h3>
+                            <p>601 個請求裡有 61 個花了 55 毫秒，其餘 513 個在 5 毫秒以內，中間幾乎是空的。我以為那是中介層鏈上我自己的探針造成的——把它們全部拿掉再跑一次，慢請求的比例從 10.1% 變成 10.3%。<code>Context.Next()</code> 的八種堆疊形狀順帶把鏈的深度畫了出來，而少掉的那一條就是 401 被中斷的地方。</p>
                             <span class="article-card-link">閱讀文章 →</span>
                         </a>
-                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/gin-middleware-20260830/" target="_blank" rel="noopener noreferrer">📊 對帳面板 · gin-middleware-20260830</a>
+                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/gin-middleware-20260906/" target="_blank" rel="noopener noreferrer">📊 對帳面板 · gin-middleware-20260906</a>
                     </article>
                     <article class="article-card">
                         <a class="article-card-main" href="article-etcd-write-path_zh_TW.html">

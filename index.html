@@ -78,8 +78,8 @@
                     <article class="article-card">
                         <a class="article-card-main" href="article-ristretto-admission.html">
                             <span class="article-card-source">Ristretto · Field Notes</span>
-                            <h3>It said yes 527,268 times and kept a thousand</h3>
-                            <p>The caller's 527,268 <code>Set</code> calls all returned <code>true</code>, while the cache's own counters say it rejected 475,921 and evicted 46,927 more. That <code>true</code> only ever meant "it went into the <code>setBuf</code> channel" — the real trade-off happens a beat later on ristretto's own goroutine, a separate root on the graph.</p>
+                            <h3>It said yes 527,268 times and kept seventeen</h3>
+                            <p>The caller's 527,268 <code>Set</code> calls all returned <code>true</code> — and that <code>true</code> only ever meant "it went into the <code>setBuf</code> channel". Nor is <code>MaxCost: 1000</code> a thousand items: bookkeeping overhead makes each one cost 57 units, <code>1000 ÷ 57 ≈ 17</code>, and the ledger's <code>46,944 − 46,927</code> is exactly 17.</p>
                             <span class="article-card-link">Read article →</span>
                         </a>
                         <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/ristretto-admission-20260905/" target="_blank" rel="noopener noreferrer">📊 Reconcile on the dashboard · ristretto-admission-20260905</a>
@@ -87,11 +87,11 @@
                     <article class="article-card">
                         <a class="article-card-main" href="article-gin-middleware.html">
                             <span class="article-card-source">gin · Field Notes</span>
-                            <h3>I counted a running gin for eleven minutes and saw the eight shapes of a middleware chain</h3>
-                            <p>600 requests, 1,800 advances, ×3 on average — but the stacks hold eight distinct chains: the 401 phase loses the last one, and the 301 phase never reaches the chain at all. Measured along the way: the 54.6 ms p95 is 82 samples, all of them in the four phases that run the chain, against 0.166 ms in a control round with only the entry probe.</p>
+                            <h3>I removed my own probes, and the 55-millisecond tail did not move</h3>
+                            <p>Of 601 requests, 61 took 55 milliseconds and 513 finished under 5, with almost nothing in between. I assumed my own probes on the middleware chain were the cause — removing all of them moved the slow share from 10.1% to 10.3%. The eight stack shapes of <code>Context.Next()</code> draw the chain's depth along the way, and the one that is missing is where 401 cut it short.</p>
                             <span class="article-card-link">Read article →</span>
                         </a>
-                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/gin-middleware-20260830/" target="_blank" rel="noopener noreferrer">📊 Reconcile on the dashboard · gin-middleware-20260830</a>
+                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/gin-middleware-20260906/" target="_blank" rel="noopener noreferrer">📊 Reconcile on the dashboard · gin-middleware-20260906</a>
                     </article>
                     <article class="article-card">
                         <a class="article-card-main" href="article-etcd-write-path.html">
