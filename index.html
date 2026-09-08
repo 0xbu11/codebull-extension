@@ -123,11 +123,11 @@
                     <article class="article-card">
                         <a class="article-card-main" href="article-inventory-fanout.html">
                             <span class="article-card-source">Gin + GORM + MySQL · Field Notes</span>
-                            <h3>One quantity change on the front end, three writes at the database</h3>
-                            <p>Probes at the MySQL driver's door: 410 PUTs arrive as 1,230 read statements and 1,230 writes, six distinct statements at exactly 410 each — I changed a quantity, and it wrote the <code>categories</code> and <code>suppliers</code> association tables too.</p>
+                            <h3>I cut the PUT body down to a single field, and the database still got the same six statements</h3>
+                            <p>Probes at the MySQL driver's door, two phases of 240 PUTs: the first four minutes send the whole nested JSON back, the last four send <code>{"quantity":N}</code>. Each of the six statements still runs 240 times — those association tables are not coming from the front end, they came in through <code>Preload</code>.</p>
                             <span class="article-card-link">Read article →</span>
                         </a>
-                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/inventory-observing-runtime-20260830/" target="_blank" rel="noopener noreferrer">📊 Reconcile on the dashboard · inventory-observing-runtime-20260830</a>
+                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/inventory-fanout-20260908/" target="_blank" rel="noopener noreferrer">📊 Reconcile on the dashboard · inventory-fanout-20260908</a>
                     </article>
                     <article class="article-card">
                         <a class="article-card-main" href="article-gorm-three-signals.html">

@@ -120,11 +120,11 @@
                     <article class="article-card">
                         <a class="article-card-main" href="article-inventory-fanout_zh_TW.html">
                             <span class="article-card-source">Gin + GORM + MySQL · 實測筆記</span>
-                            <h3>前端改一次數量，資料庫收到三句寫入</h3>
-                            <p>在 MySQL driver 的門口掛點：410 次 PUT 到了驅動門口變成 1,230 句讀、1,230 句寫，六種語句每種剛好 410 次——我只改了數量，它連 <code>categories</code> 和 <code>suppliers</code> 兩張關聯表都寫了一次。</p>
+                            <h3>我把 PUT 的 body 砍到只剩一個欄位，資料庫收到的六句話一句沒少</h3>
+                            <p>在 MySQL driver 的門口掛點，兩個相位各 240 次 PUT：前四分鐘送整包巢狀 JSON，後四分鐘只送 <code>{"quantity":N}</code>。六句 SQL 每一句都還是 240 次——那兩張關聯表不是前端送回來的，是 <code>Preload</code> 讀進來的。</p>
                             <span class="article-card-link">閱讀文章 →</span>
                         </a>
-                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/inventory-observing-runtime-20260830/" target="_blank" rel="noopener noreferrer">📊 對帳面板 · inventory-observing-runtime-20260830</a>
+                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/inventory-fanout-20260908/" target="_blank" rel="noopener noreferrer">📊 對帳面板 · inventory-fanout-20260908</a>
                     </article>
                     <article class="article-card">
                         <a class="article-card-main" href="article-gorm-three-signals_zh_TW.html">
