@@ -105,11 +105,10 @@
                     <article class="article-card">
                         <a class="article-card-main" href="article-gorm-runtime.html">
                             <span class="article-card-source">GORM · Field Notes</span>
-                            <h3>One Preload, one extra statement on the read path</h3>
-                            <p>GORM bracketed from both ends: 286 calls to <code>First</code>, 429 runs at the convergence point, and the extra 143 are what <code>Preload</code> expands into at run time. Of the 1,144 executions, 143 more have no upstream at all — that is <code>Delete</code>, the one call this round with no probe on it.</p>
+                            <h3>I called Delete, and the database got an UPDATE</h3>
+                            <p>Eight probes bracketing a running GORM: 236 CRUD rounds became 1,888 executions, eight statement shapes at exactly 236 each — and not one of them a <code>DELETE</code>. <code>db.Delete()</code> emits <code>UPDATE … SET deleted_at</code>.</p>
                             <span class="article-card-link">Read article →</span>
                         </a>
-                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/gorm-observing-runtime-20260830/" target="_blank" rel="noopener noreferrer">📊 Reconcile on the dashboard · gorm-observing-runtime-20260830</a>
                     </article>
                     <article class="article-card">
                         <a class="article-card-main" href="article-redis-tokens.html">
@@ -132,11 +131,10 @@
                     <article class="article-card">
                         <a class="article-card-main" href="article-gorm-three-signals.html">
                             <span class="article-card-source">GORM · Metric + Log + Latency</span>
-                            <h3>One convergence point, three truths: how often, how long, and what</h3>
-                            <p>Metric, latency and log on the same GORM function: 1,144 executions, 8 verbatim SQL shapes, and a p95 fourteen times the median — all of it one set of events. The four edges add up to only 1,001; the missing 143 stay honestly missing, as a second starting point.</p>
+                            <h3>Three probes on one function, and two different numbers</h3>
+                            <p>A count, a timed span and verbatim content on one convergence point: the counter says 1,888, the timer says 1,652. The 236 gap is not dropped events — it is the chain where <code>Execute</code> appears twice.</p>
                             <span class="article-card-link">Read article →</span>
                         </a>
-                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/gorm-three-signals-20260830/" target="_blank" rel="noopener noreferrer">📊 Reconcile on the dashboard · gorm-three-signals-20260830</a>
                     </article>
                 </div>
             </div>

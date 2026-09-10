@@ -102,11 +102,10 @@
                     <article class="article-card">
                         <a class="article-card-main" href="article-gorm-runtime_zh_TW.html">
                             <span class="article-card-source">GORM · 實測筆記</span>
-                            <h3>一行 Preload，讓讀取路徑多送一次 SQL</h3>
-                            <p>上下兩端夾住 GORM：呼叫 286 次 <code>First</code>，收斂點跑了 429 次，多出來的 143 次是 <code>Preload</code> 在執行期展開的；而 1,144 次執行裡還有 143 次沒有上游，那是這一輪唯一沒掛點的 <code>Delete</code>。</p>
+                            <h3>我叫了 Delete，資料庫收到的是 UPDATE</h3>
+                            <p>八個觀測點夾住一個正在跑的 GORM：236 輪 CRUD 展開成 1,888 次執行，八種語句每種剛好 236 次——而那八種裡面一句 <code>DELETE</code> 都沒有。<code>db.Delete()</code> 送出去的是 <code>UPDATE … SET deleted_at</code>。</p>
                             <span class="article-card-link">閱讀文章 →</span>
                         </a>
-                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/gorm-observing-runtime-20260830/" target="_blank" rel="noopener noreferrer">📊 對帳面板 · gorm-observing-runtime-20260830</a>
                     </article>
                     <article class="article-card">
                         <a class="article-card-main" href="article-redis-tokens_zh_TW.html">
@@ -129,11 +128,10 @@
                     <article class="article-card">
                         <a class="article-card-main" href="article-gorm-three-signals_zh_TW.html">
                             <span class="article-card-source">GORM · Metric + Log + Latency</span>
-                            <h3>一個收斂點，三種真相：多常、多久、什麼</h3>
-                            <p>Metric、latency、log 掛在 GORM 同一個函式上：1,144 次執行、8 種逐字 SQL 形狀、p95 是 p50 的十四倍——全部出自同一批事件。而四條邊加起來只有 1,001，缺的 143 次誠實地留成第二個起點。</p>
+                            <h3>同一個函式上的三個點，數出兩個不同的數字</h3>
+                            <p>在同一個收斂點上掛計數、計時與逐字內容：計數說 1,888、計時說 1,652。差的 236 不是掉事件，是堆疊上 <code>Execute</code> 出現兩次的那條鏈。</p>
                             <span class="article-card-link">閱讀文章 →</span>
                         </a>
-                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/gorm-three-signals-20260830/" target="_blank" rel="noopener noreferrer">📊 對帳面板 · gorm-three-signals-20260830</a>
                     </article>
                 </div>
             </div>

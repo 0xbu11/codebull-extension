@@ -5,12 +5,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>一次讀，也會敲一次 WAL | CodeBull</title>
-    <meta name="description" content="不改一行 code，對一個正在跑的 etcd 沿著寫入路徑掛六個點，分五個相位看五分半——然後在只送讀取的那一分鐘裡，看到 WAL 被呼叫了五千次。">
+    <meta name="description" content="一個正在跑的 etcd，五個相位、五分半。最後那一分鐘只送讀取、一次寫入都沒有，`wal.Save` 卻還是多被叫了 5,151 次——正好是那一分鐘的讀取數。這篇聊的不是工具，是「盯著執行中的東西看」這件事本身。">
     <meta property="og:type" content="article">
     <meta property="og:site_name" content="CodeBull">
     <meta property="og:locale" content="zh_TW">
     <meta property="og:title" content="一次讀，也會敲一次 WAL">
-    <meta property="og:description" content="不改一行 code，對一個正在跑的 etcd 沿著寫入路徑掛六個點，分五個相位看五分半——然後在只送讀取的那一分鐘裡，看到 WAL 被呼叫了五千次。">
+    <meta property="og:description" content="一個正在跑的 etcd，五個相位、五分半。最後那一分鐘只送讀取、一次寫入都沒有，`wal.Save` 卻還是多被叫了 5,151 次——正好是那一分鐘的讀取數。這篇聊的不是工具，是「盯著執行中的東西看」這件事本身。">
     <meta property="og:url" content="https://0xbu11.github.io/codebull-extension/article-etcd-write-path_zh_TW.html">
     <meta property="og:image" content="https://0xbu11.github.io/codebull-extension/asset/og-site.png">
     <meta property="og:image:width" content="1200">
@@ -18,7 +18,7 @@
     <meta property="og:image:alt" content="我盯著一個跑著的 etcd 看了九分鐘，然後看到它的 fsync 在忙的時候比閒的時候快十四倍">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="一次讀，也會敲一次 WAL">
-    <meta name="twitter:description" content="不改一行 code，對一個正在跑的 etcd 沿著寫入路徑掛六個點，分五個相位看五分半——然後在只送讀取的那一分鐘裡，看到 WAL 被呼叫了五千次。">
+    <meta name="twitter:description" content="一個正在跑的 etcd，五個相位、五分半。最後那一分鐘只送讀取、一次寫入都沒有，`wal.Save` 卻還是多被叫了 5,151 次——正好是那一分鐘的讀取數。這篇聊的不是工具，是「盯著執行中的東西看」這件事本身。">
     <meta name="twitter:image" content="https://0xbu11.github.io/codebull-extension/asset/og-site.png">
     <link rel="stylesheet" href="style.css?v=17">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -64,7 +64,7 @@
                 <h1>一次讀，也會敲一次 WAL</h1>
                 <div class="article-meta"><span>2026-09-05</span><span>5 分 32 秒窗口 / 9,472 個 Put / 6 個觀測點</span><span>etcd v3.8 單節點</span></div>
                 <p class="article-dashboard-link">📊 本文的數字出自這次 run 的遠端面板：<a href="https://codebull-dashboard-service.web.app/etcd-write-path-20260905/" target="_blank" rel="noopener noreferrer">etcd-write-path-20260905</a></p>
-                <p class="article-lede">不改一行 code，對一個正在跑的 etcd 沿著寫入路徑掛六個點，分五個相位看五分半——然後在只送讀取的那一分鐘裡，看到 WAL 被呼叫了五千次。</p>
+                <p class="article-lede">一個正在跑的 etcd，五個相位、五分半。最後那一分鐘只送讀取、一次寫入都沒有，<code>wal.Save</code> 卻還是多被叫了 5,151 次——正好是那一分鐘的讀取數。這篇聊的不是工具，是「盯著執行中的東西看」這件事本身。</p>
             </div>
         </section>
 
@@ -415,6 +415,7 @@ etcd 自己數的 fsync 次數（etcd_disk_wal_fsync…）    9,421</code></pre>
                     <p>如果只看「<code>wal.Save</code> 被呼叫 22,555 次」這一個數字，你會以為這五分半裡有兩萬多次落碟。實際落碟是 9,421 次，而其中有 5,151 次呼叫<strong>來自從來不寫入的請求</strong>。</p>
                     <p>一個計數點告訴你某段程式跑了幾次，這是它唯一保證的事。<strong>它跑了幾次，和它做了幾次事，是兩個問題</strong>——而分辨這兩者的方法不是讀原始碼，是讓流量停下來，看哪些數字跟著停。</p>
                     <p>📊 <strong>本文的遠端觀測面板</strong>（實測數據，可線上檢視）：https://codebull-dashboard-service.web.app/etcd-write-path-20260905/ 面板收的是這次 run 的完整上傳。<code>Metrics</code> 分頁看得到五個相位的斜率轉折；<code>Behavior Graph</code> 分頁是文章開頭那張圖的互動版，把時間軸拖到最後一分鐘，<code>寫入 WAL</code> 還在動而 <code>收下 Put</code> 已經停了。（面板時間軸是本地時間 UTC+8，對應內文的 UTC 時間。）</p>
+                    <p><strong>這一輪對被觀測服務做了什麼</strong>：<code>server/main.go</code> 加了一行 blank import 把 SDK 帶進二進位檔，並用 <code>-gcflags=&quot;all=-dwarflocationlists=true -N -l&quot;</code> 編譯。業務邏輯一個字沒動，沒有加任何 log 或計數器。六個觀測點全部是 etcd 跑起來之後才掛上去的。</p>
                 </article>
             </div>
         </section>

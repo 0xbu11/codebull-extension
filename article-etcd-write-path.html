@@ -5,12 +5,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>A read also knocks on the WAL | CodeBull</title>
-    <meta name="description" content="Six probes along a running etcd&#x27;s write path, no source changes, five phases over five and a half minutes — and in the minute that sent nothing but reads, the WAL was called five thousand times.">
+    <meta name="description" content="A running etcd, five phases, five and a half minutes. The last minute sent nothing but reads — no writes at all — and `wal.Save` was still called 5,151 more times, exactly the number of reads that minute. This is not about a tool. It is about watching something while it runs.">
     <meta property="og:type" content="article">
     <meta property="og:site_name" content="CodeBull">
     <meta property="og:locale" content="en_US">
     <meta property="og:title" content="A read also knocks on the WAL">
-    <meta property="og:description" content="Six probes along a running etcd&#x27;s write path, no source changes, five phases over five and a half minutes — and in the minute that sent nothing but reads, the WAL was called five thousand times.">
+    <meta property="og:description" content="A running etcd, five phases, five and a half minutes. The last minute sent nothing but reads — no writes at all — and `wal.Save` was still called 5,151 more times, exactly the number of reads that minute. This is not about a tool. It is about watching something while it runs.">
     <meta property="og:url" content="https://0xbu11.github.io/codebull-extension/article-etcd-write-path.html">
     <meta property="og:image" content="https://0xbu11.github.io/codebull-extension/asset/og-site.png">
     <meta property="og:image:width" content="1200">
@@ -18,7 +18,7 @@
     <meta property="og:image:alt" content="I watched a running etcd for nine minutes, and its fsync was fourteen times faster when busy than when idle">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="A read also knocks on the WAL">
-    <meta name="twitter:description" content="Six probes along a running etcd&#x27;s write path, no source changes, five phases over five and a half minutes — and in the minute that sent nothing but reads, the WAL was called five thousand times.">
+    <meta name="twitter:description" content="A running etcd, five phases, five and a half minutes. The last minute sent nothing but reads — no writes at all — and `wal.Save` was still called 5,151 more times, exactly the number of reads that minute. This is not about a tool. It is about watching something while it runs.">
     <meta name="twitter:image" content="https://0xbu11.github.io/codebull-extension/asset/og-site.png">
     <link rel="stylesheet" href="style.css?v=17">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -64,7 +64,7 @@
                 <h1>A read also knocks on the WAL</h1>
                 <div class="article-meta"><span>2026-09-05</span><span>5 min 32 s window / 9,472 Puts / 6 probes</span><span>etcd v3.8, single node</span></div>
                 <p class="article-dashboard-link">📊 The numbers here come from this run’s remote dashboard: <a href="https://codebull-dashboard-service.web.app/etcd-write-path-20260905/" target="_blank" rel="noopener noreferrer">etcd-write-path-20260905</a></p>
-                <p class="article-lede">Six probes along a running etcd&#x27;s write path, no source changes, five phases over five and a half minutes — and in the minute that sent nothing but reads, the WAL was called five thousand times.</p>
+                <p class="article-lede">A running etcd, five phases, five and a half minutes. The last minute sent nothing but reads — no writes at all — and <code>wal.Save</code> was still called 5,151 more times, exactly the number of reads that minute. This is not about a tool. It is about watching something while it runs.</p>
             </div>
         </section>
 
@@ -415,6 +415,7 @@ two clients flat out         5,518          9,496            1.721              
                     <p>Read only &quot;<code>wal.Save</code> was called 22,555 times&quot; and you would think this five and a half minutes held twenty thousand disk writes. The real number is 9,421 — and 5,151 of those calls <strong>came from requests that never write anything</strong>.</p>
                     <p>A counter tells you how many times a piece of code ran. That is the only thing it promises. <strong>How often it ran and how often it did work are two different questions</strong> — and the way to tell them apart is not to read the source, it is to stop the traffic and watch which numbers stop with it.</p>
                     <p>📊 <strong>The remote dashboard for this article</strong> (real measurements, viewable online): https://codebull-dashboard-service.web.app/etcd-write-path-20260905/ The dashboard holds this run&#x27;s full upload. The <code>Metrics</code> tab shows the slope changing at each phase boundary; the <code>Behavior Graph</code> tab is the interactive version of the figure above — drag the timeline into the last minute and <code>WAL save</code> is still moving while <code>Take the Put</code> has stopped. (The panel&#x27;s time axis is local time, UTC+8, against the UTC window quoted here.)</p>
+                    <p><strong>What this round changed in the observed service</strong>: one blank import in <code>server/main.go</code> to pull the SDK into the binary, and <code>-gcflags=&quot;all=-dwarflocationlists=true -N -l&quot;</code> to compile it. Not one line of business logic, no added logs, no counters. All six probes were attached after etcd was already running.</p>
                 </article>
             </div>
         </section>
