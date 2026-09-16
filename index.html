@@ -82,7 +82,7 @@
                             <p>The caller's 527,268 <code>Set</code> calls all returned <code>true</code> — and that <code>true</code> only ever meant "it went into the <code>setBuf</code> channel". Nor is <code>MaxCost: 1000</code> a thousand items: bookkeeping overhead makes each one cost 57 units, <code>1000 ÷ 57 ≈ 17</code>, and the ledger's <code>46,944 − 46,927</code> is exactly 17.</p>
                             <span class="article-card-link">Read article →</span>
                         </a>
-                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/ristretto-admission-20260905/" target="_blank" rel="noopener noreferrer">📊 Reconcile on the dashboard · ristretto-admission-20260905</a>
+                        <a class="article-card-dash" href="https://codebull-service-b7lha2dtrq-uc.a.run.app/public/ristretto-admission-20260905/" target="_blank" rel="noopener noreferrer">📊 Reconcile on the dashboard · ristretto-admission-20260905</a>
                     </article>
                     <article class="article-card">
                         <a class="article-card-main" href="article-gin-middleware.html">
@@ -91,7 +91,7 @@
                             <p>Of 601 requests, 61 took 55 milliseconds and 513 finished under 5, with almost nothing in between. I assumed my own probes on the middleware chain were the cause — removing all of them moved the slow share from 10.1% to 10.3%. The eight stack shapes of <code>Context.Next()</code> draw the chain's depth along the way, and the one that is missing is where 401 cut it short.</p>
                             <span class="article-card-link">Read article →</span>
                         </a>
-                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/gin-middleware-20260906/" target="_blank" rel="noopener noreferrer">📊 Reconcile on the dashboard · gin-middleware-20260906</a>
+                        <a class="article-card-dash" href="https://codebull-service-b7lha2dtrq-uc.a.run.app/public/gin-middleware-20260906/" target="_blank" rel="noopener noreferrer">📊 Reconcile on the dashboard · gin-middleware-20260906</a>
                     </article>
                     <article class="article-card">
                         <a class="article-card-main" href="article-etcd-write-path.html">
@@ -100,7 +100,7 @@
                             <p>Six probes along the whole write path, traffic in five phases. The four request-side probes all read 9,472, while <code>wal.Save</code> was entered 22,555 times, ran to the end 17,404 times, and etcd counted only 9,421 fsyncs. In the last phase, which sent reads only, <code>Save</code> gained 5,151 more — exactly the number of reads the client sent.</p>
                             <span class="article-card-link">Read article →</span>
                         </a>
-                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/etcd-write-path-20260905/" target="_blank" rel="noopener noreferrer">📊 Reconcile on the dashboard · etcd-write-path-20260905</a>
+                        <a class="article-card-dash" href="https://codebull-service-b7lha2dtrq-uc.a.run.app/public/etcd-write-path-20260905/" target="_blank" rel="noopener noreferrer">📊 Reconcile on the dashboard · etcd-write-path-20260905</a>
                     </article>
                     <article class="article-card">
                         <a class="article-card-main" href="article-gorm-runtime.html">
@@ -117,7 +117,7 @@
                             <p>Five probes over seven minutes, and every token accounted for: <code>648 + 13 × 216 = 3,456</code>, plus one <code>last_run</code> value per round, making exactly 3,672. Then, to find how much of the latency was the observation itself, I ran a control — +28.1% the first time, −1.2% the second, in opposite directions.</p>
                             <span class="article-card-link">Read article →</span>
                         </a>
-                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/redis-tokens-20260905/" target="_blank" rel="noopener noreferrer">📊 Reconcile on the dashboard · redis-tokens-20260905</a>
+                        <a class="article-card-dash" href="https://codebull-service-b7lha2dtrq-uc.a.run.app/public/redis-tokens-20260905/" target="_blank" rel="noopener noreferrer">📊 Reconcile on the dashboard · redis-tokens-20260905</a>
                     </article>
                     <article class="article-card">
                         <a class="article-card-main" href="article-inventory-fanout.html">
@@ -126,7 +126,7 @@
                             <p>Probes at the MySQL driver's door, two phases of 240 PUTs: the first four minutes send the whole nested JSON back, the last four send <code>{"quantity":N}</code>. Each of the six statements still runs 240 times — those association tables are not coming from the front end, they came in through <code>Preload</code>.</p>
                             <span class="article-card-link">Read article →</span>
                         </a>
-                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/inventory-fanout-20260908/" target="_blank" rel="noopener noreferrer">📊 Reconcile on the dashboard · inventory-fanout-20260908</a>
+                        <a class="article-card-dash" href="https://codebull-service-b7lha2dtrq-uc.a.run.app/public/inventory-fanout-20260908/" target="_blank" rel="noopener noreferrer">📊 Reconcile on the dashboard · inventory-fanout-20260908</a>
                     </article>
                     <article class="article-card">
                         <a class="article-card-main" href="article-gorm-three-signals.html">

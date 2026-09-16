@@ -63,7 +63,7 @@
                 <span class="article-card-source">Gin + GORM + MySQL · 實測筆記</span>
                 <h1>我把 PUT 的 body 砍到只剩一個欄位，資料庫收到的六句話一句沒少</h1>
                 <div class="article-meta"><span>2026-09-08</span><span>7 分 58 秒窗口 / 480 次改動 / 6 個觀測點</span><span>Gin v1.9.1 + GORM v1.31.1 + MySQL 8.0</span></div>
-                <p class="article-dashboard-link">📊 本文的數字出自這次 run 的遠端面板：<a href="https://codebull-dashboard-service.web.app/inventory-fanout-20260908/" target="_blank" rel="noopener noreferrer">inventory-fanout-20260908</a></p>
+                <p class="article-dashboard-link">📊 本文的數字出自這次 run 的遠端面板：<a href="https://codebull-service-b7lha2dtrq-uc.a.run.app/public/inventory-fanout-20260908/" target="_blank" rel="noopener noreferrer">inventory-fanout-20260908</a></p>
                 <p class="article-lede">一個 Gin + GORM + MySQL 服務，每秒改一次數量，八分鐘。前四分鐘送整包巢狀 JSON，後四分鐘只送 <code>{&quot;quantity&quot;:N}</code>——兩邊的語句形狀、次數、延遲，一模一樣。這篇聊的不是工具，是「盯著執行中的東西看」這件事本身。</p>
             </div>
         </section>
@@ -418,7 +418,7 @@ B 只送 {&quot;quantity&quot;:N}     240          240               240        
                     <h2>結果</h2>
                     <p>我現在知道，那兩句 <code>INSERT</code> 跟前端送什麼沒有關係——<strong>它們是那一行 <code>Preload</code> 的帳，在兩行之後才結。</strong> 我原本會把它寫成前端的問題，因為那個解釋既合理又不用改我自己的程式碼。</p>
                     <p>而這件事在面板上是一句話都不會說的：兩個相位的曲線疊在一起，p50 差 0.57 毫秒，八分鐘裡沒有任何一格看起來不對。<strong>把 body 砍掉一半再跑四分鐘，花不到五分鐘，而它把一個「應該是這樣」換成了一個「就是這樣」。</strong></p>
-                    <p>📊 <strong>本文的遠端觀測面板</strong>（實測數據，可線上檢視）：https://codebull-dashboard-service.web.app/inventory-fanout-20260908/ <code>Behavior Graph</code> 分頁是文章開頭那張圖的互動版，時間軸上寫著 <code>events in span 4,804</code> 與 <code>1,443 ÷ 481 = ×3.00</code>；<code>Logs</code> 分頁可以把六句 SQL 逐字對帳；<code>Flamegraph</code> 分頁就是上面那條 25 層深的框鏈。（面板時間軸是本地時間 UTC+8，對應內文的 UTC 窗口。）</p>
+                    <p>📊 <strong>本文的遠端觀測面板</strong>（實測數據，可線上檢視）：https://codebull-service-b7lha2dtrq-uc.a.run.app/public/inventory-fanout-20260908/ <code>Behavior Graph</code> 分頁是文章開頭那張圖的互動版，時間軸上寫著 <code>events in span 4,804</code> 與 <code>1,443 ÷ 481 = ×3.00</code>；<code>Logs</code> 分頁可以把六句 SQL 逐字對帳；<code>Flamegraph</code> 分頁就是上面那條 25 層深的框鏈。（面板時間軸是本地時間 UTC+8，對應內文的 UTC 窗口。）</p>
                     <p><strong>這一輪對被觀測服務做了什麼</strong>：<code>main.go</code> 加了一行 blank import 把 SDK 帶進二進位檔，並用 <code>-gcflags=&quot;all=-dwarflocationlists=true -N -l&quot;</code> 編譯。業務邏輯一個字沒動，沒有加任何 log 或計數器。六個觀測點全部是行程跑起來之後才掛上去的，掛在五個函式上——其中兩個在 <code>go-sql-driver/mysql</code> 裡面，那是我沒有寫過、也沒有改過的套件。</p>
                 </article>
             </div>

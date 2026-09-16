@@ -79,7 +79,7 @@
                             <p>呼叫端 527,268 次 <code>Set</code> 全部拿到 <code>true</code>——那個 <code>true</code> 的意思其實是「排進 <code>setBuf</code> 這個 channel 了」。而 <code>MaxCost: 1000</code> 也不是一千個項目：每個項目被加上簿記開銷後要 57 個單位，<code>1000 ÷ 57 ≈ 17</code>，而帳本上 <code>46,944 − 46,927</code> 正好是 17。</p>
                             <span class="article-card-link">閱讀文章 →</span>
                         </a>
-                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/ristretto-admission-20260905/" target="_blank" rel="noopener noreferrer">📊 對帳面板 · ristretto-admission-20260905</a>
+                        <a class="article-card-dash" href="https://codebull-service-b7lha2dtrq-uc.a.run.app/public/ristretto-admission-20260905/" target="_blank" rel="noopener noreferrer">📊 對帳面板 · ristretto-admission-20260905</a>
                     </article>
                     <article class="article-card">
                         <a class="article-card-main" href="article-gin-middleware_zh_TW.html">
@@ -88,7 +88,7 @@
                             <p>601 個請求裡有 61 個花了 55 毫秒，其餘 513 個在 5 毫秒以內，中間幾乎是空的。我以為那是中介層鏈上我自己的探針造成的——把它們全部拿掉再跑一次，慢請求的比例從 10.1% 變成 10.3%。<code>Context.Next()</code> 的八種堆疊形狀順帶把鏈的深度畫了出來，而少掉的那一條就是 401 被中斷的地方。</p>
                             <span class="article-card-link">閱讀文章 →</span>
                         </a>
-                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/gin-middleware-20260906/" target="_blank" rel="noopener noreferrer">📊 對帳面板 · gin-middleware-20260906</a>
+                        <a class="article-card-dash" href="https://codebull-service-b7lha2dtrq-uc.a.run.app/public/gin-middleware-20260906/" target="_blank" rel="noopener noreferrer">📊 對帳面板 · gin-middleware-20260906</a>
                     </article>
                     <article class="article-card">
                         <a class="article-card-main" href="article-etcd-write-path_zh_TW.html">
@@ -97,7 +97,7 @@
                             <p>六個點沿著整條寫入路徑，流量分五個相位。請求側四個點全部 9,472，而 <code>wal.Save</code> 被進入 22,555 次、真正走到底 17,404 次、etcd 自己數的 fsync 只有 9,421。而最後那個只送讀取的相位裡，<code>Save</code> 又多了 5,151 次——正好等於客戶端送出的讀取數。</p>
                             <span class="article-card-link">閱讀文章 →</span>
                         </a>
-                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/etcd-write-path-20260905/" target="_blank" rel="noopener noreferrer">📊 對帳面板 · etcd-write-path-20260905</a>
+                        <a class="article-card-dash" href="https://codebull-service-b7lha2dtrq-uc.a.run.app/public/etcd-write-path-20260905/" target="_blank" rel="noopener noreferrer">📊 對帳面板 · etcd-write-path-20260905</a>
                     </article>
                     <article class="article-card">
                         <a class="article-card-main" href="article-gorm-runtime_zh_TW.html">
@@ -114,7 +114,7 @@
                             <p>五個點看七分鐘，token 一個不剩地兜起來：<code>648 + 13 × 216 = 3,456</code>，加上每輪一個的 <code>last_run</code> 值，正好是 3,672。然後為了知道延遲裡有多少是觀測本身，我做了對照組——第一次 +28.1%，第二次 −1.2%，方向相反。</p>
                             <span class="article-card-link">閱讀文章 →</span>
                         </a>
-                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/redis-tokens-20260905/" target="_blank" rel="noopener noreferrer">📊 對帳面板 · redis-tokens-20260905</a>
+                        <a class="article-card-dash" href="https://codebull-service-b7lha2dtrq-uc.a.run.app/public/redis-tokens-20260905/" target="_blank" rel="noopener noreferrer">📊 對帳面板 · redis-tokens-20260905</a>
                     </article>
                     <article class="article-card">
                         <a class="article-card-main" href="article-inventory-fanout_zh_TW.html">
@@ -123,7 +123,7 @@
                             <p>在 MySQL driver 的門口掛點，兩個相位各 240 次 PUT：前四分鐘送整包巢狀 JSON，後四分鐘只送 <code>{"quantity":N}</code>。六句 SQL 每一句都還是 240 次——那兩張關聯表不是前端送回來的，是 <code>Preload</code> 讀進來的。</p>
                             <span class="article-card-link">閱讀文章 →</span>
                         </a>
-                        <a class="article-card-dash" href="https://codebull-dashboard-service.web.app/inventory-fanout-20260908/" target="_blank" rel="noopener noreferrer">📊 對帳面板 · inventory-fanout-20260908</a>
+                        <a class="article-card-dash" href="https://codebull-service-b7lha2dtrq-uc.a.run.app/public/inventory-fanout-20260908/" target="_blank" rel="noopener noreferrer">📊 對帳面板 · inventory-fanout-20260908</a>
                     </article>
                     <article class="article-card">
                         <a class="article-card-main" href="article-gorm-three-signals_zh_TW.html">

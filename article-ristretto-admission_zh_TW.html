@@ -63,7 +63,7 @@
                 <span class="article-card-source">Ristretto · 實測筆記</span>
                 <h1>它說收下了五十二萬次，實際留下十七個</h1>
                 <div class="article-meta"><span>2026-09-05</span><span>7 分 20 秒窗口 / 99,252 次沒中 / 4 個觀測點</span><span>ristretto v2.4.2</span></div>
-                <p class="article-dashboard-link">📊 本文的數字出自這次 run 的遠端面板：<a href="https://codebull-dashboard-service.web.app/ristretto-admission-20260905/" target="_blank" rel="noopener noreferrer">ristretto-admission-20260905</a></p>
+                <p class="article-dashboard-link">📊 本文的數字出自這次 run 的遠端面板：<a href="https://codebull-service-b7lha2dtrq-uc.a.run.app/public/ristretto-admission-20260905/" target="_blank" rel="noopener noreferrer">ristretto-admission-20260905</a></p>
                 <p class="article-lede">對一個正在跑的 Ristretto 掛四個點看七分半。呼叫端 527,268 次 <code>Set</code> 全部拿到 <code>true</code>，而快取自己的計數器說它拒收了 475,921 次。兩個數字都是真的，因為那個 <code>true</code> 回答的不是你以為的問題——而容量那個數字，也不是你以為的單位。</p>
             </div>
         </section>
@@ -441,7 +441,7 @@ evicted    46,927   ← 進去之後才被踢</code></pre>
                     <h2>結果</h2>
                     <p>站在呼叫端，這個快取在「幾乎全收」和「幾乎全拒」的時候長得一模一樣：同一個回傳值、同一個型別、同樣沒有錯誤。<strong>分辨這兩者需要的不是更仔細地讀回傳值，是站到另一條 goroutine 上去看。</strong></p>
                     <p>而那條 goroutine 不在你的呼叫堆疊上——這就是為什麼它必須是動態掛上去的一個點，而不是一段你可以在呼叫端加的 log。</p>
-                    <p>📊 <strong>本文的遠端觀測面板</strong>（實測數據，可線上檢視）：https://codebull-dashboard-service.web.app/ristretto-admission-20260905/ <code>Behavior Graph</code> 分頁是文章開頭那張圖的互動版，兩座島的分離在上面看得最清楚；<code>Logs</code> 分頁是入場政策每一次比較的 <code>key</code> 與 <code>cost</code>。（面板時間軸是本地時間 UTC+8，對應內文的 UTC 時間。）</p>
+                    <p>📊 <strong>本文的遠端觀測面板</strong>（實測數據，可線上檢視）：https://codebull-service-b7lha2dtrq-uc.a.run.app/public/ristretto-admission-20260905/ <code>Behavior Graph</code> 分頁是文章開頭那張圖的互動版，兩座島的分離在上面看得最清楚；<code>Logs</code> 分頁是入場政策每一次比較的 <code>key</code> 與 <code>cost</code>。（面板時間軸是本地時間 UTC+8，對應內文的 UTC 時間。）</p>
                 </article>
             </div>
         </section>

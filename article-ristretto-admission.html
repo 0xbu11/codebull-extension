@@ -63,7 +63,7 @@
                 <span class="article-card-source">Ristretto · Field Notes</span>
                 <h1>It said yes 527,268 times and kept seventeen</h1>
                 <div class="article-meta"><span>2026-09-05</span><span>7 min 20 s window / 99,252 misses / 4 probes</span><span>ristretto v2.4.2</span></div>
-                <p class="article-dashboard-link">📊 The numbers here come from this run’s remote dashboard: <a href="https://codebull-dashboard-service.web.app/ristretto-admission-20260905/" target="_blank" rel="noopener noreferrer">ristretto-admission-20260905</a></p>
+                <p class="article-dashboard-link">📊 The numbers here come from this run’s remote dashboard: <a href="https://codebull-service-b7lha2dtrq-uc.a.run.app/public/ristretto-admission-20260905/" target="_blank" rel="noopener noreferrer">ristretto-admission-20260905</a></p>
                 <p class="article-lede">Four probes on a running Ristretto for seven and a half minutes. The caller&#x27;s 527,268 <code>Set</code> calls all returned <code>true</code>, while the cache&#x27;s own counters say it rejected 475,921. Both numbers are real, because that <code>true</code> is not answering the question you think it is — and the capacity is not in the unit you think it is.</p>
             </div>
         </section>
@@ -441,7 +441,7 @@ evicted    46,927   &lt;- got in, then pushed out</code></pre>
                     <h2>The result</h2>
                     <p>From the caller&#x27;s seat, this cache looks identical when it keeps almost everything and when it keeps almost nothing: same return value, same type, no error either way. <strong>Telling those apart does not take a closer reading of the return value. It takes standing on the other goroutine.</strong></p>
                     <p>And that goroutine is not on your call stack — which is why it has to be a probe attached at runtime rather than a log line you could add at the call site.</p>
-                    <p>📊 <strong>The remote dashboard for this article</strong> (real measurements, viewable online): https://codebull-dashboard-service.web.app/ristretto-admission-20260905/ The <code>Behavior Graph</code> tab is the interactive version of the figure above, where the two islands are clearest; the <code>Logs</code> tab carries the <code>key</code> and <code>cost</code> of every admission comparison. (The panel&#x27;s time axis is local time, UTC+8, against the UTC window quoted here.)</p>
+                    <p>📊 <strong>The remote dashboard for this article</strong> (real measurements, viewable online): https://codebull-service-b7lha2dtrq-uc.a.run.app/public/ristretto-admission-20260905/ The <code>Behavior Graph</code> tab is the interactive version of the figure above, where the two islands are clearest; the <code>Logs</code> tab carries the <code>key</code> and <code>cost</code> of every admission comparison. (The panel&#x27;s time axis is local time, UTC+8, against the UTC window quoted here.)</p>
                 </article>
             </div>
         </section>

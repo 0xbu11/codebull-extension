@@ -59,7 +59,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function embedArticleBehaviorDashboard() {
     const graph = document.querySelector('.article-graph-embed');
-    const dashboardLink = document.querySelector('.article-dashboard-link a[href*="codebull-dashboard-service.web.app"]');
+    const dashboardLink = document.querySelector('.article-dashboard-link a[href*="codebull-service-b7lha2dtrq-uc.a.run.app/public/"]');
     if (!graph || !dashboardLink) {
         return;
     }

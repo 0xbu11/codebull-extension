@@ -63,7 +63,7 @@
                 <span class="article-card-source">gin · 實測筆記</span>
                 <h1>我拆掉自己的觀測點，那條 55 毫秒的尾巴一動也不動</h1>
                 <div class="article-meta"><span>2026-09-06</span><span>10 分 11 秒窗口 / 601 個請求 / 5 個觀測點</span><span>gin v1.12.0</span></div>
-                <p class="article-dashboard-link">📊 本文的數字出自這次 run 的遠端面板：<a href="https://codebull-dashboard-service.web.app/gin-middleware-20260906/" target="_blank" rel="noopener noreferrer">gin-middleware-20260906</a></p>
+                <p class="article-dashboard-link">📊 本文的數字出自這次 run 的遠端面板：<a href="https://codebull-service-b7lha2dtrq-uc.a.run.app/public/gin-middleware-20260906/" target="_blank" rel="noopener noreferrer">gin-middleware-20260906</a></p>
                 <p class="article-lede">一個 gin 服務，每秒一個請求，十分鐘。其中十分之一的請求花了 55 毫秒，其餘全部在 1 毫秒以內——中間幾乎沒有東西。這篇聊的不是工具，是「盯著執行中的東西看」這件事本身。</p>
             </div>
         </section>
@@ -437,7 +437,7 @@ GET /health/  301        120      0</code></pre>
                     <h2>結果</h2>
                     <p>我現在知道，那條把 p95 拉到 54.839 毫秒的尾巴，<strong>不是觀測留下的痕跡，是這個服務本來就有的</strong>——而我原本會把它寫成前者，因為那個解釋既合理又讓我舒服。</p>
                     <p>拆掉自己的點再跑一次，花了五分鐘。而它把一句話從「我以為」變成了「我知道」——或者更精確地說，變成了一個<strong>更小、但真的成立</strong>的結論：我不知道那 55 毫秒是什麼，但我知道它不是我。</p>
-                    <p>📊 <strong>本文的遠端觀測面板</strong>（實測數據，可線上檢視）：https://codebull-dashboard-service.web.app/gin-middleware-20260906/ 面板收的是這次 run 的完整上傳，<strong>含主窗口與後面那段對照</strong>——時間軸上 06:10 之後 <code>跑中介層</code> 那條線就停了，那裡就是我把點拿掉的地方。<code>Behavior Graph</code> 分頁是文章開頭那張圖的互動版，<code>Call stack</code> 分頁就是上面那八條框鏈。（面板時間軸是本地時間 UTC+8，對應內文的 UTC 窗口。）</p>
+                    <p>📊 <strong>本文的遠端觀測面板</strong>（實測數據，可線上檢視）：https://codebull-service-b7lha2dtrq-uc.a.run.app/public/gin-middleware-20260906/ 面板收的是這次 run 的完整上傳，<strong>含主窗口與後面那段對照</strong>——時間軸上 06:10 之後 <code>跑中介層</code> 那條線就停了，那裡就是我把點拿掉的地方。<code>Behavior Graph</code> 分頁是文章開頭那張圖的互動版，<code>Call stack</code> 分頁就是上面那八條框鏈。（面板時間軸是本地時間 UTC+8，對應內文的 UTC 窗口。）</p>
                     <p><strong>這一輪對被觀測服務做了什麼</strong>：<code>main.go</code> 加了一行 blank import 把 SDK 帶進二進位檔，並用 <code>-gcflags=&quot;all=-dwarflocationlists=true -N -l&quot;</code> 編譯。業務邏輯一個字沒動，沒有加任何 log 或計數器。五個觀測點全部是行程跑起來之後才掛上去的。</p>
                 </article>
             </div>

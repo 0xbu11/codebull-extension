@@ -63,7 +63,7 @@
                 <span class="article-card-source">Redis · 實測筆記</span>
                 <h1>我差點寫出一個很漂亮的錯結論</h1>
                 <div class="article-meta"><span>2026-09-05</span><span>7 分 7 秒窗口 / 1,080 個命令 / 5 個觀測點</span><span>go-redis v9</span></div>
-                <p class="article-dashboard-link">📊 本文的數字出自這次 run 的遠端面板：<a href="https://codebull-dashboard-service.web.app/redis-tokens-20260905/" target="_blank" rel="noopener noreferrer">redis-tokens-20260905</a></p>
+                <p class="article-dashboard-link">📊 本文的數字出自這次 run 的遠端面板：<a href="https://codebull-service-b7lha2dtrq-uc.a.run.app/public/redis-tokens-20260905/" target="_blank" rel="noopener noreferrer">redis-tokens-20260905</a></p>
                 <p class="article-lede">對一個正在跑的 go-redis 掛五個點看七分鐘，量到一個延遲數字。為了知道其中有多少是觀測本身造成的，我做了對照組——然後又做了一次，方向相反。</p>
             </div>
         </section>
@@ -407,7 +407,7 @@ render(); syncPresets();
                     <p><strong>而我拿一次前後對照去補那個空格，第一次就得到了一個假的答案。</strong></p>
                     <p>前後對照要能量出東西，前提是「除了我改的那件事，其他都沒變」。在一台會晃的機器上這個前提不成立，而<strong>它不成立的時候不會報錯</strong>——它會給你一個看起來像答案的差值，帶著小數點，附著樣本數。</p>
                     <p>真正的差別不在方法，在<strong>做了幾次</strong>。同一個實驗做兩次要花的成本，遠低於在文章裡放一個錯的百分比。</p>
-                    <p>📊 <strong>本文的遠端觀測面板</strong>（實測數據，可線上檢視）：https://codebull-dashboard-service.web.app/redis-tokens-20260905/ <code>Metrics</code> 分頁看得到四條累積命中曲線與延遲分佈；<code>Logs</code> 分頁是那 3,672 個 token 的逐筆內容，包含每輪都不一樣的 <code>last_run</code>。（面板時間軸是本地時間 UTC+8，對應內文的 UTC 時間。）</p>
+                    <p>📊 <strong>本文的遠端觀測面板</strong>（實測數據，可線上檢視）：https://codebull-service-b7lha2dtrq-uc.a.run.app/public/redis-tokens-20260905/ <code>Metrics</code> 分頁看得到四條累積命中曲線與延遲分佈；<code>Logs</code> 分頁是那 3,672 個 token 的逐筆內容，包含每輪都不一樣的 <code>last_run</code>。（面板時間軸是本地時間 UTC+8，對應內文的 UTC 時間。）</p>
                 </article>
             </div>
         </section>

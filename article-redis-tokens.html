@@ -63,7 +63,7 @@
                 <span class="article-card-source">Redis · Field Notes</span>
                 <h1>I almost published a very tidy wrong conclusion</h1>
                 <div class="article-meta"><span>2026-09-05</span><span>7 min 7 s window / 1,080 commands / 5 probes</span><span>go-redis v9</span></div>
-                <p class="article-dashboard-link">📊 The numbers here come from this run’s remote dashboard: <a href="https://codebull-dashboard-service.web.app/redis-tokens-20260905/" target="_blank" rel="noopener noreferrer">redis-tokens-20260905</a></p>
+                <p class="article-dashboard-link">📊 The numbers here come from this run’s remote dashboard: <a href="https://codebull-service-b7lha2dtrq-uc.a.run.app/public/redis-tokens-20260905/" target="_blank" rel="noopener noreferrer">redis-tokens-20260905</a></p>
                 <p class="article-lede">Five probes on a running go-redis for seven minutes produced a latency figure. To find out how much of it was the observation itself, I ran a control — and then ran it again, and it came out the other way.</p>
             </div>
         </section>
@@ -407,7 +407,7 @@ second run (from 15:51)   p50 10.240ms        p50 10.359ms       -0.119ms   -1.2
                     <p><strong>And when I used a single before/after to fill in that blank, the first attempt handed me a false answer.</strong></p>
                     <p>A before/after measures something only if nothing changed except the thing you changed. On a machine that wobbles, that premise is false — and <strong>when it is false, nothing raises an error</strong>. You get a difference that looks like an answer, with a decimal point and a sample count attached.</p>
                     <p>The difference that mattered was not the method. It was <strong>doing it twice</strong>. Running the same experiment a second time costs far less than putting a wrong percentage in an article.</p>
-                    <p>📊 <strong>The remote dashboard for this article</strong> (real measurements, viewable online): https://codebull-dashboard-service.web.app/redis-tokens-20260905/ The <code>Metrics</code> tab carries the four cumulative hit curves and the latency distribution; the <code>Logs</code> tab has all 3,672 tokens row by row, including the <code>last_run</code> value that differs every round. (The panel&#x27;s time axis is local time, UTC+8, against the UTC window quoted here.)</p>
+                    <p>📊 <strong>The remote dashboard for this article</strong> (real measurements, viewable online): https://codebull-service-b7lha2dtrq-uc.a.run.app/public/redis-tokens-20260905/ The <code>Metrics</code> tab carries the four cumulative hit curves and the latency distribution; the <code>Logs</code> tab has all 3,672 tokens row by row, including the <code>last_run</code> value that differs every round. (The panel&#x27;s time axis is local time, UTC+8, against the UTC window quoted here.)</p>
                 </article>
             </div>
         </section>
