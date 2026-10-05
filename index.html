@@ -76,6 +76,15 @@
                 </div>
                 <div class="article-grid">
                     <article class="article-card">
+                        <a class="article-card-main" href="article-grpc-frames.html">
+                            <span class="article-card-source">grpc-go · Field Notes</span>
+                            <h3>I thought a gRPC call was one request and one response, then counted six frames on the wire that nobody wrote</h3>
+                            <p>One caller at 24 calls a second: every call, both sides add a WINDOW_UPDATE, a PING and a PING ACK — grpc-go's BDP estimator, six control frames against the call's own five. Eight callers at the same rate: one round per eight calls, and 6.5 times fewer socket writes.</p>
+                            <span class="article-card-link">Read article →</span>
+                        </a>
+                        <a class="article-card-dash" href="https://codebull-service-b7lha2dtrq-uc.a.run.app/public/grpc-frames-20261005/" target="_blank" rel="noopener noreferrer">📊 Dashboard · grpc-frames-20261005</a>
+                    </article>
+                    <article class="article-card">
                         <a class="article-card-main" href="article-leveldb-write-merge.html">
                             <span class="article-card-source">goleveldb · Field Notes</span>
                             <h3>I had eight goroutines write to leveldb at once, and every wave cost exactly two WAL writes</h3>

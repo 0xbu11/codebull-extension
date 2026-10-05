@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>I thought a gRPC call was one request and one response, then counted six frames on the wire that nobody wrote | CodeBull</title>
+    <meta name="description" content="One caller, 24 unary calls a second: on every call, each side sends one extra WINDOW_UPDATE and one PING, and answers the other&#x27;s PING with an ACK. Switch to eight callers at the same rate, and it takes eight calls to cost one round. This piece is not about a tool; it is about watching something while it runs.">
+    <meta property="og:type" content="article">
+    <meta property="og:site_name" content="CodeBull">
+    <meta property="og:locale" content="en_US">
+    <meta property="og:title" content="I thought a gRPC call was one request and one response, then counted six frames on the wire that nobody wrote">
+    <meta property="og:description" content="One caller, 24 unary calls a second: on every call, each side sends one extra WINDOW_UPDATE and one PING, and answers the other&#x27;s PING with an ACK. Switch to eight callers at the same rate, and it takes eight calls to cost one round. This piece is not about a tool; it is about watching something while it runs.">
+    <meta property="og:url" content="https://0xbu11.github.io/codebull-extension/article-grpc-frames.html">
+    <meta property="og:image" content="https://0xbu11.github.io/codebull-extension/asset/og-grpc-frames.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="627">
+    <meta property="og:image:alt" content="I thought a gRPC call was one request and one response, then counted six frames on the wire that nobody wrote">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="I thought a gRPC call was one request and one response, then counted six frames on the wire that nobody wrote">
+    <meta name="twitter:description" content="One caller, 24 unary calls a second: on every call, each side sends one extra WINDOW_UPDATE and one PING, and answers the other&#x27;s PING with an ACK. Switch to eight callers at the same rate, and it takes eight calls to cost one round. This piece is not about a tool; it is about watching something while it runs.">
+    <meta name="twitter:image" content="https://0xbu11.github.io/codebull-extension/asset/og-grpc-frames.png">
+    <link rel="stylesheet" href="style.css?v=17">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&display=swap" rel="stylesheet">
+    <script src="theme.js"></script>
+</head>
+
+<body>
+    <div class="announcement-banner">
+        Currently supported Go versions: V1.22.0 and V1.26.0.
+    </div>
+    <header>
+        <div class="container">
+            <div class="logo">
+                <a href="index.html">Code<span>Bull</span></a>
+            </div>
+            <div class="header-logo-center">
+                <a href="https://marketplace.visualstudio.com/items?itemName=0xbu11.codebull" target="_blank" rel="noopener noreferrer" aria-label="Open CodeBull on VS Code Marketplace">
+                    <img src="asset/codebull-logo.png" alt="CodeBull Logo">
+                </a>
+            </div>
+            <nav>
+                <ul>
+                    <li><a href="index.html#features">Features</a></li>
+                    <li><a href="index.html#articles">Field Notes</a></li>
+                    <li><a href="tutorial.html">Tutorial</a></li>
+                    <li><a href="docs.html">Docs</a></li>
+                    <li><a href="platform.html">Platform</a></li>
+                    <li><a href="https://github.com/0xbu11/codebull" target="_blank">GitHub</a></li>
+                    <li><a href="article-grpc-frames_zh_TW.html" class="lang-switch">中文</a></li>
+                    <li><button id="theme-toggle" class="theme-toggle" aria-label="Switch Theme">☀️</button></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <section class="article-header">
+            <div class="container">
+                <a class="article-back" href="index.html#articles">← Back to articles</a>
+                <span class="article-card-source">grpc-go · field note</span>
+                <h1>I thought a gRPC call was one request and one response, then counted six frames on the wire that nobody wrote</h1>
+                <div class="article-meta"><span>2026-10-05</span><span>5.5-minute window / 7,412 calls / 6 probes</span><span>grpc-go v1.81.1</span></div>
+                <p class="article-dashboard-link">📊 The numbers here come from this run’s remote dashboard: <a href="https://codebull-service-b7lha2dtrq-uc.a.run.app/public/grpc-frames-20261005/" target="_blank" rel="noopener noreferrer">grpc-frames-20261005</a></p>
+                <p class="article-lede">One caller, 24 unary calls a second: on every call, each side sends one extra WINDOW_UPDATE and one PING, and answers the other&#x27;s PING with an ACK. Switch to eight callers at the same rate, and it takes eight calls to cost one round. This piece is not about a tool; it is about watching something while it runs.</p>
+            </div>
+        </section>
+
+        <section class="article-section">
+            <div class="container">
+                <article class="article-body">
+                    <div class="article-graph-embed"><!-- interactive behaviour graph -->
+<style>.cbg-root{
+  --cbg-bg:#EEF0F2; --cbg-panel:#FFFFFF; --cbg-sunk:#F5F6F8; --cbg-ink:#151B21; --cbg-dim:#5D6B77; --cbg-faint:#8A97A2;
+  --cbg-line:#D8DDE2; --cbg-line-soft:#E7EAEE; --cbg-accent:#2D5C7F; --cbg-accent-soft:#DCE7EF;
+  --cbg-entry:#54646F; --cbg-good:#2F8570; --cbg-money:#A9752A; --cbg-bad:#AE4630;
+  --cbg-shadow:0 1px 2px rgba(21,27,33,.05), 0 10px 26px -16px rgba(21,27,33,.35);
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --cbg-bg:#0E1317; --cbg-panel:#171E24; --cbg-sunk:#121920; --cbg-ink:#E2E8ED; --cbg-dim:#93A2AE; --cbg-faint:#6E7E8A;
+  --cbg-line:#28323A; --cbg-line-soft:#1F272E; --cbg-accent:#6FA5CE; --cbg-accent-soft:#16303F;
+  --cbg-entry:#8898A4; --cbg-good:#4FB79B; --cbg-money:#D7A44F; --cbg-bad:#DC7657;
+  --cbg-shadow:0 1px 2px rgba(0,0,0,.5), 0 12px 30px -18px rgba(0,0,0,.9);
+}}.cbg-root[data-theme="dark"]{
+  --cbg-bg:#0E1317; --cbg-panel:#171E24; --cbg-sunk:#121920; --cbg-ink:#E2E8ED; --cbg-dim:#93A2AE; --cbg-faint:#6E7E8A;
+  --cbg-line:#28323A; --cbg-line-soft:#1F272E; --cbg-accent:#6FA5CE; --cbg-accent-soft:#16303F;
+  --cbg-entry:#8898A4; --cbg-good:#4FB79B; --cbg-money:#D7A44F; --cbg-bad:#DC7657;
+  --cbg-shadow:0 1px 2px rgba(0,0,0,.5), 0 12px 30px -18px rgba(0,0,0,.9);
+}.cbg-root *{box-sizing:border-box}.cbg-root{margin:0;background:var(--cbg-bg);color:var(--cbg-ink);font-family:Archivo,system-ui,"Noto Sans TC",sans-serif;font-size:15px;line-height:1.6}.cbg-root .mono{font-family:"JetBrains Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}.cbg-root .shell{max-width:1300px;margin:0 auto;padding:34px 22px 70px;display:flex;flex-direction:column;gap:20px}.cbg-root header.top{display:flex;flex-direction:column;gap:9px}.cbg-root .tagline{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.cbg-root .badge{font-family:"JetBrains Mono",monospace;font-size:.66rem;letter-spacing:.14em;text-transform:uppercase;padding:3px 8px;border-radius:2px;background:var(--cbg-good);color:#fff}.cbg-root .src{font-family:"JetBrains Mono",monospace;font-size:.72rem;color:var(--cbg-faint)}.cbg-root .eyebrow{font-family:"JetBrains Mono",monospace;font-size:.68rem;letter-spacing:.15em;text-transform:uppercase;color:var(--cbg-faint)}.cbg-root h1{margin:0;font-size:clamp(1.6rem,3.4vw,2.3rem);line-height:1.15;letter-spacing:-.02em;font-weight:700;text-wrap:balance}.cbg-root .sub{color:var(--cbg-dim);max-width:64ch;margin:0}.cbg-root .panel{background:var(--cbg-panel);border:1px solid var(--cbg-line);border-radius:4px;box-shadow:var(--cbg-shadow)}.cbg-root .panel-head{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:11px 16px;border-bottom:1px solid var(--cbg-line-soft)}.cbg-root .panel-title{font-family:"JetBrains Mono",monospace;font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cbg-faint)}.cbg-root .presets{display:flex;gap:6px;flex-wrap:wrap}.cbg-root button{font:inherit;font-size:.8rem;color:var(--cbg-dim);background:var(--cbg-sunk);border:1px solid var(--cbg-line);border-radius:3px;padding:4px 11px;cursor:pointer;transition:background .15s,color .15s,border-color .15s}.cbg-root button:hover{color:var(--cbg-ink);border-color:var(--cbg-accent)}.cbg-root button[aria-pressed="true"]{background:var(--cbg-accent);border-color:var(--cbg-accent);color:#fff}.cbg-root :focus-visible{outline:2px solid var(--cbg-accent);outline-offset:2px}.cbg-root #cbg-timeline{padding:14px 16px 10px}.cbg-root #cbg-tl{display:block;width:100%;height:104px;cursor:crosshair;touch-action:none;user-select:none}.cbg-root .tl-legend{display:flex;gap:18px;flex-wrap:wrap;margin-top:8px;font-size:.78rem;color:var(--cbg-dim)}.cbg-root .tl-legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}.cbg-root .readout{display:flex;gap:22px;flex-wrap:wrap;align-items:baseline;padding:10px 16px;border-top:1px solid var(--cbg-line-soft);font-size:.85rem;color:var(--cbg-dim)}.cbg-root .readout b{color:var(--cbg-ink);font-family:"JetBrains Mono",monospace;font-weight:500}.cbg-root #cbg-graph{position:relative;padding:22px 16px 18px;overflow-x:auto}.cbg-root #cbg-stage{position:relative}.cbg-root #cbg-wires{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none}.cbg-root .node{position:absolute;width:300px;background:var(--cbg-panel);border:1px solid var(--cbg-line);border-radius:4px;box-shadow:var(--cbg-shadow);overflow:hidden}.cbg-root .node.entry{border-top:3px solid var(--cbg-entry)}.cbg-root .node.good{border-top:3px solid var(--cbg-good)}.cbg-root .node.money{border-top:3px solid var(--cbg-money)}.cbg-root .node.bad{border-top:3px solid var(--cbg-bad)}.cbg-root .nhead{padding:10px 13px 8px;border-bottom:1px solid var(--cbg-line-soft)}.cbg-root .nhead h3{margin:0;font-size:1.02rem;font-weight:600;letter-spacing:-.01em}.cbg-root .why{font-size:.78rem;color:var(--cbg-dim);line-height:1.4}.cbg-root .probes{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}.cbg-root .probe{font-family:"JetBrains Mono",monospace;font-size:.6rem;letter-spacing:.06em;text-transform:uppercase;padding:2px 6px;border-radius:2px;border:1px solid var(--cbg-line);color:var(--cbg-dim);background:var(--cbg-sunk)}.cbg-root .probe.log{color:var(--cbg-accent);border-color:var(--cbg-accent-soft);background:var(--cbg-accent-soft)}.cbg-root .probe.latency{color:var(--cbg-money)}.cbg-root .slot{padding:9px 13px;border-top:1px solid var(--cbg-line-soft)}.cbg-root .slot-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-family:"JetBrains Mono",monospace;font-size:.6rem;letter-spacing:.13em;text-transform:uppercase;color:var(--cbg-faint)}.cbg-root .big{font-family:"JetBrains Mono",monospace;font-size:1.5rem;font-weight:500;line-height:1.1;font-variant-numeric:tabular-nums}.cbg-root .unit{font-size:.72rem;color:var(--cbg-dim);font-family:Archivo,sans-serif;margin-left:4px}.cbg-root .spark{display:block;width:100%;height:34px;margin-top:5px}.cbg-root .lat{display:flex;gap:16px;align-items:baseline;margin-top:3px}.cbg-root .lat div{display:flex;gap:5px;align-items:baseline}.cbg-root .lat .k{font-family:"JetBrains Mono",monospace;font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:var(--cbg-faint)}.cbg-root .lat .v{font-family:"JetBrains Mono",monospace;font-size:1.02rem;font-variant-numeric:tabular-nums}.cbg-root .shape{margin-top:7px}.cbg-root .shape-row{display:flex;justify-content:space-between;gap:8px;font-size:.74rem;margin-bottom:2px}.cbg-root .shape-row .t{font-family:"JetBrains Mono",monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.cbg-root .shape-row .n{font-family:"JetBrains Mono",monospace;color:var(--cbg-dim);white-space:nowrap}.cbg-root .shape-row.new .t{color:var(--cbg-bad);font-weight:500}.cbg-root .bar{height:5px;border-radius:2px;background:var(--cbg-line-soft);overflow:hidden;margin-bottom:8px}.cbg-root .bar i{display:block;height:100%;border-radius:2px}.cbg-root .flame{display:flex;flex-direction:column;gap:5px;margin-top:7px}.cbg-root .chain{display:flex;height:17px;border-radius:2px;overflow:hidden;background:var(--cbg-line-soft)}.cbg-root .chain span{display:flex;align-items:center;padding:0 5px;font-family:"JetBrains Mono",monospace;font-size:.58rem;color:#fff;white-space:nowrap;overflow:hidden;border-right:1px solid rgba(255,255,255,.28)}.cbg-root .chain span:last-child{border-right:0}.cbg-root .chain-meta{display:flex;justify-content:space-between;font-size:.68rem;color:var(--cbg-dim);font-family:"JetBrains Mono",monospace}.cbg-root .wire{fill:none;stroke:var(--cbg-dim);stroke-width:2}.cbg-root .wire.alert{stroke:var(--cbg-bad);stroke-width:2.8}.cbg-root .wire.calm{stroke:var(--cbg-good);stroke-width:2.4}.cbg-root .wlabel{font-family:"JetBrains Mono",monospace;font-size:11.5px;fill:var(--cbg-ink)}.cbg-root .wsub{font-family:"JetBrains Mono",monospace;font-size:9.5px;fill:var(--cbg-faint)}.cbg-root .wbox{fill:var(--cbg-panel);stroke:var(--cbg-line)}.cbg-root #cbg-edge-list{display:none;flex-direction:column;gap:8px;padding:0 16px 16px}.cbg-root .echip{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;padding:9px 12px;border:1px solid var(--cbg-line);border-left:3px solid var(--cbg-dim);border-radius:3px;background:var(--cbg-sunk);font-size:.82rem}.cbg-root .echip.calm{border-left-color:var(--cbg-good)}.cbg-root .echip.alert{border-left-color:var(--cbg-bad)}.cbg-root .echip b{font-family:"JetBrains Mono",monospace;font-weight:500}.cbg-root .echip .sub{color:var(--cbg-dim);font-size:.76rem;font-family:"JetBrains Mono",monospace}.cbg-root .prose{max-width:40rem;margin:0 auto;padding:6px 22px 26px;font-size:16px;line-height:1.8}.cbg-root .prose h2{font-family:Archivo,sans-serif;font-size:1.35rem;font-weight:700;letter-spacing:-.01em;margin:0 0 14px}.cbg-root .prose h3{font-size:1.02rem;font-weight:600;margin:26px 0 6px}.cbg-root .prose p{margin:0 0 14px;color:var(--cbg-ink)}.cbg-root .prose code{font-family:"JetBrains Mono",monospace;font-size:.86em;background:var(--cbg-sunk);
+  border:1px solid var(--cbg-line);padding:.08em .3em;border-radius:2px}.cbg-root .notes{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));padding:16px}.cbg-root .note h4{margin:0 0 4px;font-size:.9rem}.cbg-root .note p{margin:0;font-size:.84rem;color:var(--cbg-dim)}.cbg-root footer{color:var(--cbg-faint);font-size:.78rem;border-top:1px solid var(--cbg-line);padding-top:14px}
+@media (max-width:900px){ #cbg-stage{min-width:0!important;height:auto!important;display:flex;flex-direction:column;gap:14px}
+.cbg-root .node{position:static!important;width:100%} #cbg-wires{display:none} #cbg-edge-list{display:flex} }.article-graph-embed{width:min(1180px, calc(100vw - 2rem));margin-left:calc((100% - min(1180px, calc(100vw - 2rem))) / 2);margin-right:calc((100% - min(1180px, calc(100vw - 2rem))) / 2)}.cbg-root{max-width:100%;overflow:hidden}.cbg-root #cbg-graph{max-width:100%;overflow-x:auto}.cbg-root #cbg-timeline,.cbg-root #cbg-readout{max-width:100%}@media (max-width:900px){.article-graph-embed{width:100%;margin-left:0;margin-right:0}}</style>
+
+
+<div class="cbg-root">
+
+
+<section class="panel">
+  <div class="panel-head"><span class="panel-title" id="cbg-tl-title"></span><div class="presets" id="cbg-presets"></div></div>
+  <div id="cbg-timeline">
+    <canvas id="cbg-tl"></canvas>
+    <div class="tl-legend" id="cbg-legend"></div>
+  </div>
+  <div class="readout" id="cbg-readout"></div>
+</section>
+
+<section class="panel" id="cbg-graph">
+  <div id="cbg-stage"><svg id="cbg-wires"></svg></div>
+  <div id="cbg-edge-list"></div>
+</section>
+
+
+
+</div>
+<script id="cbg-data" type="application/json">{"mock": false, "title": "The ledger on one gRPC connection", "lede": "7,412 calls, five and a half minutes, two phases.", "source": "article/grpc-demo/graph-2026-10-05-rebuilt.json · 13:50–13:56 UTC", "window": {"startMs": 1791208245559, "stepMs": 10317, "buckets": 32}, "phases": [{"label": "A one caller", "fromBucket": 0, "toBucket": 16}, {"label": "B eight callers", "fromBucket": 16, "toBucket": 32}], "readout": {"ratios": [{"label": "server PINGs / call", "num": "Server sends a BDP ping", "den": "Handle the RPC", "tone": "warn"}, {"label": "socket writes / call", "num": "Write to the socket", "den": "One call", "tone": "bad"}], "check": "Sent, handled and counted agree: 3,452 + 3,960 = 7,412"}, "nodes": [{"id": "n0", "name": "Write to the socket", "tone": "entry", "purpose": "How many times did these frames make us write the socket, and how much each time?", "probes": [{"traceKey": "transport.(*bufWriter).flushKeepBuffer:369", "kind": "log"}], "series": {"hits": [1043, 1215, 835, 978, 1352, 1347, 1248, 1363, 1243, 1211, 1236, 1408, 765, 705, 1131, 1165, 243, 247, 247, 248, 244, 248, 247, 245, 244, 246, 247, 247, 251, 248, 248, 247]}, "hitsFull": 22192, "latencyFull": null, "samples": [{"text": "bytes=17", "perBucket": [224, 320, 150, 224, 399, 393, 328, 397, 321, 327, 319, 439, 106, 77, 248, 288, 62, 62, 62, 62, 62, 62, 62, 62, 62, 62, 61, 61, 64, 62, 63, 62]}, {"text": "bytes=30", "perBucket": [297, 290, 269, 266, 280, 281, 297, 286, 300, 280, 296, 266, 276, 276, 318, 296, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31]}, {"text": "bytes=55", "perBucket": [196, 218, 160, 181, 229, 231, 222, 238, 225, 220, 224, 243, 160, 147, 219, 210, 18, 17, 17, 15, 19, 14, 14, 18, 17, 14, 22, 21, 16, 11, 8, 5]}, {"text": "bytes=13", "perBucket": [106, 154, 67, 107, 190, 191, 158, 196, 158, 161, 156, 218, 49, 30, 122, 138, 30, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31]}, {"text": "bytes=44", "perBucket": [79, 107, 53, 64, 124, 129, 113, 125, 112, 109, 106, 133, 41, 23, 85, 97, 15, 14, 15, 14, 17, 11, 12, 18, 19, 13, 15, 20, 13, 8, 10, 4]}, {"text": "bytes=61", "perBucket": [77, 42, 69, 71, 31, 40, 42, 39, 44, 40, 55, 15, 82, 90, 73, 58, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"text": "bytes=37", "perBucket": [12, 19, 10, 12, 27, 25, 19, 22, 28, 21, 21, 29, 4, 1, 11, 16, 1, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1]}, {"text": "bytes=266", "perBucket": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 17, 17, 17, 15, 19, 14, 14, 18, 17, 14, 22, 21, 16, 11, 9, 5]}, {"text": "bytes=49", "perBucket": [5, 12, 1, 16, 22, 19, 17, 24, 7, 14, 13, 26, 2, 2, 10, 15, 3, 3, 4, 3, 3, 2, 2, 3, 2, 2, 4, 1, 4, 1, 0, 1]}, {"text": "bytes=93", "perBucket": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 11, 9, 10, 15, 8, 14, 15, 8, 10, 11, 8, 7, 12, 15, 16, 17]}, {"text": "bytes=228", "perBucket": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 11, 9, 10, 15, 8, 14, 13, 8, 10, 11, 8, 7, 11, 14, 14, 17]}, {"text": "bytes=308", "perBucket": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 11, 7, 12, 11, 13, 7, 7, 10, 14, 10, 13, 17, 11, 7, 3, 3]}], "stacks": [{"frames": ["runtime.goexit", "google.golang.org/grpc/internal/transport.NewHTTP2Client.func6", "google.golang.org/grpc/internal/transport.(*loopyWriter).run", "google.golang.org/grpc/internal/transport.(*bufWriter).Flush", "google.golang.org/grpc/internal/transport.(*bufWriter).flushKeepBuffer"], "perBucket": [522, 608, 420, 490, 680, 676, 627, 683, 622, 606, 619, 705, 382, 353, 566, 584, 122, 124, 124, 124, 124, 124, 124, 124, 124, 124, 124, 123, 125, 124, 125, 124]}, {"frames": ["runtime.goexit", "google.golang.org/grpc/internal/transport.NewServerTransport.func3", "google.golang.org/grpc/internal/transport.(*loopyWriter).run", "google.golang.org/grpc/internal/transport.(*bufWriter).Flush", "google.golang.org/grpc/internal/transport.(*bufWriter).flushKeepBuffer"], "perBucket": [521, 607, 415, 488, 672, 671, 621, 680, 621, 605, 617, 703, 383, 352, 565, 581, 121, 123, 123, 124, 120, 124, 123, 121, 120, 122, 123, 124, 126, 124, 123, 123]}], "x": 0, "y": 620, "root": true}, {"id": "n1", "name": "One call", "tone": "good", "purpose": "How many calls actually go out each second?", "probes": [{"traceKey": "main.callOne:56", "kind": "metric"}, {"traceKey": "main.callOne:55", "kind": "latency"}], "series": {"hits": [208, 226, 175, 190, 242, 240, 232, 241, 232, 222, 230, 243, 167, 161, 222, 221, 240, 248, 248, 248, 248, 248, 248, 248, 248, 248, 248, 248, 248, 248, 248, 248]}, "hitsFull": 7412, "latencyFull": null, "samples": [], "stacks": [{"frames": ["runtime.goexit", "main.phase.func1", "main.callOne"], "perBucket": [208, 226, 175, 190, 242, 240, 232, 241, 232, 222, 230, 243, 167, 161, 222, 221, 239, 248, 248, 248, 248, 248, 248, 248, 248, 248, 248, 248, 248, 248, 248, 248]}, {"frames": ["main.callOne", "unknown"], "perBucket": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}], "x": 0, "y": 0, "root": true}, {"id": "n2", "name": "Handle the RPC", "tone": "money", "purpose": "How many calls did the server actually handle?", "probes": [{"traceKey": "health.(*Server).Check:62", "kind": "metric"}], "series": {"hits": [208, 226, 174, 191, 241, 240, 232, 242, 232, 221, 231, 243, 167, 160, 222, 222, 240, 248, 248, 248, 248, 248, 248, 248, 248, 248, 248, 248, 248, 248, 248, 248]}, "hitsFull": 7412, "latencyFull": null, "samples": [], "stacks": [{"frames": ["runtime.goexit", "google.golang.org/grpc.(*Server).serveStreams.func2.1", "google.golang.org/grpc.(*Server).handleStream", "google.golang.org/grpc.(*Server).processUnaryRPC", "google.golang.org/grpc/health/grpc_health_v1._Health_Check_Handler", "google.golang.org/grpc/health.(*Server).Check"], "perBucket": [208, 226, 174, 191, 241, 240, 232, 242, 232, 221, 231, 243, 167, 160, 222, 222, 240, 248, 248, 248, 248, 248, 248, 248, 248, 248, 248, 248, 248, 248, 248, 248]}], "x": 520, "y": 0, "root": true}, {"id": "n3", "name": "Client sends a BDP ping", "tone": "bad", "purpose": "How many PINGs did the client send on its own to estimate bandwidth?", "probes": [{"traceKey": "transport.(*http2Client).handleData:1215", "kind": "log"}], "series": {"hits": [208, 225, 175, 190, 242, 240, 232, 242, 231, 222, 231, 242, 167, 161, 222, 221, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31]}, "hitsFull": 3947, "latencyFull": null, "samples": [{"text": "size=7", "perBucket": [208, 225, 175, 190, 242, 240, 232, 242, 231, 222, 231, 242, 167, 161, 222, 221, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31]}], "stacks": [{"frames": ["runtime.goexit", "google.golang.org/grpc/internal/transport.NewHTTP2Client.gowrap4", "google.golang.org/grpc/internal/transport.(*http2Client).reader", "google.golang.org/grpc/internal/transport.(*http2Client).handleData"], "perBucket": [208, 225, 175, 190, 242, 240, 232, 242, 231, 222, 231, 242, 167, 161, 222, 221, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31]}], "x": 1040, "y": 620, "root": true}, {"id": "n4", "name": "Server sends a BDP ping", "tone": "entry", "purpose": "How many PINGs did the server send on its own to estimate bandwidth?", "probes": [{"traceKey": "transport.(*http2Server).handleData:786", "kind": "log"}], "series": {"hits": [208, 226, 174, 191, 241, 240, 232, 242, 232, 221, 231, 243, 167, 160, 222, 222, 30, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31]}, "hitsFull": 3947, "latencyFull": null, "samples": [{"text": "size=11", "perBucket": [208, 226, 174, 191, 241, 240, 232, 242, 232, 221, 231, 243, 167, 160, 222, 222, 30, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31]}], "stacks": [{"frames": ["runtime.goexit", "google.golang.org/grpc.(*Server).handleRawConn.func1", "google.golang.org/grpc.(*Server).serveStreams", "google.golang.org/grpc/internal/transport.(*http2Server).HandleStreams", "google.golang.org/grpc/internal/transport.(*http2Server).handleData"], "perBucket": [208, 226, 174, 191, 241, 240, 232, 242, 232, 221, 231, 243, 167, 160, 222, 222, 30, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31]}], "x": 1040, "y": 0, "root": true}], "edges": [], "notes": []}</script>
+<script>(function(){
+
+const D = JSON.parse(document.getElementById("cbg-data").textContent);
+const NB = D.window.buckets, STEP = D.window.stepMs, T0 = D.window.startMs;
+const N = Object.fromEntries(D.nodes.map(n => [n.id, n]));
+const TONE = { entry:"--cbg-entry", good:"--cbg-good", money:"--cbg-money", bad:"--cbg-bad" };
+const css = v => getComputedStyle(document.querySelector(".cbg-root")).getPropertyValue(v).trim();
+const sum = (a,f,t) => a.slice(f,t).reduce((x,y)=>x+y,0);
+const fmt = n => Math.round(n).toLocaleString("en-US");
+const ms = (v) => (v >= 10 ? v.toFixed(0) : v >= 1 ? v.toFixed(1) : v.toFixed(2));
+const clock = b => new Date(T0 + b*STEP).toISOString().slice(11,16);
+// github.com/gin-gonic/gin.(*Engine).ServeHTTP → ServeHTTP. Taking the last
+// dot-segment alone leaves "func1" for every closure, and taking the last path
+// segment alone leaves the whole package prefix.
+const shortFn = (s) => {
+  // Generic type arguments carry dots of their own — NewCache[...].gowrap1 —
+  // so they come off before anything splits on ".".
+  const noGeneric = s.replace(/\[[^\]]*\]/g, "");
+  const noRecv = noGeneric.split("/").pop().replace(/\(\*?[^)]*\)\./g, "");
+  const parts = noRecv.split(".").filter(Boolean);
+  // A closure carries the name of the function it was written in, and can carry
+  // several suffixes at once: serveStreams.func2.1, NewFIFOScheduler.gowrap1.
+  while (parts.length > 1 && /^(func\d+|gowrap\d+|\d+)$/.test(parts[parts.length - 1])) parts.pop();
+  return parts[parts.length - 1];
+};
+let sel = { from:0, to:NB };
+
+/* children of an edge target = what the timeline stacks */
+const hasOut = new Set(D.edges.map(e => e.from));
+/* The ends of the graph: nodes nothing leads away from. Stacking those counts
+   each piece of work once, and an island — a step reached on its own goroutine,
+   with no edge at all — is an end like any other, so it stays on the timeline. */
+const leaves = D.nodes.filter(n => !hasOut.has(n.id)).map(n => n.id);
+
+{ const _e = document.getElementById("cbg-title"); if (_e) _e.textContent = D.title; }
+{ const _e = document.getElementById("cbg-lede"); if (_e) _e.textContent = D.lede; }
+{ const _e = document.getElementById("cbg-src"); if (_e) _e.textContent = D.source ?? ""; }
+{ const _e = document.getElementById("cbg-eyebrow"); if (_e) _e.textContent = "Behavior Graph · " + D.nodes.length + " nodes · " +
+  D.nodes.reduce((a,n)=>a+n.probes.length,0) + " probes"; }
+document.getElementById("cbg-tl-title").textContent =
+  `Timeline · ${STEP/1000}s per bucket · ${Math.round(NB*STEP/60000)} minutes`;
+document.getElementById("cbg-legend").innerHTML =
+  leaves.map(id => `<span><i style="background:var(${TONE[N[id].tone]})"></i>${N[id].name}</span>`).join("") +
+  `<span><i style="background:var(--bad);opacity:.28"></i>selection</span>
+   <span style="color:var(--faint)">drag on the chart to select any span</span>`;
+
+/* ── stage ─────────────────────────────────────────────── */
+const stage = document.getElementById("cbg-stage");
+D.nodes.forEach(n => {
+  const el = document.createElement("div");
+  el.className = "node " + n.tone; el.id = "cbg-node-" + n.id;
+  el.style.left = n.x + "px"; el.style.top = n.y + "px";
+  stage.appendChild(el);
+});
+stage.style.minWidth = (Math.max(...D.nodes.map(n=>n.x)) + 320) + "px";
+
+/* ── timeline ──────────────────────────────────────────── */
+const cv = document.getElementById("cbg-tl"), ctx = cv.getContext("2d");
+function drawTimeline(){
+  const dpr = devicePixelRatio||1, w = cv.clientWidth, h = cv.clientHeight;
+  cv.width = w*dpr; cv.height = h*dpr; ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,h);
+  const stacks = leaves.map(id => N[id].series.hits);
+  const peak = Math.max(...Array.from({length:NB}, (_,i) => stacks.reduce((a,s)=>a+s[i],0))) * 1.1;
+  const bw = w/NB;
+  D.phases.forEach((p,i) => { if (i%2) { ctx.fillStyle = css("--cbg-sunk");
+    ctx.fillRect(p.fromBucket*bw, 0, (p.toBucket-p.fromBucket)*bw, h); } });
+  for (let i=0;i<NB;i++){
+    let acc = 0;
+    stacks.forEach((s,si) => {
+      const hh = (s[i]/peak)*h;
+      ctx.fillStyle = css(TONE[N[leaves[si]].tone]); ctx.globalAlpha = .88;
+      ctx.fillRect(i*bw, h-acc-hh, Math.max(bw-.4,.6), hh); acc += hh;
+    });
+  }
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = css("--cbg-bad"); ctx.globalAlpha = .15;
+  ctx.fillRect(sel.from*bw, 0, (sel.to-sel.from)*bw, h); ctx.globalAlpha = 1;
+  ctx.strokeStyle = css("--cbg-bad"); ctx.lineWidth = 1.5; ctx.beginPath();
+  ctx.moveTo(sel.from*bw,0); ctx.lineTo(sel.from*bw,h);
+  ctx.moveTo(sel.to*bw,0); ctx.lineTo(sel.to*bw,h); ctx.stroke();
+  ctx.font = '500 10px "JetBrains Mono", monospace'; ctx.fillStyle = css("--cbg-faint");
+  D.phases.forEach(p => ctx.fillText(p.label, p.fromBucket*bw+5, 12));
+}
+let dragging = false, anchor = 0;
+const bucketAt = ev => { const r = cv.getBoundingClientRect();
+  return Math.max(0, Math.min(NB, Math.round(((ev.clientX-r.left)/r.width)*NB))); };
+cv.addEventListener("pointerdown", e => { dragging = true; anchor = bucketAt(e); cv.setPointerCapture(e.pointerId); });
+cv.addEventListener("pointermove", e => { if(!dragging) return;
+  const b = bucketAt(e); sel = { from:Math.min(anchor,b), to:Math.max(anchor,b) };
+  if (sel.to - sel.from < 2) sel.to = Math.min(NB, sel.from+2); render(); });
+addEventListener("pointerup", () => { if(dragging){ dragging = false; syncPresets(); } });
+
+// A real window arrives without authored phases. Thirds are not a claim about
+// the run — they are a fast way to ask "did this move", which is the only
+// reason the timeline is here.
+const PRESETS = D.phases.length
+  ? [{label:"All",from:0,to:NB}, ...D.phases.map(p=>({label:p.label,from:p.fromBucket,to:p.toBucket}))]
+  : [{label:"All",from:0,to:NB},
+     {label:"First third",from:0,to:Math.round(NB/3)},
+     {label:"Middle",from:Math.round(NB/3),to:Math.round(2*NB/3)},
+     {label:"Last third",from:Math.round(2*NB/3),to:NB}];
+const pbox = document.getElementById("cbg-presets");
+PRESETS.forEach((p,i) => { const b = document.createElement("button"); b.textContent = p.label;
+  b.onclick = () => { sel = {from:p.from,to:p.to}; render(); syncPresets(); }; pbox.appendChild(b); });
+const syncPresets = () => [...pbox.children].forEach((b,i) =>
+  b.setAttribute("aria-pressed", String(PRESETS[i].from===sel.from && PRESETS[i].to===sel.to)));
+
+/* ── node cards ────────────────────────────────────────── */
+function spark(series, cvar, hi){
+  const w = 274, h = 34, max = Math.max(...series, 1);
+  const pts = series.map((v,i) => `${(i/(series.length-1))*w},${h-(v/max)*(h-3)-1.5}`).join(" ");
+  const x1 = (sel.from/series.length)*w, x2 = (sel.to/series.length)*w;
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
+    <rect x="${x1}" y="0" width="${Math.max(x2-x1,1)}" height="${h}" fill="var(${hi||cvar})" opacity=".14"/>
+    <polyline points="${pts}" fill="none" stroke="var(${cvar})" stroke-width="1.4" stroke-linejoin="round"/></svg>`;
+}
+function renderNode(n){
+  const cvar = TONE[n.tone];
+  const whole = sel.from === 0 && sel.to === NB;
+  const total = whole && n.hitsFull != null ? n.hitsFull : sum(n.series.hits, 0, NB);
+  const hits = whole && n.hitsFull != null ? n.hitsFull : sum(n.series.hits, sel.from, sel.to);
+  const mins = ((sel.to-sel.from)*STEP)/60000;
+  let lat = "";
+  if (n.series.latencyP50){
+    const win = a => a.slice(sel.from, sel.to);
+    const avg = a => { const v = a.filter(x => x > 0); return v.length ? v.reduce((x,y)=>x+y,0)/v.length : 0; };
+    // Over the whole window the reservoir's own percentiles are the honest
+    // answer. Over a sub-range there is no reservoir, so the per-bucket
+    // percentiles are averaged — which is not a percentile of the range, and
+    // the caption says so rather than letting the number pass as one.
+    const whole = sel.from === 0 && sel.to === NB && n.latencyFull;
+    const p50 = whole ? n.latencyFull.p50 : avg(win(n.series.latencyP50));
+    const p95 = whole ? n.latencyFull.p95 : avg(win(n.series.latencyP95));
+    const worst = Math.max(...n.series.latencyP95);
+    lat = `<div class="slot"><div class="slot-h"><span>latency · latency probe</span><span>${whole ? "whole-window percentiles" : "mean of per-bucket percentiles"}</span></div>
+      <div class="lat"><div><span class="k">p50</span><span class="v">${ms(p50)}<span class="unit">ms</span></span></div>
+      <div><span class="k">p95</span><span class="v" style="color:${p95>worst*.6?"var(--bad)":"inherit"}">${ms(p95)}<span class="unit">ms</span></span></div></div>
+      ${spark(n.series.latencyP95, cvar, "--cbg-bad")}</div>`;
+  }
+  const shapeAll = n.samples.reduce((a,s)=>a+sum(s.perBucket,sel.from,sel.to),0) || 1;
+  const shapes = n.samples.map(s => {
+    const v = sum(s.perBucket, sel.from, sel.to);
+    if (v === 0) return "";
+    const pct = v/shapeAll*100;
+    // a shape absent from the first tenth of the window is new behaviour, not background
+    const isNew = sum(s.perBucket, 0, Math.floor(NB/10)) === 0;
+    return `<div class="shape"><div class="shape-row ${isNew?"new":""}">
+        <span class="t" title="${s.text}">${isNew?"▲ ":""}${s.text}</span><span class="n">${pct.toFixed(0)}% · ${fmt(v)}</span></div>
+      <div class="bar"><i style="width:${pct}%;background:var(${isNew?"--cbg-bad":cvar})"></i></div></div>`;
+  }).join("") || `<p class="why" style="margin-top:6px">nothing captured in this span</p>`;
+
+  const chainAll = n.stacks.reduce((a,s)=>a+sum(s.perBucket,sel.from,sel.to),0) || 1;
+  const flame = n.stacks.map(s => {
+    const v = sum(s.perBucket, sel.from, sel.to); if (!v) return "";
+    const share = v/chainAll*100;
+    const MAX_FRAMES = 5;
+    // The outermost frames are where the goroutine started, and that is what
+    // tells two islands apart — so the head stays visible and the middle folds.
+    const head = s.frames.length > MAX_FRAMES ? s.frames.slice(0, 2) : [];
+    const tail = s.frames.slice(head.length ? head.length - MAX_FRAMES : 0);
+    const hidden = s.frames.length - head.length - tail.length;
+    const chip = (f, i) =>
+      `<span style="flex:1;background:color-mix(in srgb, var(${cvar}) ${90-i*12}%, #000 10%)" title="${f}">${shortFn(f)}</span>`;
+    const cells =
+      head.map(chip).join("") +
+      (hidden > 0
+        ? `<span style="flex:0 0 auto;background:var(--line);color:var(--dim)" title="${s.frames.slice(head.length, head.length + hidden).join(" < ")}">+${hidden}</span>`
+        : "") +
+      tail.map((f, i) => chip(f, i + head.length)).join("");
+    return `<div><div class="chain" style="width:${Math.max(share,55)}%">${cells}</div>
+      <div class="chain-meta"><span>${share.toFixed(0)}% take this path</span><span>${fmt(v)}</span></div></div>`;
+  }).join("");
+
+  document.getElementById("cbg-node-"+n.id).innerHTML = `
+    <div class="nhead"><h3>${n.name}</h3><div class="why">${n.purpose}</div>
+      <div class="probes">${n.probes.map(p=>`<span class="probe ${p.kind}">${p.kind}</span>`).join("")}
+        <span class="probe">${n.probes.length} probe</span>
+        ${n.root ? '<span class="probe" title="no instrumented caller on the stack">root</span>' : ""}</div></div>
+    <div class="slot"><div class="slot-h"><span>hits · metric</span><span>${(hits/total*100).toFixed(0)}% of ${fmt(total)}</span></div>
+      <div class="big">${fmt(hits)}<span class="unit"> · ${(hits/mins).toFixed(0)}/min</span></div>${spark(n.series.hits, cvar)}</div>
+    ${lat}
+    <div class="slot"><div class="slot-h"><span>captured · log</span><span>${n.samples.length} shapes</span></div>${shapes}</div>
+    <div class="slot"><div class="slot-h"><span>paths here · stacks</span><span>${n.stacks.length} chains</span></div>
+      <div class="flame">${flame}</div></div>`;
+}
+
+/* ── edges ─────────────────────────────────────────────── */
+function edgeFacts(e){
+  const whole = sel.from === 0 && sel.to === NB;
+  const parent = sum(N[e.from].series.hits, sel.from, sel.to);
+  const series = sum(e.countPerBucket, sel.from, sel.to);
+  const n = whole && e.countFull != null ? e.countFull : series;
+  const f = whole && e.fanoutFull != null ? e.fanoutFull : (parent ? series/parent : 0);
+  const approx = !whole;
+  return { n, f, parent, approx, alert: e.alert != null && f > e.alert,
+    sub: e.gap > 0
+      ? `${e.gapLabel ?? e.gap} unobserved · ${e.gapIn.map(shortFn).join(" · ") || "(names not recorded)"}`
+      : "direct call, nothing skipped" };
+}
+function renderEdges(){
+  document.getElementById("cbg-edge-list").innerHTML = D.edges.map(e => { const f = edgeFacts(e);
+    return `<div class="echip ${f.alert?"alert":(e.gap===0?"calm":"")}"><b>${N[e.from].name} → ${N[e.to].name}</b>
+      <b style="color:${f.alert?"var(--bad)":"var(--ink)"}">${f.approx?"≈":""}×${f.f.toFixed(2)}</b>
+      <span class="sub">${fmt(f.n)} ÷ ${fmt(f.parent)}</span><span class="sub">${f.sub}</span></div>`; }).join("");
+
+  const svg = document.getElementById("cbg-wires");
+  if (getComputedStyle(svg).display === "none") return;
+  const s = stage.getBoundingClientRect();
+  const box = id => { const r = document.getElementById("cbg-node-"+id).getBoundingClientRect();
+    return { x:r.left-s.left, y:r.top-s.top, w:r.width, h:r.height }; };
+  let out = ["","alert","calm"].map(k => `<marker id="ah${k}" viewBox="0 0 10 10" refX="9" refY="5"
+      markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"
+      fill="var(${k==="alert"?"--cbg-bad":k==="calm"?"--cbg-good":"--cbg-dim"})"/></marker>`).join("");
+  out = `<defs>${out}</defs>`;
+  D.edges.forEach(e => {
+    const a = box(e.from), b = box(e.to);
+    const x1 = a.x+a.w, y1 = a.y+70, x2 = b.x-9, y2 = b.y+70, mx = (x1+x2)/2, ty = (y1+y2)/2;
+    const f = edgeFacts(e);
+    const kind = f.alert ? "alert" : (e.gap === 0 ? "calm" : "");
+    out += `<path class="wire ${kind}" marker-end="url(#ah${kind})"
+      d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}" ${e.gap>0?'stroke-dasharray="6 5"':""}/>`;
+    const w = Math.min(Math.max(f.sub.length*6.2+20, 160), x2-x1-10);
+    out += `<rect class="wbox" x="${mx-w/2}" y="${ty-20}" width="${w}" height="40" rx="3"/>
+      <text class="wlabel" x="${mx}" y="${ty-3}" text-anchor="middle" fill="${f.alert?"var(--bad)":"var(--ink)"}">${f.approx?"≈":""}×${f.f.toFixed(2)} · ${fmt(f.n)} calls</text>
+      <text class="wsub" x="${mx}" y="${ty+12}" text-anchor="middle">${f.sub}</text>`;
+  });
+  svg.innerHTML = out;
+  stage.style.height = (Math.max(...D.nodes.map(n => box(n.id).y + box(n.id).h)) + 8) + "px";
+}
+
+/* ── readout ───────────────────────────────────────────── */
+function renderReadout(){
+  const val = (name) => {
+    const n = D.nodes.find((x) => x.name === name);
+    if (!n) return 0;
+    return sel.from === 0 && sel.to === NB && n.hitsFull != null
+      ? n.hitsFull
+      : sum(n.series.hits, sel.from, sel.to);
+  };
+  const a = D.nodes[0];
+  const parts = [`<span>Selected <b>${clock(sel.from)}–${clock(sel.to)}</b> (${((sel.to-sel.from)*STEP/60000).toFixed(1)} min)</span>`,
+    `<span>${a.name} <b>${fmt(val(a.name))}</b></span>`];
+  D.readout.ratios.forEach(r => {
+    const v = val(r.den) ? val(r.num)/val(r.den)*100 : 0;
+    parts.push(`<span>${r.label} <b style="color:var(${r.tone==="good"?"--cbg-good":"--cbg-money"})">${v.toFixed(0)}%</b></span>`);
+  });
+  const lnode = D.nodes.find(n => n.series.latencyP95);
+  if (lnode){ const whole = sel.from === 0 && sel.to === NB;
+    const w = lnode.series.latencyP95.slice(sel.from, sel.to).filter(v => v > 0);
+    const p95 = whole && lnode.latencyFull ? lnode.latencyFull.p95 : w.reduce((x,y)=>x+y,0)/(w.length||1);
+    const worst = Math.max(...lnode.series.latencyP95);
+    parts.push(`<span>${lnode.name} p95 <b style="color:${p95>worst*.6?"var(--bad)":"inherit"}">${ms(p95)} ms</b></span>`); }
+  parts.push(`<span style="color:var(--faint)">${D.readout.check}</span>`);
+  document.getElementById("cbg-readout").innerHTML = parts.join("");
+}
+
+const notesEl = document.getElementById("cbg-notes");
+if (notesEl) notesEl.innerHTML = (D.notes||[]).map(n =>
+  `<div class="note"><h4>${n.h}</h4><p>${n.p}</p></div>`).join("");
+
+function render(){ drawTimeline(); D.nodes.forEach(renderNode); renderReadout();
+  requestAnimationFrame(renderEdges); }
+addEventListener("resize", render);
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
+render(); syncPresets();
+
+})();</script>
+</div>
+                    <h2>Deciding where to stand</h2>
+                    <p>The program being watched is small: one process runs a gRPC server (grpc-go&#x27;s stock health service) and a client, and every call goes over the same HTTP/2 connection. In the first part one goroutine calls 24 times a second; in the second, eight goroutines call 3 times a second each — <strong>the same total rate</strong>, with only the number of calls in flight changed.</p>
+                    <p>All I wrote is one line, <code>client.Check(ctx, req)</code>. Standing at that line, I can see that it came back; standing at the network card, I see bytes and not who sent them. So the probes sit in between: the calling line (One call), the server&#x27;s handler (Handle the RPC), the line where grpc-go decides to send a PING after receiving DATA — one on the client and one on the server (Client sends a BDP ping, Server sends a BDP ping) — and the line that finally hands bytes to the socket (Write to the socket), capturing how many bytes it wrote.</p>
+                    <p>I assumed a unary RPC on the wire was one request and one response. <strong>So why is the socket written five times as often as I make calls?</strong></p>
+                    <h2>The first part: one caller</h2>
+                    <p>The window runs from 2026-10-05 13:50:45Z to 13:56:15Z. In the first part the program counted 3,452 calls of its own, and <code>Handle the RPC</code> reads 3,452. So far the ledger is level.</p>
+                    <p>What is not level are the other three: <code>Server sends a BDP ping</code> 3,452 times, <code>Client sends a BDP ping</code> 3,451 times, <code>Write to the socket</code> 18,245 times. <strong>On every call, both sides sent a PING</strong>; the socket was written 5.3 times per call.</p>
+                    <h2>The ledger on the wire</h2>
+                    <p>The probes tell me something was sent, not what the wire looked like. So I ran the same program again with no probe at all and trapped only <code>write</code> from outside the process with <code>strace</code>, splitting every socket write into HTTP/2 frames. For the 2,880 calls of the first part, the two sides wrote these frames (tabulated from the decoded output):</p>
+                    <pre class="code-block"><code>                        client          server
+HEADERS                 2,880           2,879
+DATA                    2,880           2,879
+HEADERS (trailers)          —           2,879
+WINDOW_UPDATE           2,879           2,879
+PING                    2,879           2,879
+PING ACK                2,879           2,879</code></pre>
+                    <p><strong>The part of a call I wrote is five frames: the client&#x27;s HEADERS and DATA, the server&#x27;s HEADERS, DATA and trailers. Six more are not in my program.</strong> One of the server&#x27;s writes, byte for byte, is these 30 bytes:</p>
+                    <pre class="code-block"><code>00 00 04 08 00 00 00 00 00 | 00 00 00 0b                 ← WINDOW_UPDATE, increment 11
+00 00 08 06 00 00 00 00 00 | 02 04 10 10 09 0e 07 07     ← PING</code></pre>
+                    <p>The increment of 11 is exactly the size of that request&#x27;s DATA — the <code>size=11</code> the probe captured. The PING&#x27;s eight bytes are grpc-go&#x27;s hard-coded <code>bdpPing</code>, with a comment left beside it in the source: &quot;Easter-egg: what does the ping message say?&quot; That payload appears 6,502 times in the whole capture, and so do the ACKs coming back.</p>
+                    <p>This is grpc-go&#x27;s BDP (bandwidth-delay product) estimator. The rule in <code>bdp_estimator.go</code> is simple: when DATA arrives and no PING is awaiting its reply, start a new round of estimation — send a WINDOW_UPDATE, then a PING, and when the ACK comes back, take one round-trip time. It only stops once the estimate reaches 16MB, which a service whose replies are a few bytes long never does.</p>
+                    <h2>Eight callers, the same rate</h2>
+                    <p>In the second part the program counted 3,960 calls. <code>Server sends a BDP ping</code> drops to 495 and <code>Client sends a BDP ping</code> to 496 — <strong><code>3,960 ÷ 8 = 495</code></strong>. <code>Write to the socket</code> is down to 3,947, less than once per call.</p>
+                    <p>The eight callers are driven by the same beat and arrive together every third of a second. The first request&#x27;s DATA opens a round of estimation and sends a PING; the other seven arrive before the ACK comes back and are simply added to the same round&#x27;s sample (that step is inferred from the source and the counts — nothing was watching who arrived first or when the ACK came back). A PING is once per round, not once per call — and with one caller, every round holds exactly one call.</p>
+                    <p>The probe-free round agrees: of 2,880 calls in the second part, the client sent 381 PINGs and the server 361, against <code>2,880 ÷ 8 = 360</code> waves; the two sides wrote the socket 2,551 times in all, against 16,688 in the first part — the same 2,880 calls, 6.5 times fewer writes. Replies also start sharing writes — 28 of the server&#x27;s writes carried three calls&#x27; HEADERS, DATA and trailers at once.</p>
+                    <p>I assumed the wire cost of a gRPC call was fixed. Now I know it depends on how many calls share the connection at the same moment: at the same 24 calls a second, with one caller the control frames outnumber the data frames.</p>
+                    <h2>Being honest</h2>
+                    <p><strong>Observation changes its rhythm, so the two sets of numbers are used separately.</strong> With one caller, the probes slowed each call enough that the program only reached 21 calls a second in the first part (3,452 against a target of 3,960); with no probe it made its full 2,880 in two minutes. The shape of the ledger — one round of PINGs per call with one caller, one per wave with eight — is the same in both; the frame types and counts are quoted only from the probe-free round.</p>
+                    <p><strong>Latency is quoted only from the control.</strong> The main window&#x27;s call latency, p50 25.614 ms in the first part and 87.829 ms in the second, was almost entirely the probes&#x27; own cost. Another round timed only the calling line:</p>
+                    <pre class="code-block"><code>            first part (1 caller)   second part (8 callers)
+p50         0.427 ms                0.537 ms
+p95         1.123 ms                1.481 ms
+p99         1.231 ms                1.969 ms</code></pre>
+                    <p>This round did not compare a connection with the PINGs against one without them, so how much the extra round trip costs a call, I did not measure.</p>
+                    <p><strong>The graph is five islands.</strong> Making the call, handling it, receiving DATA and deciding to PING, and writing to the socket each run on a different goroutine in grpc-go — the caller&#x27;s own, the one the server starts per stream, one socket reader on each side, one <code>loopyWriter</code> on each side. Stacks do not cross a <code>go func()</code>, so there are no edges between them; what joins them is the counts: 3,452 = 3,452 = 3,452. <code>Write to the socket</code> carries both sides, which I separated by stack: 9,143 client writes and 9,102 server writes in the first part.</p>
+                    <p><strong>Whether it can be turned off is read from the source.</strong> Setting any initial window size in grpc-go (the client&#x27;s <code>WithInitialWindowSize</code> / <code>WithInitialConnWindowSize</code>, the server&#x27;s <code>InitialWindowSize</code> / <code>InitialConnWindowSize</code>) sets <code>StaticWindowSize</code> and the BDP estimator is never created. This round did not turn it off and rerun.</p>
+                    <p><strong>This is loopback.</strong> The round trip is under a millisecond, so the ACK always returns before the next call, which is why every call in the first part opens a new round. On a real network the round trip is longer, a round covers more calls, and the ratio will differ.</p>
+                    <h2>What I came away with</h2>
+                    <p>I now know that &quot;one RPC&quot; is not a fixed thing on the wire. At the same 24 calls a second, one caller makes both sides write six extra control frames per call and the socket get written almost six times; with eight callers sharing the connection, it takes eight calls to cost one round, and the socket is written less than once per call. The cost follows not how many calls there are, but whether they arrive together.</p>
+                    <p>📊 <strong>This article&#x27;s remote dashboard</strong> (measured data, viewable online): https://codebull-service-b7lha2dtrq-uc.a.run.app/public/grpc-frames-20261005/ On the <code>Metrics</code> tab the cumulative call count steepens where the second part starts (the first part was held to 21 calls a second by the observation); the <code>Logs</code> tab shows <code>bytes=17</code> (PING / ACK), <code>bytes=13</code> (WINDOW_UPDATE) and <code>size=11</code>, <code>size=7</code> (the request and reply DATA that triggered a PING). (The panel&#x27;s time axis is local time, UTC+8, against the UTC window quoted here.)</p>
+                    <p><strong>What this round changed in the observed program</strong>: one blank import in <code>main.go</code> to bring the SDK into the binary, and a build with <code>-gcflags=&quot;all=-N -l -dwarflocationlists=true&quot;</code>. No business logic was touched and no log line or counter was added (the per-phase call counts the program prints are part of the demo and serve as the outside ledger). All six probes were attached after the process was already running: <code>main.callOne:56</code> (count) and <code>main.callOne:55–62</code> (timing), <code>health.(*Server).Check:62</code>, <code>transport.(*http2Server).handleData:786</code>, <code>transport.(*http2Client).handleData:1215</code> (capturing <code>size</code>), and <code>transport.(*bufWriter).flushKeepBuffer:369</code> (capturing <code>w.offset</code>). Latency comes from a separate control process timing only; the frame ledger comes from another process with no probe at all, run under <code>strace --seccomp-bpf -e trace=write</code>; both ran two minutes per part with the same program and flags. The program exits by design at the end of the window, so the observation tool reports the event stream as dropped; the last event is at 13:56:15Z.</p>
+                </article>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2026 CodeBull. All rights reserved.</p>
+            <div class="links">
+                <a href="https://github.com/0xbu11/codebull">GitHub</a>
+                <a href="mailto:codebull.0xbu11@gmail.com">codebull.0xbu11@gmail.com</a>
+                <a href="#">Privacy</a>
+                <a href="#">Terms</a>
+            </div>
+        </div>
+    </footer>
+</body>
+
+</html>

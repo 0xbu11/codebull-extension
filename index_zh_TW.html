@@ -73,6 +73,15 @@
                 </div>
                 <div class="article-grid">
                     <article class="article-card">
+                        <a class="article-card-main" href="article-grpc-frames_zh_TW.html">
+                            <span class="article-card-source">grpc-go · 實測筆記</span>
+                            <h3>我以為一次 gRPC 呼叫就是一來一回，然後在線上數到它多送了六個沒人寫過的 frame</h3>
+                            <p>一個 caller、每秒 24 次：每一次呼叫，兩端都各多送 WINDOW_UPDATE、PING、PING ACK——grpc-go 的 BDP 估算器，六個控制 frame 對呼叫本身的五個。八個 caller、同樣速率：八次呼叫才一輪，socket 寫入少 6.5 倍。</p>
+                            <span class="article-card-link">閱讀文章 →</span>
+                        </a>
+                        <a class="article-card-dash" href="https://codebull-service-b7lha2dtrq-uc.a.run.app/public/grpc-frames-20261005/" target="_blank" rel="noopener noreferrer">📊 對帳面板 · grpc-frames-20261005</a>
+                    </article>
+                    <article class="article-card">
                         <a class="article-card-main" href="article-leveldb-write-merge_zh_TW.html">
                             <span class="article-card-source">goleveldb · 實測筆記</span>
                             <h3>我讓八個 goroutine 同時寫進 leveldb，它每一波都只寫兩次 WAL</h3>
