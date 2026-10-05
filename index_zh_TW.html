@@ -73,6 +73,15 @@
                 </div>
                 <div class="article-grid">
                     <article class="article-card">
+                        <a class="article-card-main" href="article-singleflight-shared-failure_zh_TW.html">
+                            <span class="article-card-source">singleflight · 實測筆記</span>
+                            <h3>我盯著一個 singleflight 看了十分鐘，然後看到同一個逾時被一次發給了七個人</h3>
+                            <p>八個讀者擠在同一個 <code>singleflight.Group</code> 後面，254 次逾時的查詢打到了 687 個讀者，平均每次 2.705 人；成功的查詢是 2.764 人。312 次逾時的 <code>c.err</code> 全部指向同一個位址 <code>0x180cff1f100</code>。失敗率沒有變，變的是一次失敗同時打到幾個人。</p>
+                            <span class="article-card-link">閱讀文章 →</span>
+                        </a>
+                        <a class="article-card-dash" href="https://codebull-service-b7lha2dtrq-uc.a.run.app/public/singleflight-demo-article-20260922/" target="_blank" rel="noopener noreferrer">📊 對帳面板 · singleflight-demo-article-20260922</a>
+                    </article>
+                    <article class="article-card">
                         <a class="article-card-main" href="article-ristretto-admission_zh_TW.html">
                             <span class="article-card-source">Ristretto · 實測筆記</span>
                             <h3>它說收下了五十二萬次，實際留下十七個</h3>
@@ -84,11 +93,10 @@
                     <article class="article-card">
                         <a class="article-card-main" href="article-gin-middleware_zh_TW.html">
                             <span class="article-card-source">gin · 實測筆記</span>
-                            <h3>我拆掉自己的觀測點，那條 55 毫秒的尾巴一動也不動</h3>
-                            <p>601 個請求裡有 61 個花了 55 毫秒，其餘 513 個在 5 毫秒以內，中間幾乎是空的。我以為那是中介層鏈上我自己的探針造成的——把它們全部拿掉再跑一次，慢請求的比例從 10.1% 變成 10.3%。<code>Context.Next()</code> 的八種堆疊形狀順帶把鏈的深度畫了出來，而少掉的那一條就是 401 被中斷的地方。</p>
+                            <h3>我拆掉自己的觀測點，那條 55 毫秒的尾巴就消失了</h3>
+                            <p>五個相位、350 個請求：鏈被推進的次數是 4、4、4、3、0，沒有一個相位是圖上那個 <code>×3</code>。把 p95 拉到 54.578 毫秒的尾巴看起來在中介層鏈裡——直到客戶端的對照組顯示它需要有人在收堆疊：沒有任何點收堆疊時，500 個請求沒有一個超過 2.0 毫秒。</p>
                             <span class="article-card-link">閱讀文章 →</span>
                         </a>
-                        <a class="article-card-dash" href="https://codebull-service-b7lha2dtrq-uc.a.run.app/public/gin-middleware-20260906/" target="_blank" rel="noopener noreferrer">📊 對帳面板 · gin-middleware-20260906</a>
                     </article>
                     <article class="article-card">
                         <a class="article-card-main" href="article-etcd-write-path_zh_TW.html">

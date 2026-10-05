@@ -76,6 +76,15 @@
                 </div>
                 <div class="article-grid">
                     <article class="article-card">
+                        <a class="article-card-main" href="article-singleflight-shared-failure.html">
+                            <span class="article-card-source">singleflight · Field Notes</span>
+                            <h3>I watched a singleflight for ten minutes, and saw one timeout handed to seven callers at once</h3>
+                            <p>With eight readers behind one <code>singleflight.Group</code>, 254 timed-out queries reached 687 readers: 2.705 per query, against 2.764 for successful ones. All 312 timeouts carried the same <code>c.err</code> address, <code>0x180cff1f100</code>. The failure rate did not change; what changed is how many callers one failure reaches at once.</p>
+                            <span class="article-card-link">Read article →</span>
+                        </a>
+                        <a class="article-card-dash" href="https://codebull-service-b7lha2dtrq-uc.a.run.app/public/singleflight-demo-article-20260922/" target="_blank" rel="noopener noreferrer">📊 Dashboard · singleflight-demo-article-20260922</a>
+                    </article>
+                    <article class="article-card">
                         <a class="article-card-main" href="article-ristretto-admission.html">
                             <span class="article-card-source">Ristretto · Field Notes</span>
                             <h3>It said yes 527,268 times and kept seventeen</h3>
@@ -87,11 +96,10 @@
                     <article class="article-card">
                         <a class="article-card-main" href="article-gin-middleware.html">
                             <span class="article-card-source">gin · Field Notes</span>
-                            <h3>I removed my own probes, and the 55-millisecond tail did not move</h3>
-                            <p>Of 601 requests, 61 took 55 milliseconds and 513 finished under 5, with almost nothing in between. I assumed my own probes on the middleware chain were the cause — removing all of them moved the slow share from 10.1% to 10.3%. The eight stack shapes of <code>Context.Next()</code> draw the chain's depth along the way, and the one that is missing is where 401 cut it short.</p>
+                            <h3>I removed my own probes, and the 55-millisecond tail went away</h3>
+                            <p>Five phases, 350 requests: the chain advanced 4, 4, 4, 3 and 0 times per request, and no phase is the <code>×3</code> on the graph. The tail that pulled p95 to 54.578 ms looked like the middleware chain — until a client-side control showed it needs stack collection: with nothing collecting stacks, none of 500 requests went over 2.0 ms.</p>
                             <span class="article-card-link">Read article →</span>
                         </a>
-                        <a class="article-card-dash" href="https://codebull-service-b7lha2dtrq-uc.a.run.app/public/gin-middleware-20260906/" target="_blank" rel="noopener noreferrer">📊 Reconcile on the dashboard · gin-middleware-20260906</a>
                     </article>
                     <article class="article-card">
                         <a class="article-card-main" href="article-etcd-write-path.html">
