@@ -73,6 +73,15 @@
                 </div>
                 <div class="article-grid">
                     <article class="article-card">
+                        <a class="article-card-main" href="article-leveldb-write-merge_zh_TW.html">
+                            <span class="article-card-source">goleveldb · 實測筆記</span>
+                            <h3>我讓八個 goroutine 同時寫進 leveldb，它每一波都只寫兩次 WAL</h3>
+                            <p>同樣每秒 24 筆，一個寫入者換成八個。5,760 次 <code>Put</code> 換來 1,440 次 WAL 寫入：720 波，每一波都是第一個人自己寫、第二個人帶走另外六個。leveldb 裡一個點都不掛，形狀還在；毫秒數就不在了。</p>
+                            <span class="article-card-link">閱讀文章 →</span>
+                        </a>
+                        <a class="article-card-dash" href="https://codebull-service-b7lha2dtrq-uc.a.run.app/public/leveldb-write-merge-20261005/" target="_blank" rel="noopener noreferrer">📊 對帳面板 · leveldb-write-merge-20261005</a>
+                    </article>
+                    <article class="article-card">
                         <a class="article-card-main" href="article-singleflight-shared-failure_zh_TW.html">
                             <span class="article-card-source">singleflight · 實測筆記</span>
                             <h3>我盯著一個 singleflight 看了十分鐘，然後看到同一個逾時被一次發給了七個人</h3>

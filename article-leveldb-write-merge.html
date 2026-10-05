@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>I had eight goroutines write to leveldb at once, and every wave cost exactly two WAL writes | CodeBull</title>
+    <meta name="description" content="The same 24 writes a second, the same 1KB values; the only change was one writer becoming eight. 5,760 `Put` calls produced 1,440 WAL writes — not roughly a quarter, but 720 waves of exactly two. This piece is not about a tool; it is about watching something while it runs.">
+    <meta property="og:type" content="article">
+    <meta property="og:site_name" content="CodeBull">
+    <meta property="og:locale" content="en_US">
+    <meta property="og:title" content="I had eight goroutines write to leveldb at once, and every wave cost exactly two WAL writes">
+    <meta property="og:description" content="The same 24 writes a second, the same 1KB values; the only change was one writer becoming eight. 5,760 `Put` calls produced 1,440 WAL writes — not roughly a quarter, but 720 waves of exactly two. This piece is not about a tool; it is about watching something while it runs.">
+    <meta property="og:url" content="https://0xbu11.github.io/codebull-extension/article-leveldb-write-merge.html">
+    <meta property="og:image" content="https://0xbu11.github.io/codebull-extension/asset/og-leveldb-write-merge.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="627">
+    <meta property="og:image:alt" content="I had eight goroutines write to leveldb at once, and every wave cost exactly two WAL writes">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="I had eight goroutines write to leveldb at once, and every wave cost exactly two WAL writes">
+    <meta name="twitter:description" content="The same 24 writes a second, the same 1KB values; the only change was one writer becoming eight. 5,760 `Put` calls produced 1,440 WAL writes — not roughly a quarter, but 720 waves of exactly two. This piece is not about a tool; it is about watching something while it runs.">
+    <meta name="twitter:image" content="https://0xbu11.github.io/codebull-extension/asset/og-leveldb-write-merge.png">
+    <link rel="stylesheet" href="style.css?v=17">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&display=swap" rel="stylesheet">
+    <script src="theme.js"></script>
+</head>
+
+<body>
+    <div class="announcement-banner">
+        Currently supported Go versions: V1.22.0 and V1.26.0.
+    </div>
+    <header>
+        <div class="container">
+            <div class="logo">
+                <a href="index.html">Code<span>Bull</span></a>
+            </div>
+            <div class="header-logo-center">
+                <a href="https://marketplace.visualstudio.com/items?itemName=0xbu11.codebull" target="_blank" rel="noopener noreferrer" aria-label="Open CodeBull on VS Code Marketplace">
+                    <img src="asset/codebull-logo.png" alt="CodeBull Logo">
+                </a>
+            </div>
+            <nav>
+                <ul>
+                    <li><a href="index.html#features">Features</a></li>
+                    <li><a href="index.html#articles">Field Notes</a></li>
+                    <li><a href="tutorial.html">Tutorial</a></li>
+                    <li><a href="docs.html">Docs</a></li>
+                    <li><a href="platform.html">Platform</a></li>
+                    <li><a href="https://github.com/0xbu11/codebull" target="_blank">GitHub</a></li>
+                    <li><a href="article-leveldb-write-merge_zh_TW.html" class="lang-switch">中文</a></li>
+                    <li><button id="theme-toggle" class="theme-toggle" aria-label="Switch Theme">☀️</button></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <section class="article-header">
+            <div class="container">
+                <a class="article-back" href="index.html#articles">← Back to articles</a>
+                <span class="article-card-source">goleveldb · field note</span>
+                <h1>I had eight goroutines write to leveldb at once, and every wave cost exactly two WAL writes</h1>
+                <div class="article-meta"><span>2026-10-05</span><span>8-minute window / 11,515 Puts / 5 probes</span><span>goleveldb v1.0.0</span></div>
+                <p class="article-dashboard-link">📊 The numbers here come from this run’s remote dashboard: <a href="https://codebull-service-b7lha2dtrq-uc.a.run.app/public/leveldb-write-merge-20261005/" target="_blank" rel="noopener noreferrer">leveldb-write-merge-20261005</a></p>
+                <p class="article-lede">The same 24 writes a second, the same 1KB values; the only change was one writer becoming eight. 5,760 <code>Put</code> calls produced 1,440 WAL writes — not roughly a quarter, but 720 waves of exactly two. This piece is not about a tool; it is about watching something while it runs.</p>
+            </div>
+        </section>
+
+        <section class="article-section">
+            <div class="container">
+                <article class="article-body">
+                    <div class="article-graph-embed"><!-- interactive behaviour graph -->
+<style>.cbg-root{
+  --cbg-bg:#EEF0F2; --cbg-panel:#FFFFFF; --cbg-sunk:#F5F6F8; --cbg-ink:#151B21; --cbg-dim:#5D6B77; --cbg-faint:#8A97A2;
+  --cbg-line:#D8DDE2; --cbg-line-soft:#E7EAEE; --cbg-accent:#2D5C7F; --cbg-accent-soft:#DCE7EF;
+  --cbg-entry:#54646F; --cbg-good:#2F8570; --cbg-money:#A9752A; --cbg-bad:#AE4630;
+  --cbg-shadow:0 1px 2px rgba(21,27,33,.05), 0 10px 26px -16px rgba(21,27,33,.35);
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --cbg-bg:#0E1317; --cbg-panel:#171E24; --cbg-sunk:#121920; --cbg-ink:#E2E8ED; --cbg-dim:#93A2AE; --cbg-faint:#6E7E8A;
+  --cbg-line:#28323A; --cbg-line-soft:#1F272E; --cbg-accent:#6FA5CE; --cbg-accent-soft:#16303F;
+  --cbg-entry:#8898A4; --cbg-good:#4FB79B; --cbg-money:#D7A44F; --cbg-bad:#DC7657;
+  --cbg-shadow:0 1px 2px rgba(0,0,0,.5), 0 12px 30px -18px rgba(0,0,0,.9);
+}}.cbg-root[data-theme="dark"]{
+  --cbg-bg:#0E1317; --cbg-panel:#171E24; --cbg-sunk:#121920; --cbg-ink:#E2E8ED; --cbg-dim:#93A2AE; --cbg-faint:#6E7E8A;
+  --cbg-line:#28323A; --cbg-line-soft:#1F272E; --cbg-accent:#6FA5CE; --cbg-accent-soft:#16303F;
+  --cbg-entry:#8898A4; --cbg-good:#4FB79B; --cbg-money:#D7A44F; --cbg-bad:#DC7657;
+  --cbg-shadow:0 1px 2px rgba(0,0,0,.5), 0 12px 30px -18px rgba(0,0,0,.9);
+}.cbg-root *{box-sizing:border-box}.cbg-root{margin:0;background:var(--cbg-bg);color:var(--cbg-ink);font-family:Archivo,system-ui,"Noto Sans TC",sans-serif;font-size:15px;line-height:1.6}.cbg-root .mono{font-family:"JetBrains Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}.cbg-root .shell{max-width:1300px;margin:0 auto;padding:34px 22px 70px;display:flex;flex-direction:column;gap:20px}.cbg-root header.top{display:flex;flex-direction:column;gap:9px}.cbg-root .tagline{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.cbg-root .badge{font-family:"JetBrains Mono",monospace;font-size:.66rem;letter-spacing:.14em;text-transform:uppercase;padding:3px 8px;border-radius:2px;background:var(--cbg-good);color:#fff}.cbg-root .src{font-family:"JetBrains Mono",monospace;font-size:.72rem;color:var(--cbg-faint)}.cbg-root .eyebrow{font-family:"JetBrains Mono",monospace;font-size:.68rem;letter-spacing:.15em;text-transform:uppercase;color:var(--cbg-faint)}.cbg-root h1{margin:0;font-size:clamp(1.6rem,3.4vw,2.3rem);line-height:1.15;letter-spacing:-.02em;font-weight:700;text-wrap:balance}.cbg-root .sub{color:var(--cbg-dim);max-width:64ch;margin:0}.cbg-root .panel{background:var(--cbg-panel);border:1px solid var(--cbg-line);border-radius:4px;box-shadow:var(--cbg-shadow)}.cbg-root .panel-head{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:11px 16px;border-bottom:1px solid var(--cbg-line-soft)}.cbg-root .panel-title{font-family:"JetBrains Mono",monospace;font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cbg-faint)}.cbg-root .presets{display:flex;gap:6px;flex-wrap:wrap}.cbg-root button{font:inherit;font-size:.8rem;color:var(--cbg-dim);background:var(--cbg-sunk);border:1px solid var(--cbg-line);border-radius:3px;padding:4px 11px;cursor:pointer;transition:background .15s,color .15s,border-color .15s}.cbg-root button:hover{color:var(--cbg-ink);border-color:var(--cbg-accent)}.cbg-root button[aria-pressed="true"]{background:var(--cbg-accent);border-color:var(--cbg-accent);color:#fff}.cbg-root :focus-visible{outline:2px solid var(--cbg-accent);outline-offset:2px}.cbg-root #cbg-timeline{padding:14px 16px 10px}.cbg-root #cbg-tl{display:block;width:100%;height:104px;cursor:crosshair;touch-action:none;user-select:none}.cbg-root .tl-legend{display:flex;gap:18px;flex-wrap:wrap;margin-top:8px;font-size:.78rem;color:var(--cbg-dim)}.cbg-root .tl-legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}.cbg-root .readout{display:flex;gap:22px;flex-wrap:wrap;align-items:baseline;padding:10px 16px;border-top:1px solid var(--cbg-line-soft);font-size:.85rem;color:var(--cbg-dim)}.cbg-root .readout b{color:var(--cbg-ink);font-family:"JetBrains Mono",monospace;font-weight:500}.cbg-root #cbg-graph{position:relative;padding:22px 16px 18px;overflow-x:auto}.cbg-root #cbg-stage{position:relative}.cbg-root #cbg-wires{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none}.cbg-root .node{position:absolute;width:300px;background:var(--cbg-panel);border:1px solid var(--cbg-line);border-radius:4px;box-shadow:var(--cbg-shadow);overflow:hidden}.cbg-root .node.entry{border-top:3px solid var(--cbg-entry)}.cbg-root .node.good{border-top:3px solid var(--cbg-good)}.cbg-root .node.money{border-top:3px solid var(--cbg-money)}.cbg-root .node.bad{border-top:3px solid var(--cbg-bad)}.cbg-root .nhead{padding:10px 13px 8px;border-bottom:1px solid var(--cbg-line-soft)}.cbg-root .nhead h3{margin:0;font-size:1.02rem;font-weight:600;letter-spacing:-.01em}.cbg-root .why{font-size:.78rem;color:var(--cbg-dim);line-height:1.4}.cbg-root .probes{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}.cbg-root .probe{font-family:"JetBrains Mono",monospace;font-size:.6rem;letter-spacing:.06em;text-transform:uppercase;padding:2px 6px;border-radius:2px;border:1px solid var(--cbg-line);color:var(--cbg-dim);background:var(--cbg-sunk)}.cbg-root .probe.log{color:var(--cbg-accent);border-color:var(--cbg-accent-soft);background:var(--cbg-accent-soft)}.cbg-root .probe.latency{color:var(--cbg-money)}.cbg-root .slot{padding:9px 13px;border-top:1px solid var(--cbg-line-soft)}.cbg-root .slot-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-family:"JetBrains Mono",monospace;font-size:.6rem;letter-spacing:.13em;text-transform:uppercase;color:var(--cbg-faint)}.cbg-root .big{font-family:"JetBrains Mono",monospace;font-size:1.5rem;font-weight:500;line-height:1.1;font-variant-numeric:tabular-nums}.cbg-root .unit{font-size:.72rem;color:var(--cbg-dim);font-family:Archivo,sans-serif;margin-left:4px}.cbg-root .spark{display:block;width:100%;height:34px;margin-top:5px}.cbg-root .lat{display:flex;gap:16px;align-items:baseline;margin-top:3px}.cbg-root .lat div{display:flex;gap:5px;align-items:baseline}.cbg-root .lat .k{font-family:"JetBrains Mono",monospace;font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:var(--cbg-faint)}.cbg-root .lat .v{font-family:"JetBrains Mono",monospace;font-size:1.02rem;font-variant-numeric:tabular-nums}.cbg-root .shape{margin-top:7px}.cbg-root .shape-row{display:flex;justify-content:space-between;gap:8px;font-size:.74rem;margin-bottom:2px}.cbg-root .shape-row .t{font-family:"JetBrains Mono",monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.cbg-root .shape-row .n{font-family:"JetBrains Mono",monospace;color:var(--cbg-dim);white-space:nowrap}.cbg-root .shape-row.new .t{color:var(--cbg-bad);font-weight:500}.cbg-root .bar{height:5px;border-radius:2px;background:var(--cbg-line-soft);overflow:hidden;margin-bottom:8px}.cbg-root .bar i{display:block;height:100%;border-radius:2px}.cbg-root .flame{display:flex;flex-direction:column;gap:5px;margin-top:7px}.cbg-root .chain{display:flex;height:17px;border-radius:2px;overflow:hidden;background:var(--cbg-line-soft)}.cbg-root .chain span{display:flex;align-items:center;padding:0 5px;font-family:"JetBrains Mono",monospace;font-size:.58rem;color:#fff;white-space:nowrap;overflow:hidden;border-right:1px solid rgba(255,255,255,.28)}.cbg-root .chain span:last-child{border-right:0}.cbg-root .chain-meta{display:flex;justify-content:space-between;font-size:.68rem;color:var(--cbg-dim);font-family:"JetBrains Mono",monospace}.cbg-root .wire{fill:none;stroke:var(--cbg-dim);stroke-width:2}.cbg-root .wire.alert{stroke:var(--cbg-bad);stroke-width:2.8}.cbg-root .wire.calm{stroke:var(--cbg-good);stroke-width:2.4}.cbg-root .wlabel{font-family:"JetBrains Mono",monospace;font-size:11.5px;fill:var(--cbg-ink)}.cbg-root .wsub{font-family:"JetBrains Mono",monospace;font-size:9.5px;fill:var(--cbg-faint)}.cbg-root .wbox{fill:var(--cbg-panel);stroke:var(--cbg-line)}.cbg-root #cbg-edge-list{display:none;flex-direction:column;gap:8px;padding:0 16px 16px}.cbg-root .echip{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;padding:9px 12px;border:1px solid var(--cbg-line);border-left:3px solid var(--cbg-dim);border-radius:3px;background:var(--cbg-sunk);font-size:.82rem}.cbg-root .echip.calm{border-left-color:var(--cbg-good)}.cbg-root .echip.alert{border-left-color:var(--cbg-bad)}.cbg-root .echip b{font-family:"JetBrains Mono",monospace;font-weight:500}.cbg-root .echip .sub{color:var(--cbg-dim);font-size:.76rem;font-family:"JetBrains Mono",monospace}.cbg-root .prose{max-width:40rem;margin:0 auto;padding:6px 22px 26px;font-size:16px;line-height:1.8}.cbg-root .prose h2{font-family:Archivo,sans-serif;font-size:1.35rem;font-weight:700;letter-spacing:-.01em;margin:0 0 14px}.cbg-root .prose h3{font-size:1.02rem;font-weight:600;margin:26px 0 6px}.cbg-root .prose p{margin:0 0 14px;color:var(--cbg-ink)}.cbg-root .prose code{font-family:"JetBrains Mono",monospace;font-size:.86em;background:var(--cbg-sunk);
+  border:1px solid var(--cbg-line);padding:.08em .3em;border-radius:2px}.cbg-root .notes{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));padding:16px}.cbg-root .note h4{margin:0 0 4px;font-size:.9rem}.cbg-root .note p{margin:0;font-size:.84rem;color:var(--cbg-dim)}.cbg-root footer{color:var(--cbg-faint);font-size:.78rem;border-top:1px solid var(--cbg-line);padding-top:14px}
+@media (max-width:900px){ #cbg-stage{min-width:0!important;height:auto!important;display:flex;flex-direction:column;gap:14px}
+.cbg-root .node{position:static!important;width:100%} #cbg-wires{display:none} #cbg-edge-list{display:flex} }.article-graph-embed{width:min(1180px, calc(100vw - 2rem));margin-left:calc((100% - min(1180px, calc(100vw - 2rem))) / 2);margin-right:calc((100% - min(1180px, calc(100vw - 2rem))) / 2)}.cbg-root{max-width:100%;overflow:hidden}.cbg-root #cbg-graph{max-width:100%;overflow-x:auto}.cbg-root #cbg-timeline,.cbg-root #cbg-readout{max-width:100%}@media (max-width:900px){.article-graph-embed{width:100%;margin-left:0;margin-right:0}}</style>
+
+
+<div class="cbg-root">
+
+
+<section class="panel">
+  <div class="panel-head"><span class="panel-title" id="cbg-tl-title"></span><div class="presets" id="cbg-presets"></div></div>
+  <div id="cbg-timeline">
+    <canvas id="cbg-tl"></canvas>
+    <div class="tl-legend" id="cbg-legend"></div>
+  </div>
+  <div class="readout" id="cbg-readout"></div>
+</section>
+
+<section class="panel" id="cbg-graph">
+  <div id="cbg-stage"><svg id="cbg-wires"></svg></div>
+  <div id="cbg-edge-list"></div>
+</section>
+
+
+
+</div>
+<script id="cbg-data" type="application/json">{"mock": false, "title": "Write merging in leveldb", "lede": "11,515 Puts, eight minutes, two phases.", "source": "article/leveldb-demo/graph-2026-10-05-rebuilt.json · 07:01–07:10 UTC", "window": {"startMs": 1791183713756, "stepMs": 10000, "buckets": 49}, "phases": [{"label": "A one writer", "fromBucket": 0, "toBucket": 24}, {"label": "B eight writers", "fromBucket": 24, "toBucket": 49}], "readout": {"ratios": [{"label": "WAL writes / Put", "num": "Write the WAL", "den": "Call Put", "tone": "good"}, {"label": "carried by someone else / Put", "num": "Handed to someone else", "den": "Call Put", "tone": "warn"}], "check": "Either you write it yourself or someone carries it: 7,195 + 4,320 = 11,515"}, "nodes": [{"id": "n0", "name": "One write", "tone": "entry", "purpose": "How long does the caller wait on one Put?", "probes": [{"traceKey": "main.writeOne:54", "kind": "latency"}], "series": {"hits": [235, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 232, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 241, 239, 240, 240, 240, 240, 240, 8]}, "hitsFull": 11515, "latencyFull": null, "samples": [], "stacks": [], "x": 0, "y": 0, "root": false}, {"id": "n1", "name": "Call Put", "tone": "good", "purpose": "How many writes actually come in each second?", "probes": [{"traceKey": "leveldb.(*DB).Put:372", "kind": "metric"}], "series": {"hits": [235, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 238, 239, 240, 241, 239, 241, 240, 240, 239, 240, 241, 238, 242, 239, 241, 240, 238, 244, 238, 240, 239, 241, 240, 238, 4]}, "hitsFull": 11515, "latencyFull": null, "samples": [], "stacks": [{"frames": ["runtime.goexit", "main.phase.gowrap1", "main.phase.func1", "shadow-main.writeOne", "github.com/syndtr/goleveldb/leveldb.(*DB).Put"], "perBucket": [235, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 238, 239, 240, 241, 239, 241, 240, 240, 239, 240, 241, 238, 242, 239, 241, 240, 238, 244, 238, 240, 239, 241, 240, 238, 4]}], "x": 520, "y": 0, "root": false}, {"id": "n2", "name": "Write the WAL", "tone": "money", "purpose": "How many WAL writes does one write really cost?", "probes": [{"traceKey": "leveldb.(*DB).writeJournal:19", "kind": "metric"}], "series": {"hits": [235, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 58, 60, 60, 60, 60, 60, 60, 60, 60, 61, 59, 61, 59, 60, 60, 60, 61, 61, 58, 60, 61, 59, 60, 61, 1]}, "hitsFull": 7195, "latencyFull": null, "samples": [], "stacks": [{"frames": ["runtime.goexit", "main.phase.gowrap1", "main.phase.func1", "shadow-main.writeOne", "shadow-github.com/syndtr/goleveldb/leveldb.(*DB).Put", "shadow-github.com/syndtr/goleveldb/leveldb.(*DB).putRec", "github.com/syndtr/goleveldb/leveldb.(*DB).writeLocked", "github.com/syndtr/goleveldb/leveldb.(*DB).writeJournal"], "perBucket": [235, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 58, 60, 60, 60, 60, 60, 60, 60, 60, 61, 59, 61, 59, 60, 60, 60, 61, 61, 58, 60, 61, 59, 60, 61, 1]}], "x": 1040, "y": 0, "root": false}, {"id": "n3", "name": "Release the lock and reply", "tone": "bad", "purpose": "Each time someone holds the lock, how many others do they carry along?", "probes": [{"traceKey": "leveldb.(*DB).unlockWrite:141", "kind": "log"}], "series": {"hits": [235, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 58, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 61, 59, 60, 60, 60, 60, 60, 2]}, "hitsFull": 7195, "latencyFull": null, "samples": [{"text": "merged=0 overflow=0", "perBucket": [235, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 28, 29, 29, 30, 29, 29, 27, 30, 30, 30, 29, 29, 29, 29, 28, 27, 28, 30, 28, 27, 28, 29, 29, 29, 1]}, {"text": "merged=6 overflow=0", "perBucket": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 28, 29, 29, 30, 29, 29, 27, 30, 30, 30, 29, 29, 29, 29, 28, 27, 28, 29, 29, 27, 28, 29, 29, 29, 1]}, {"text": "merged=1 overflow=0", "perBucket": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 3, 0, 0, 0, 1, 1, 1, 1, 2, 3, 2, 1, 1, 3, 2, 1, 1, 1, 0]}, {"text": "merged=5 overflow=0", "perBucket": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 3, 0, 0, 0, 1, 1, 1, 1, 2, 3, 2, 1, 1, 3, 2, 1, 1, 1, 0]}], "stacks": [{"frames": ["runtime.goexit", "main.phase.gowrap1", "main.phase.func1", "shadow-main.writeOne", "shadow-github.com/syndtr/goleveldb/leveldb.(*DB).Put", "shadow-github.com/syndtr/goleveldb/leveldb.(*DB).putRec", "github.com/syndtr/goleveldb/leveldb.(*DB).writeLocked", "github.com/syndtr/goleveldb/leveldb.(*DB).unlockWrite"], "perBucket": [235, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 58, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 61, 59, 60, 60, 60, 60, 60, 2]}], "x": 1040, "y": 470, "root": false}, {"id": "n4", "name": "Handed to someone else", "tone": "entry", "purpose": "How many of my writes did someone else write for me?", "probes": [{"traceKey": "leveldb.(*DB).putRec:334", "kind": "metric"}], "series": {"hits": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 174, 180, 180, 180, 180, 180, 180, 180, 180, 180, 180, 180, 180, 180, 180, 180, 180, 183, 177, 180, 180, 180, 180, 180, 6]}, "hitsFull": 4320, "latencyFull": null, "samples": [], "stacks": [{"frames": ["runtime.goexit", "main.phase.gowrap1", "main.phase.func1", "shadow-main.writeOne", "shadow-github.com/syndtr/goleveldb/leveldb.(*DB).Put", "github.com/syndtr/goleveldb/leveldb.(*DB).putRec"], "perBucket": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 174, 180, 180, 180, 180, 180, 180, 180, 180, 180, 180, 180, 180, 180, 180, 180, 180, 183, 177, 180, 180, 180, 180, 180, 6]}], "x": 1040, "y": 940, "root": false}], "edges": [{"from": "n0", "to": "n1", "countPerBucket": [235, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 238, 239, 240, 241, 239, 241, 240, 240, 239, 240, 241, 238, 242, 239, 241, 240, 238, 244, 238, 240, 239, 241, 240, 238, 4], "countFull": 11515, "fanoutFull": 1, "gap": 0, "gapLabel": "0", "gapIn": [], "alert": null}, {"from": "n1", "to": "n2", "countPerBucket": [235, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 58, 60, 60, 60, 60, 60, 60, 60, 60, 61, 59, 61, 59, 60, 60, 60, 61, 61, 58, 60, 61, 59, 60, 61, 1], "countFull": 7195, "fanoutFull": 0.62, "gap": 2, "gapLabel": "2", "gapIn": ["github.com/syndtr/goleveldb/leveldb.(*DB).writeLocked", "github.com/syndtr/goleveldb/leveldb.(*DB).putRec"], "alert": null}, {"from": "n1", "to": "n3", "countPerBucket": [235, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 58, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 61, 59, 60, 60, 60, 60, 60, 2], "countFull": 7195, "fanoutFull": 0.62, "gap": 2, "gapLabel": "2", "gapIn": ["github.com/syndtr/goleveldb/leveldb.(*DB).writeLocked", "github.com/syndtr/goleveldb/leveldb.(*DB).putRec"], "alert": null}, {"from": "n1", "to": "n4", "countPerBucket": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 174, 180, 180, 180, 180, 180, 180, 180, 180, 180, 180, 180, 180, 180, 180, 180, 180, 183, 177, 180, 180, 180, 180, 180, 6], "countFull": 4320, "fanoutFull": 0.38, "gap": 0, "gapLabel": "0", "gapIn": [], "alert": null}], "notes": []}</script>
+<script>(function(){
+
+const D = JSON.parse(document.getElementById("cbg-data").textContent);
+const NB = D.window.buckets, STEP = D.window.stepMs, T0 = D.window.startMs;
+const N = Object.fromEntries(D.nodes.map(n => [n.id, n]));
+const TONE = { entry:"--cbg-entry", good:"--cbg-good", money:"--cbg-money", bad:"--cbg-bad" };
+const css = v => getComputedStyle(document.querySelector(".cbg-root")).getPropertyValue(v).trim();
+const sum = (a,f,t) => a.slice(f,t).reduce((x,y)=>x+y,0);
+const fmt = n => Math.round(n).toLocaleString("en-US");
+const ms = (v) => (v >= 10 ? v.toFixed(0) : v >= 1 ? v.toFixed(1) : v.toFixed(2));
+const clock = b => new Date(T0 + b*STEP).toISOString().slice(11,16);
+// github.com/gin-gonic/gin.(*Engine).ServeHTTP → ServeHTTP. Taking the last
+// dot-segment alone leaves "func1" for every closure, and taking the last path
+// segment alone leaves the whole package prefix.
+const shortFn = (s) => {
+  // Generic type arguments carry dots of their own — NewCache[...].gowrap1 —
+  // so they come off before anything splits on ".".
+  const noGeneric = s.replace(/\[[^\]]*\]/g, "");
+  const noRecv = noGeneric.split("/").pop().replace(/\(\*?[^)]*\)\./g, "");
+  const parts = noRecv.split(".").filter(Boolean);
+  // A closure carries the name of the function it was written in, and can carry
+  // several suffixes at once: serveStreams.func2.1, NewFIFOScheduler.gowrap1.
+  while (parts.length > 1 && /^(func\d+|gowrap\d+|\d+)$/.test(parts[parts.length - 1])) parts.pop();
+  return parts[parts.length - 1];
+};
+let sel = { from:0, to:NB };
+
+/* children of an edge target = what the timeline stacks */
+const hasOut = new Set(D.edges.map(e => e.from));
+/* The ends of the graph: nodes nothing leads away from. Stacking those counts
+   each piece of work once, and an island — a step reached on its own goroutine,
+   with no edge at all — is an end like any other, so it stays on the timeline. */
+const leaves = D.nodes.filter(n => !hasOut.has(n.id)).map(n => n.id);
+
+{ const _e = document.getElementById("cbg-title"); if (_e) _e.textContent = D.title; }
+{ const _e = document.getElementById("cbg-lede"); if (_e) _e.textContent = D.lede; }
+{ const _e = document.getElementById("cbg-src"); if (_e) _e.textContent = D.source ?? ""; }
+{ const _e = document.getElementById("cbg-eyebrow"); if (_e) _e.textContent = "Behavior Graph · " + D.nodes.length + " nodes · " +
+  D.nodes.reduce((a,n)=>a+n.probes.length,0) + " probes"; }
+document.getElementById("cbg-tl-title").textContent =
+  `Timeline · ${STEP/1000}s per bucket · ${Math.round(NB*STEP/60000)} minutes`;
+document.getElementById("cbg-legend").innerHTML =
+  leaves.map(id => `<span><i style="background:var(${TONE[N[id].tone]})"></i>${N[id].name}</span>`).join("") +
+  `<span><i style="background:var(--bad);opacity:.28"></i>selection</span>
+   <span style="color:var(--faint)">drag on the chart to select any span</span>`;
+
+/* ── stage ─────────────────────────────────────────────── */
+const stage = document.getElementById("cbg-stage");
+D.nodes.forEach(n => {
+  const el = document.createElement("div");
+  el.className = "node " + n.tone; el.id = "cbg-node-" + n.id;
+  el.style.left = n.x + "px"; el.style.top = n.y + "px";
+  stage.appendChild(el);
+});
+stage.style.minWidth = (Math.max(...D.nodes.map(n=>n.x)) + 320) + "px";
+
+/* ── timeline ──────────────────────────────────────────── */
+const cv = document.getElementById("cbg-tl"), ctx = cv.getContext("2d");
+function drawTimeline(){
+  const dpr = devicePixelRatio||1, w = cv.clientWidth, h = cv.clientHeight;
+  cv.width = w*dpr; cv.height = h*dpr; ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,h);
+  const stacks = leaves.map(id => N[id].series.hits);
+  const peak = Math.max(...Array.from({length:NB}, (_,i) => stacks.reduce((a,s)=>a+s[i],0))) * 1.1;
+  const bw = w/NB;
+  D.phases.forEach((p,i) => { if (i%2) { ctx.fillStyle = css("--cbg-sunk");
+    ctx.fillRect(p.fromBucket*bw, 0, (p.toBucket-p.fromBucket)*bw, h); } });
+  for (let i=0;i<NB;i++){
+    let acc = 0;
+    stacks.forEach((s,si) => {
+      const hh = (s[i]/peak)*h;
+      ctx.fillStyle = css(TONE[N[leaves[si]].tone]); ctx.globalAlpha = .88;
+      ctx.fillRect(i*bw, h-acc-hh, Math.max(bw-.4,.6), hh); acc += hh;
+    });
+  }
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = css("--cbg-bad"); ctx.globalAlpha = .15;
+  ctx.fillRect(sel.from*bw, 0, (sel.to-sel.from)*bw, h); ctx.globalAlpha = 1;
+  ctx.strokeStyle = css("--cbg-bad"); ctx.lineWidth = 1.5; ctx.beginPath();
+  ctx.moveTo(sel.from*bw,0); ctx.lineTo(sel.from*bw,h);
+  ctx.moveTo(sel.to*bw,0); ctx.lineTo(sel.to*bw,h); ctx.stroke();
+  ctx.font = '500 10px "JetBrains Mono", monospace'; ctx.fillStyle = css("--cbg-faint");
+  D.phases.forEach(p => ctx.fillText(p.label, p.fromBucket*bw+5, 12));
+}
+let dragging = false, anchor = 0;
+const bucketAt = ev => { const r = cv.getBoundingClientRect();
+  return Math.max(0, Math.min(NB, Math.round(((ev.clientX-r.left)/r.width)*NB))); };
+cv.addEventListener("pointerdown", e => { dragging = true; anchor = bucketAt(e); cv.setPointerCapture(e.pointerId); });
+cv.addEventListener("pointermove", e => { if(!dragging) return;
+  const b = bucketAt(e); sel = { from:Math.min(anchor,b), to:Math.max(anchor,b) };
+  if (sel.to - sel.from < 2) sel.to = Math.min(NB, sel.from+2); render(); });
+addEventListener("pointerup", () => { if(dragging){ dragging = false; syncPresets(); } });
+
+// A real window arrives without authored phases. Thirds are not a claim about
+// the run — they are a fast way to ask "did this move", which is the only
+// reason the timeline is here.
+const PRESETS = D.phases.length
+  ? [{label:"All",from:0,to:NB}, ...D.phases.map(p=>({label:p.label,from:p.fromBucket,to:p.toBucket}))]
+  : [{label:"All",from:0,to:NB},
+     {label:"First third",from:0,to:Math.round(NB/3)},
+     {label:"Middle",from:Math.round(NB/3),to:Math.round(2*NB/3)},
+     {label:"Last third",from:Math.round(2*NB/3),to:NB}];
+const pbox = document.getElementById("cbg-presets");
+PRESETS.forEach((p,i) => { const b = document.createElement("button"); b.textContent = p.label;
+  b.onclick = () => { sel = {from:p.from,to:p.to}; render(); syncPresets(); }; pbox.appendChild(b); });
+const syncPresets = () => [...pbox.children].forEach((b,i) =>
+  b.setAttribute("aria-pressed", String(PRESETS[i].from===sel.from && PRESETS[i].to===sel.to)));
+
+/* ── node cards ────────────────────────────────────────── */
+function spark(series, cvar, hi){
+  const w = 274, h = 34, max = Math.max(...series, 1);
+  const pts = series.map((v,i) => `${(i/(series.length-1))*w},${h-(v/max)*(h-3)-1.5}`).join(" ");
+  const x1 = (sel.from/series.length)*w, x2 = (sel.to/series.length)*w;
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
+    <rect x="${x1}" y="0" width="${Math.max(x2-x1,1)}" height="${h}" fill="var(${hi||cvar})" opacity=".14"/>
+    <polyline points="${pts}" fill="none" stroke="var(${cvar})" stroke-width="1.4" stroke-linejoin="round"/></svg>`;
+}
+function renderNode(n){
+  const cvar = TONE[n.tone];
+  const whole = sel.from === 0 && sel.to === NB;
+  const total = whole && n.hitsFull != null ? n.hitsFull : sum(n.series.hits, 0, NB);
+  const hits = whole && n.hitsFull != null ? n.hitsFull : sum(n.series.hits, sel.from, sel.to);
+  const mins = ((sel.to-sel.from)*STEP)/60000;
+  let lat = "";
+  if (n.series.latencyP50){
+    const win = a => a.slice(sel.from, sel.to);
+    const avg = a => { const v = a.filter(x => x > 0); return v.length ? v.reduce((x,y)=>x+y,0)/v.length : 0; };
+    // Over the whole window the reservoir's own percentiles are the honest
+    // answer. Over a sub-range there is no reservoir, so the per-bucket
+    // percentiles are averaged — which is not a percentile of the range, and
+    // the caption says so rather than letting the number pass as one.
+    const whole = sel.from === 0 && sel.to === NB && n.latencyFull;
+    const p50 = whole ? n.latencyFull.p50 : avg(win(n.series.latencyP50));
+    const p95 = whole ? n.latencyFull.p95 : avg(win(n.series.latencyP95));
+    const worst = Math.max(...n.series.latencyP95);
+    lat = `<div class="slot"><div class="slot-h"><span>latency · latency probe</span><span>${whole ? "whole-window percentiles" : "mean of per-bucket percentiles"}</span></div>
+      <div class="lat"><div><span class="k">p50</span><span class="v">${ms(p50)}<span class="unit">ms</span></span></div>
+      <div><span class="k">p95</span><span class="v" style="color:${p95>worst*.6?"var(--bad)":"inherit"}">${ms(p95)}<span class="unit">ms</span></span></div></div>
+      ${spark(n.series.latencyP95, cvar, "--cbg-bad")}</div>`;
+  }
+  const shapeAll = n.samples.reduce((a,s)=>a+sum(s.perBucket,sel.from,sel.to),0) || 1;
+  const shapes = n.samples.map(s => {
+    const v = sum(s.perBucket, sel.from, sel.to);
+    if (v === 0) return "";
+    const pct = v/shapeAll*100;
+    // a shape absent from the first tenth of the window is new behaviour, not background
+    const isNew = sum(s.perBucket, 0, Math.floor(NB/10)) === 0;
+    return `<div class="shape"><div class="shape-row ${isNew?"new":""}">
+        <span class="t" title="${s.text}">${isNew?"▲ ":""}${s.text}</span><span class="n">${pct.toFixed(0)}% · ${fmt(v)}</span></div>
+      <div class="bar"><i style="width:${pct}%;background:var(${isNew?"--cbg-bad":cvar})"></i></div></div>`;
+  }).join("") || `<p class="why" style="margin-top:6px">nothing captured in this span</p>`;
+
+  const chainAll = n.stacks.reduce((a,s)=>a+sum(s.perBucket,sel.from,sel.to),0) || 1;
+  const flame = n.stacks.map(s => {
+    const v = sum(s.perBucket, sel.from, sel.to); if (!v) return "";
+    const share = v/chainAll*100;
+    const MAX_FRAMES = 5;
+    // The outermost frames are where the goroutine started, and that is what
+    // tells two islands apart — so the head stays visible and the middle folds.
+    const head = s.frames.length > MAX_FRAMES ? s.frames.slice(0, 2) : [];
+    const tail = s.frames.slice(head.length ? head.length - MAX_FRAMES : 0);
+    const hidden = s.frames.length - head.length - tail.length;
+    const chip = (f, i) =>
+      `<span style="flex:1;background:color-mix(in srgb, var(${cvar}) ${90-i*12}%, #000 10%)" title="${f}">${shortFn(f)}</span>`;
+    const cells =
+      head.map(chip).join("") +
+      (hidden > 0
+        ? `<span style="flex:0 0 auto;background:var(--line);color:var(--dim)" title="${s.frames.slice(head.length, head.length + hidden).join(" < ")}">+${hidden}</span>`
+        : "") +
+      tail.map((f, i) => chip(f, i + head.length)).join("");
+    return `<div><div class="chain" style="width:${Math.max(share,55)}%">${cells}</div>
+      <div class="chain-meta"><span>${share.toFixed(0)}% take this path</span><span>${fmt(v)}</span></div></div>`;
+  }).join("");
+
+  document.getElementById("cbg-node-"+n.id).innerHTML = `
+    <div class="nhead"><h3>${n.name}</h3><div class="why">${n.purpose}</div>
+      <div class="probes">${n.probes.map(p=>`<span class="probe ${p.kind}">${p.kind}</span>`).join("")}
+        <span class="probe">${n.probes.length} probe</span>
+        ${n.root ? '<span class="probe" title="no instrumented caller on the stack">root</span>' : ""}</div></div>
+    <div class="slot"><div class="slot-h"><span>hits · metric</span><span>${(hits/total*100).toFixed(0)}% of ${fmt(total)}</span></div>
+      <div class="big">${fmt(hits)}<span class="unit"> · ${(hits/mins).toFixed(0)}/min</span></div>${spark(n.series.hits, cvar)}</div>
+    ${lat}
+    <div class="slot"><div class="slot-h"><span>captured · log</span><span>${n.samples.length} shapes</span></div>${shapes}</div>
+    <div class="slot"><div class="slot-h"><span>paths here · stacks</span><span>${n.stacks.length} chains</span></div>
+      <div class="flame">${flame}</div></div>`;
+}
+
+/* ── edges ─────────────────────────────────────────────── */
+function edgeFacts(e){
+  const whole = sel.from === 0 && sel.to === NB;
+  const parent = sum(N[e.from].series.hits, sel.from, sel.to);
+  const series = sum(e.countPerBucket, sel.from, sel.to);
+  const n = whole && e.countFull != null ? e.countFull : series;
+  const f = whole && e.fanoutFull != null ? e.fanoutFull : (parent ? series/parent : 0);
+  const approx = !whole;
+  return { n, f, parent, approx, alert: e.alert != null && f > e.alert,
+    sub: e.gap > 0
+      ? `${e.gapLabel ?? e.gap} unobserved · ${e.gapIn.map(shortFn).join(" · ") || "(names not recorded)"}`
+      : "direct call, nothing skipped" };
+}
+function renderEdges(){
+  document.getElementById("cbg-edge-list").innerHTML = D.edges.map(e => { const f = edgeFacts(e);
+    return `<div class="echip ${f.alert?"alert":(e.gap===0?"calm":"")}"><b>${N[e.from].name} → ${N[e.to].name}</b>
+      <b style="color:${f.alert?"var(--bad)":"var(--ink)"}">${f.approx?"≈":""}×${f.f.toFixed(2)}</b>
+      <span class="sub">${fmt(f.n)} ÷ ${fmt(f.parent)}</span><span class="sub">${f.sub}</span></div>`; }).join("");
+
+  const svg = document.getElementById("cbg-wires");
+  if (getComputedStyle(svg).display === "none") return;
+  const s = stage.getBoundingClientRect();
+  const box = id => { const r = document.getElementById("cbg-node-"+id).getBoundingClientRect();
+    return { x:r.left-s.left, y:r.top-s.top, w:r.width, h:r.height }; };
+  let out = ["","alert","calm"].map(k => `<marker id="ah${k}" viewBox="0 0 10 10" refX="9" refY="5"
+      markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"
+      fill="var(${k==="alert"?"--cbg-bad":k==="calm"?"--cbg-good":"--cbg-dim"})"/></marker>`).join("");
+  out = `<defs>${out}</defs>`;
+  D.edges.forEach(e => {
+    const a = box(e.from), b = box(e.to);
+    const x1 = a.x+a.w, y1 = a.y+70, x2 = b.x-9, y2 = b.y+70, mx = (x1+x2)/2, ty = (y1+y2)/2;
+    const f = edgeFacts(e);
+    const kind = f.alert ? "alert" : (e.gap === 0 ? "calm" : "");
+    out += `<path class="wire ${kind}" marker-end="url(#ah${kind})"
+      d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}" ${e.gap>0?'stroke-dasharray="6 5"':""}/>`;
+    const w = Math.min(Math.max(f.sub.length*6.2+20, 160), x2-x1-10);
+    out += `<rect class="wbox" x="${mx-w/2}" y="${ty-20}" width="${w}" height="40" rx="3"/>
+      <text class="wlabel" x="${mx}" y="${ty-3}" text-anchor="middle" fill="${f.alert?"var(--bad)":"var(--ink)"}">${f.approx?"≈":""}×${f.f.toFixed(2)} · ${fmt(f.n)} calls</text>
+      <text class="wsub" x="${mx}" y="${ty+12}" text-anchor="middle">${f.sub}</text>`;
+  });
+  svg.innerHTML = out;
+  stage.style.height = (Math.max(...D.nodes.map(n => box(n.id).y + box(n.id).h)) + 8) + "px";
+}
+
+/* ── readout ───────────────────────────────────────────── */
+function renderReadout(){
+  const val = (name) => {
+    const n = D.nodes.find((x) => x.name === name);
+    if (!n) return 0;
+    return sel.from === 0 && sel.to === NB && n.hitsFull != null
+      ? n.hitsFull
+      : sum(n.series.hits, sel.from, sel.to);
+  };
+  const a = D.nodes[0];
+  const parts = [`<span>Selected <b>${clock(sel.from)}–${clock(sel.to)}</b> (${((sel.to-sel.from)*STEP/60000).toFixed(1)} min)</span>`,
+    `<span>${a.name} <b>${fmt(val(a.name))}</b></span>`];
+  D.readout.ratios.forEach(r => {
+    const v = val(r.den) ? val(r.num)/val(r.den)*100 : 0;
+    parts.push(`<span>${r.label} <b style="color:var(${r.tone==="good"?"--cbg-good":"--cbg-money"})">${v.toFixed(0)}%</b></span>`);
+  });
+  const lnode = D.nodes.find(n => n.series.latencyP95);
+  if (lnode){ const whole = sel.from === 0 && sel.to === NB;
+    const w = lnode.series.latencyP95.slice(sel.from, sel.to).filter(v => v > 0);
+    const p95 = whole && lnode.latencyFull ? lnode.latencyFull.p95 : w.reduce((x,y)=>x+y,0)/(w.length||1);
+    const worst = Math.max(...lnode.series.latencyP95);
+    parts.push(`<span>${lnode.name} p95 <b style="color:${p95>worst*.6?"var(--bad)":"inherit"}">${ms(p95)} ms</b></span>`); }
+  parts.push(`<span style="color:var(--faint)">${D.readout.check}</span>`);
+  document.getElementById("cbg-readout").innerHTML = parts.join("");
+}
+
+const notesEl = document.getElementById("cbg-notes");
+if (notesEl) notesEl.innerHTML = (D.notes||[]).map(n =>
+  `<div class="note"><h4>${n.h}</h4><p>${n.p}</p></div>`).join("");
+
+function render(){ drawTimeline(); D.nodes.forEach(renderNode); renderReadout();
+  requestAnimationFrame(renderEdges); }
+addEventListener("resize", render);
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
+render(); syncPresets();
+
+})();</script>
+</div>
+                    <h2>Deciding where to stand</h2>
+                    <p>goleveldb is a key-value store that lives inside your process. There is no network boundary: no slow query log, no packets to capture. <code>db.Put(key, val, nil)</code> returns <code>nil</code>, and everything in between happens on the same process&#x27;s stacks. Its documentation says concurrent writes are &quot;merged&quot; — one caller takes the write lock and writes the queued callers&#x27; data along with its own.</p>
+                    <p>The program being watched is small: 24 writes a second, 1KB each, written by one goroutine for four minutes and by eight goroutines for the next four, <strong>at the same total rate</strong>. Each of the eight writes 3 a second, driven by its own ticker.</p>
+                    <p>The probes sit at four places on the write path: the line where <code>Put</code> comes in (Call Put), the line in <code>putRec</code> where a merged caller gets its reply and returns (Handed to someone else), the first line of <code>writeJournal</code> (Write the WAL), and the first line of <code>unlockWrite</code> (Release the lock and reply). That last one captures its own argument <code>merged</code> — how many other callers&#x27; writes the lock holder carried on this trip.</p>
+                    <p>I assumed that when eight callers arrive together, one of them takes the lock and writes the other seven. <strong>So <code>merged</code> should mostly read 7 — shouldn&#x27;t it?</strong></p>
+                    <h2>The first four minutes: one writer</h2>
+                    <p>The window runs from 2026-10-05 07:01:53Z to 07:09:53Z. In the first four minutes the program counted 5,755 writes of its own; on the graph <code>Call Put</code> reads 5,755, <code>Write the WAL</code> reads 5,755, and <code>merged</code> was 0 all 5,755 times. Every write took the lock itself and wrote the WAL itself, <code>5,755 ÷ 5,755 = ×1.00</code>. Nobody to merge with, and no surprises yet.</p>
+                    <h2>Every wave, two people</h2>
+                    <p>In the last four minutes the program counted 5,760 writes, and <code>Call Put</code> reads 5,760; <code>Write the WAL</code> drops to 1,440 and <code>Handed to someone else</code> reads 4,320. <code>1,440 + 4,320 = 5,760</code>: either you write it yourself or someone carries it for you.</p>
+                    <p><code>merged</code> is no longer only 0 — but it is almost never 7:</p>
+                    <pre class="code-block"><code>merged (carried along)   times
+0                         691
+6                         691
+1                          29
+5                          29</code></pre>
+                    <p>They come in pairs, and <code>691 + 29 = 720</code> — four minutes, eight writers at 3 a second each, exactly 720 waves. I lined up the <code>Release the lock and reply</code> events by time: <strong>all 691 <code>merged=6</code> events come right after a <code>merged=0</code>, 6 to 37 milliseconds later</strong>; all 29 <code>merged=5</code> come right after a <code>merged=1</code>, 6 to 34 milliseconds later. Waves are at least 273 milliseconds apart.</p>
+                    <p>The last seconds of the window on the panel&#x27;s Logs tab, verbatim (panel time is UTC+8):</p>
+                    <pre class="code-block"><code>[15:09:50.104] leveldb.(*DB).unlockWrite:141   merged=0 overflow=0
+[15:09:50.134] leveldb.(*DB).unlockWrite:141   merged=6 overflow=0
+[15:09:50.436] leveldb.(*DB).unlockWrite:141   merged=0 overflow=0
+[15:09:50.465] leveldb.(*DB).unlockWrite:141   merged=6 overflow=0</code></pre>
+                    <p>So every wave has the same shape. The first caller takes the lock with <strong>nobody behind it</strong> and writes the WAL alone; by the time it lets go, the other seven are waiting, one of them takes the lock and writes the remaining six along with its own. Two WAL writes, six carried. The ledger closes: <code>691×1 + 691×7 + 29×2 + 29×6 = 5,760</code>, exactly what the program counted itself; and <code>merged</code> sums to 4,320, which is exactly what the other probe, <code>Handed to someone else</code>, counted.</p>
+                    <p>Why the first caller carries nobody can be read in the source: <code>writeLocked</code> only takes callers who are *already waiting* at that instant (a <code>select</code> with a <code>default</code>), and it does so before writing the WAL. Eight tickers fire almost together; at the instant the first caller wins the lock, the others are most likely still on their way (that step is inference — see the honest section).</p>
+                    <p>I assumed merging meant one caller writing for everyone. Now I know it writes for whoever is already at the door when it gets the lock — and eight callers who arrive &quot;together&quot; are, to the lock, two groups.</p>
+                    <h2>And what does merging cost?</h2>
+                    <p>Merging is not free: a carried caller waits for the lock holder to finish the whole batch before it gets its reply. I meant to read that straight off the main window&#x27;s <code>One write</code> timing: p50 3.690 ms in phase A, 14.649 ms in phase B, four times slower.</p>
+                    <p>Most of that number was me. I ran the same program again with no probe inside leveldb at all, keeping only the caller-side timing:</p>
+                    <pre class="code-block"><code>                     phase A (1 writer)   phase B (8 writers)
+p50                  0.108 ms             0.158 ms
+p95                  0.156 ms             0.298 ms
+p99                  0.198 ms             0.394 ms</code></pre>
+                    <p>Merging costs 0.05 ms at p50, not several milliseconds. In another round with a single probe on <code>putRec</code>&#x27;s merged branch — a line phase A never reaches — phase A&#x27;s p50 still went to 1.429 ms: once a probe is attached, the whole function is swapped for a copy, and the copy is slower whether or not that line runs. <strong>So no millisecond figure from the main window is compared anywhere in this piece.</strong></p>
+                    <p>Could &quot;two per wave&quot; be my doing too? If observation stretches how long the lock is held, more callers end up waiting at the door. I reran it under two lighter setups: counting only, no stacks — 1,438 WAL writes in phase B; no probe inside the lock at all, only counting the carried callers — <code>5,760 − 4,321 = 1,439</code>. In the last round nothing was attached to leveldb, and I watched only the <code>write</code> calls into the journal file from outside the process with <code>strace</code>: phase B is still dominated by &quot;one record, then seven&quot; (572 one-record writes, 638 seven-record writes), except the two writes of a wave are about 0.5 ms apart instead of 6 to 37. The shape is leveldb&#x27;s; the spacing was mine.</p>
+                    <h2>Being honest</h2>
+                    <p><strong>The graph is rebuilt from the raw events.</strong> Both the observation tool and the panel drew an edge that cannot exist: <code>Handed to someone else → Write the WAL</code>. A merged write returns at line 334 and never reaches the WAL; but every WAL write&#x27;s stack passes through <code>putRec</code> (at line 362), and the tool matches stack frames by function name alone. The recorded stacks carry line numbers, so this graph is rebuilt matching function and line: all four edges are backed by stacks, and no other edge turns up. The dashed <code>Call Put → Write the WAL</code> edge skips two frames, <code>putRec</code> and <code>writeLocked</code>, which I did not probe.</p>
+                    <p><strong>&quot;The others are still on their way&quot; is inferred from the source and the timestamps, not measured.</strong> What I measured is two lock holders per wave, 6 to 37 ms apart; nothing was watching when each caller reached the door.</p>
+                    <p><strong>The 720 waves are my tickers&#x27; doing.</strong> Eight writers driven by the same beat arrive together every third of a second. Real traffic is not that tidy, and <code>merged</code> would spread out more — the 29 waves split 1+5 are what slightly staggered arrivals look like.</p>
+                    <p><strong>Observation changes its rhythm.</strong> As above: in the main window the two lock holders of a wave were 6 to 37 ms apart; with no probe, about 0.5 ms. &quot;Two per wave&quot; held under all four observation setups, but the exact 691/29 split was only measured in the round with probes; the probe-free round is decoded from the byte sizes of journal writes, and some writes split at a 32KB block boundary do not reassemble, so only its shape is quoted, not its counts.</p>
+                    <p><strong>These WAL writes are not fsynced.</strong> The program passes <code>nil</code> write options, so <code>sync</code> is false and <code>writeJournal</code> returns once the record is handed to the operating system. With synchronous writes each WAL write would cost something else entirely, and this round did not measure it. Compaction is outside what was observed.</p>
+                    <h2>What I came away with</h2>
+                    <p>I now know that &quot;at the same time&quot; is not a moment to a write lock; it is an order. The WAL writes merging saves are real — 5,760 down to 1,440 in this round — but how many it saves depends on how many callers are standing at the door at the instant the lock is taken, not on how many arrived in the same second.</p>
+                    <p>📊 <strong>This article&#x27;s remote dashboard</strong> (measured data, viewable online): https://codebull-service-b7lha2dtrq-uc.a.run.app/public/leveldb-write-merge-20261005/ On the <code>Metrics</code> tab the cumulative line for <code>writeJournal</code> bends at the moment phase B starts, and the <code>Logs</code> tab shows <code>merged=0</code> and <code>merged=6</code> arriving in pairs. The panel&#x27;s own <code>Behavior Graph</code> tab still carries the extra <code>Handed to someone else → Write the WAL</code> edge, for the reason given above. (The panel&#x27;s time axis is local time, UTC+8, against the UTC window quoted here.)</p>
+                    <p><strong>What this round changed in the observed program</strong>: one blank import in <code>main.go</code> to bring the SDK into the binary, and a build with <code>-gcflags=&quot;all=-N -l -dwarflocationlists=true&quot;</code>. No business logic was touched and no log line or counter was added (the per-phase counts the program prints are part of the demo and serve as the outside ledger). All five probes were attached after the process was already running: <code>leveldb.(*DB).Put:372</code>, <code>putRec:334</code>, <code>writeJournal:19</code>, <code>unlockWrite:141</code> (capturing <code>merged</code> and <code>overflow</code>), and the timing on <code>main.writeOne:54–58</code>. The latency comparison comes from a separate control process (from 07:16:41Z, timing only); two more control rounds carried only stackless counting probes, and one ran with no probe at all under <code>strace --seccomp-bpf -e trace=write</code>. All five rounds used the same program, flags and traffic (<code>-rate 24 -a 4m -b 4m -workers 8</code>).</p>
+                </article>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2026 CodeBull. All rights reserved.</p>
+            <div class="links">
+                <a href="https://github.com/0xbu11/codebull">GitHub</a>
+                <a href="mailto:codebull.0xbu11@gmail.com">codebull.0xbu11@gmail.com</a>
+                <a href="#">Privacy</a>
+                <a href="#">Terms</a>
+            </div>
+        </div>
+    </footer>
+</body>
+
+</html>

@@ -76,6 +76,15 @@
                 </div>
                 <div class="article-grid">
                     <article class="article-card">
+                        <a class="article-card-main" href="article-leveldb-write-merge.html">
+                            <span class="article-card-source">goleveldb · Field Notes</span>
+                            <h3>I had eight goroutines write to leveldb at once, and every wave cost exactly two WAL writes</h3>
+                            <p>Same 24 writes a second, one writer then eight. 5,760 <code>Put</code> calls became 1,440 WAL writes: 720 waves, and in each one the first caller wrote alone while the second carried the other six. The shape held with no probe in the store at all; the milliseconds did not.</p>
+                            <span class="article-card-link">Read article →</span>
+                        </a>
+                        <a class="article-card-dash" href="https://codebull-service-b7lha2dtrq-uc.a.run.app/public/leveldb-write-merge-20261005/" target="_blank" rel="noopener noreferrer">📊 Dashboard · leveldb-write-merge-20261005</a>
+                    </article>
+                    <article class="article-card">
                         <a class="article-card-main" href="article-singleflight-shared-failure.html">
                             <span class="article-card-source">singleflight · Field Notes</span>
                             <h3>I watched a singleflight for ten minutes, and saw one timeout handed to seven callers at once</h3>
